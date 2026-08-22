@@ -1,5 +1,26 @@
+import os
+from urllib.parse import unquote, urlparse
+
 from .base import *  # noqa: F403
 
 
 DEBUG = True
 ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
+
+INSTALLED_APPS = [*INSTALLED_APPS, "apps.core"]
+
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql://inspection:inspection_dev@127.0.0.1:5432/inspection",
+)
+database_url = urlparse(DATABASE_URL)
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": database_url.path.lstrip("/"),
+        "USER": unquote(database_url.username or ""),
+        "PASSWORD": unquote(database_url.password or ""),
+        "HOST": database_url.hostname or "",
+        "PORT": str(database_url.port or ""),
+    }
+}
