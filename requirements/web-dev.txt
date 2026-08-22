@@ -1,0 +1,6 @@
+-r web.txt
+
+pytest>=8.3,<9
+pytest-django>=4.9,<5
+pytest-cov>=5,<6
+freezegun>=1.5,<2

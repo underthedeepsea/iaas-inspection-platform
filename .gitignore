@@ -1,0 +1,9 @@
+.DS_Store
+.env
+.airflow/
+.pytest_cache/
+.superpowers/
+.venv-airflow/
+.venv-web/
+__pycache__/
+*.py[cod]
