@@ -7,7 +7,20 @@ from .base import *  # noqa: F403
 DEBUG = True
 ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
 
-INSTALLED_APPS = [*INSTALLED_APPS, "apps.core"]
+INSTALLED_APPS = [
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.postgres",
+    *INSTALLED_APPS,
+    "apps.core",
+    "apps.assets",
+    "apps.inspections",
+    "apps.risks",
+    "apps.capabilities",
+    "apps.investigations",
+    "apps.learning",
+    "apps.audits",
+]
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",

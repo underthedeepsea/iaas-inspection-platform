@@ -1,15 +1,42 @@
 import uuid
 
 from django.db import models
+from django.core.validators import RegexValidator
 
 
-class Environment(models.Model):
+semantic_version_validator = RegexValidator(
+    regex=r"^\d+\.\d+\.\d+$",
+    message="Use a numeric semantic version in x.x.x format.",
+)
+
+
+class UUIDModel(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    class Meta:
+        abstract = True
+
+
+class CreatedModel(UUIDModel):
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        abstract = True
+
+
+class EditableModel(CreatedModel):
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        abstract = True
+
+
+class Environment(EditableModel):
     class EnvironmentType(models.TextChoices):
         DEV = "DEV", "Development"
         TEST = "TEST", "Test"
         PROD_SIM = "PROD_SIM", "Production simulation"
 
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=128)
     slug = models.CharField(max_length=64, unique=True)
     environment_type = models.CharField(
