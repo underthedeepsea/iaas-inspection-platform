@@ -9,12 +9,16 @@ from apps.inspections.models import Severity
 class Risk(EditableModel):
     class Status(models.TextChoices):
         NEW = "NEW", "New"
-        ACTIVE = "ACTIVE", "Active"
-        ACKNOWLEDGED = "ACKNOWLEDGED", "Acknowledged"
-        MITIGATING = "MITIGATING", "Mitigating"
+        PERSISTING = "PERSISTING", "Persisting"
+        WORSENED = "WORSENED", "Worsened"
+        INVESTIGATING = "INVESTIGATING", "Investigating"
+        LOCATED = "LOCATED", "Located"
+        PENDING_ACTION = "PENDING_ACTION", "Pending action"
+        IN_PROGRESS = "IN_PROGRESS", "In progress"
+        PENDING_REVERIFY = "PENDING_REVERIFY", "Pending reverification"
         RECOVERED = "RECOVERED", "Recovered"
-        CLOSED = "CLOSED", "Closed"
-        INVALID = "INVALID", "Invalid"
+        IGNORED = "IGNORED", "Ignored"
+        FALSE_POSITIVE = "FALSE_POSITIVE", "False positive"
 
     environment = models.ForeignKey("core.Environment", on_delete=models.CASCADE)
     inspection_item = models.ForeignKey("inspections.InspectionItem", on_delete=models.CASCADE)
