@@ -1,4 +1,6 @@
-from django.urls import path
+from django.urls import include, path
 
 
-urlpatterns = []
+urlpatterns = [
+    path("api/internal/v1/batch/", include("apps.inspections.internal_urls")),
+]
