@@ -11,6 +11,7 @@ from apps.inspections.models import (
     InspectionItem,
     InspectionItemRun,
     InspectionRun,
+    MockChange,
     MockEvent,
     MockLog,
     MockMetric,
@@ -327,9 +328,17 @@ def _summary(dataset, scenario_result, coverage: ClaimCoverage):
 
 
 def _asset_scope(dataset):
+    asset_ids = set()
+    for evidence_model in (MockMetric, MockLog, MockEvent, MockChange):
+        asset_ids.update(
+            evidence_model.objects.filter(
+                dataset_id=dataset.pk,
+                asset_id__isnull=False,
+            ).values_list("asset_id", flat=True)
+        )
     return {
         "asset_keys": list(
-            Asset.objects.filter(environment_id=dataset.environment_id)
+            Asset.objects.filter(id__in=asset_ids)
             .order_by("external_key")
             .values_list("external_key", flat=True)
         )

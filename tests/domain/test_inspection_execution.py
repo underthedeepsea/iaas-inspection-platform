@@ -11,6 +11,9 @@ from apps.inspections.models import (
     InspectionItem,
     InspectionItemRun,
     InspectionRun,
+    MockChange,
+    MockEvent,
+    MockLog,
     MockMetric,
 )
 from apps.mockdata.services import persist_dataset
@@ -120,13 +123,8 @@ def test_control_plane_anti_affinity_is_code_only_and_persists_literal_finding_a
     assert item_run.asset_scope == {
         "asset_keys": sorted(
             [
-                "cluster-0",
-                "host-control-0",
                 "host-worker-0",
-                "vm-0",
-                "control-plane-0",
                 "control-plane-1",
-                "gpu-0",
                 "llm-0",
             ]
         )
@@ -189,13 +187,106 @@ def test_asset_scope_uses_mutated_persisted_assets_instead_of_regenerating_datas
     assert item_run.asset_scope == {
         "asset_keys": sorted(
             [
-                "cluster-0",
-                "control-plane-0",
-                "host-control-0",
                 "host-worker-0",
                 "llm-0",
                 "persisted-control-plane-renamed",
-                "vm-0",
+            ]
+        )
+    }
+
+
+@pytest.mark.django_db
+def test_asset_scope_unions_current_dataset_evidence_and_excludes_unrelated_environment_assets():
+    environment = create_environment()
+    dataset = create_dataset(environment, "llm_scheduler_pressure")
+    metric_ts = MockMetric.objects.filter(dataset=dataset).first().ts
+    log_ts = MockLog.objects.filter(dataset=dataset).first().ts
+    event_ts = MockEvent.objects.filter(dataset=dataset).first().ts
+    change = MockChange.objects.filter(dataset=dataset).first()
+    metric_asset = Asset.objects.create(
+        environment=environment,
+        external_key="scope-metric-asset",
+        asset_type=Asset.AssetType.HOST,
+        name="scope-metric-asset",
+    )
+    log_asset = Asset.objects.create(
+        environment=environment,
+        external_key="scope-log-asset",
+        asset_type=Asset.AssetType.HOST,
+        name="scope-log-asset",
+    )
+    event_asset = Asset.objects.create(
+        environment=environment,
+        external_key="scope-event-asset",
+        asset_type=Asset.AssetType.HOST,
+        name="scope-event-asset",
+    )
+    change_asset = Asset.objects.create(
+        environment=environment,
+        external_key="scope-change-asset",
+        asset_type=Asset.AssetType.HOST,
+        name="scope-change-asset",
+    )
+    Asset.objects.create(
+        environment=environment,
+        external_key="unrelated-environment-asset",
+        asset_type=Asset.AssetType.HOST,
+        name="unrelated-environment-asset",
+    )
+    MockMetric.objects.create(
+        dataset=dataset,
+        asset=metric_asset,
+        metric_name="scope_probe",
+        ts=metric_ts,
+        value=1.0,
+    )
+    MockLog.objects.create(
+        dataset=dataset,
+        asset=log_asset,
+        ts=log_ts,
+        source="scope-test",
+        level=MockLog.Level.INFO,
+        message="scope probe",
+    )
+    MockEvent.objects.create(
+        dataset=dataset,
+        asset=event_asset,
+        ts=event_ts,
+        event_type="SCOPE_PROBE",
+        message="scope probe",
+    )
+    MockChange.objects.create(
+        dataset=dataset,
+        asset=change_asset,
+        start_at=change.start_at,
+        end_at=change.end_at,
+        change_type="scope_probe",
+        summary="scope probe",
+    )
+    status_claim = "llm.performance.status"
+    gap_claim = "llm.performance.degradation_category"
+    register_resolver(status_claim)
+    item = create_item(
+        code="llm.performance.persisted-scope",
+        execution_mode=InspectionItem.ExecutionMode.CODE_FIRST_AI_FALLBACK,
+        code_status=InspectionItem.CodeStatus.PARTIAL_CODE,
+        required_claims=[status_claim, gap_claim],
+    )
+    run = create_run(environment, dataset)
+
+    from apps.inspections.services.execution import execute_inspection_item
+
+    item_run = execute_inspection_item(run, item)
+
+    assert item_run.asset_scope == {
+        "asset_keys": sorted(
+            [
+                "host-worker-0",
+                "llm-0",
+                "scope-change-asset",
+                "scope-event-asset",
+                "scope-log-asset",
+                "scope-metric-asset",
             ]
         )
     }

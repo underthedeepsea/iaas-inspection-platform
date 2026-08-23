@@ -144,3 +144,54 @@ git diff --check
 
 - The existing schema relates `Asset` to `Environment`, not directly to `MockDataset`; scope therefore uses all persisted assets in the run environment, which is the strongest dataset provenance available without a migration.
 - Task 6 still intentionally excludes Risk lifecycle, snapshots, Airflow, LLM calls, APIs, and unsupported Task 4 scenarios.
+
+## Fix Round 2
+
+### Important finding addressed
+
+`_asset_scope` no longer includes every asset in the Environment. It now forms a distinct union of `asset_id` values from the current dataset's `MockMetric`, `MockLog`, `MockEvent`, and `MockChange` rows, then resolves those persisted rows to sorted `external_key` values. No model or migration change was needed.
+
+The new regression creates one asset referenced only by each evidence table plus an unrelated same-environment asset with no rows for the dataset. It asserts all four evidence assets and the generated metric assets are included while the unrelated asset is excluded. Existing scope tests now assert the evidence-derived set rather than the generator's complete asset list.
+
+### RED/GREEN evidence
+
+The scope expectations and cross-table regression were written before changing `_asset_scope`. The focused pre-fix run reported:
+
+```text
+DJANGO_SETTINGS_MODULE=config.settings.dev /Users/lars.li/Documents/AI-inspect/.venv-web/bin/python -m pytest tests/domain/test_inspection_execution.py -q
+FFF........                                                              [100%]
+3 failed, 8 passed in 1.91s
+```
+
+The first implementation run exposed and fixed a missing `MockChange` import; after that, one prior mutation test was corrected to reflect that `host-control-0` has no current dataset evidence row. The final focused and full verification were:
+
+```text
+DJANGO_SETTINGS_MODULE=config.settings.dev /Users/lars.li/Documents/AI-inspect/.venv-web/bin/python -m pytest tests/domain/test_inspection_execution.py -q
+...........                                                              [100%]
+11 passed in 1.82s
+
+DJANGO_SETTINGS_MODULE=config.settings.dev /Users/lars.li/Documents/AI-inspect/.venv-web/bin/python -m pytest -q
+..............................................................           [100%]
+62 passed in 2.35s
+
+DJANGO_SETTINGS_MODULE=config.settings.dev /Users/lars.li/Documents/AI-inspect/.venv-web/bin/python manage.py makemigrations --check --dry-run
+No changes detected
+
+DJANGO_SETTINGS_MODULE=config.settings.dev /Users/lars.li/Documents/AI-inspect/.venv-web/bin/python manage.py check
+System check identified no issues (0 silenced).
+
+git diff --check
+# no output
+```
+
+### Fix Round 2 self-review
+
+- Every scope query is constrained by the current `MockDataset` primary key and every source model's non-null `asset_id`.
+- Set union removes duplicate references before the final persisted `Asset` lookup; `external_key` sorting makes the JSON scope deterministic.
+- The regression uses unique assets per evidence table and a no-row unrelated asset, so removing any source query or broadening to Environment-wide lookup fails the test.
+- No migrations, generators, scenario reconstruction, risk writes, or API changes were added.
+
+### Fix Round 2 concerns
+
+- Assets persisted for a dataset but not referenced by any of the four supported evidence tables are intentionally excluded; the requested scope contract is evidence-derived.
+- Task 6 remains limited to the three supported deterministic scenarios and does not implement later Risk, snapshot, Airflow, LLM, or API stages.
