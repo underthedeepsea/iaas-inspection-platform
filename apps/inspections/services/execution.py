@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from django.db import transaction
 from django.utils import timezone
 
+from apps.assets.models import Asset
 from apps.inspections.models import (
     Finding,
     InspectionItem,
@@ -16,7 +17,6 @@ from apps.inspections.models import (
 )
 from apps.inspections.services.coverage import ClaimCoverage, compute_claim_coverage
 from apps.inspections.services.findings import FindingSpec, persist_findings
-from services.mock_generator.generator import generate_dataset
 from services.plugin_runtime.registry import CapabilityRegistry
 
 
@@ -50,7 +50,7 @@ def execute_inspection_item(
     started_at = observed_at or timezone.now()
 
     with transaction.atomic():
-        item_run, _ = InspectionItemRun.objects.get_or_create(
+        item_run, _ = InspectionItemRun.objects.select_for_update().get_or_create(
             inspection_run=inspection_run,
             inspection_item=inspection_item,
         )
@@ -130,12 +130,6 @@ def execute_inspection_run(
     return results
 
 
-# Common service vocabulary used by callers of the earlier task boundaries.
-run_inspection_item = execute_inspection_item
-execute_item = execute_inspection_item
-run_inspection = execute_inspection_run
-
-
 def _run_deterministic_detector(dataset, inspection_item):
     events = list(
         MockEvent.objects.filter(dataset=dataset)
@@ -152,7 +146,7 @@ def _run_deterministic_detector(dataset, inspection_item):
         .select_related("asset")
         .order_by("metric_name", "ts", "id")
     )
-    missing_data = _missing_data(dataset)
+    missing_data = _missing_data(dataset, metrics)
     data_valid = dataset.status == dataset.Status.READY and not missing_data
     scenario = dataset.scenario
 
@@ -292,12 +286,23 @@ def _llm_pressure_result(events, metrics, inspection_item):
     )
 
 
-def _missing_data(dataset):
-    config = dataset.generator_config or {}
-    missing = config.get("missing_data", ())
-    if not isinstance(missing, (list, tuple)):
-        missing = ()
-    return tuple(dict.fromkeys(str(value) for value in missing))
+def _missing_data(dataset, metrics):
+    required_metrics = {
+        "llm_scheduler_pressure": ("ttft_ms", "queue_depth", "gpu_util_percent"),
+        "data_incomplete": ("queue_depth",),
+    }.get(dataset.scenario, ())
+    present_metrics = {
+        (metric.asset.external_key, metric.metric_name)
+        for metric in metrics
+    }
+    missing = [
+        metric_name
+        for metric_name in required_metrics
+        if ("llm-0", metric_name) not in present_metrics
+    ]
+    if dataset.status != dataset.Status.READY:
+        missing.append("dataset")
+    return tuple(dict.fromkeys(missing))
 
 
 def _admission_status(coverage):
@@ -322,12 +327,13 @@ def _summary(dataset, scenario_result, coverage: ClaimCoverage):
 
 
 def _asset_scope(dataset):
-    try:
-        generated = generate_dataset(dataset.seed, dataset.scenario, dataset.dataset_date)
-        asset_keys = [record.asset_key for record in generated.assets]
-    except (TypeError, ValueError):
-        asset_keys = []
-    return {"asset_keys": asset_keys}
+    return {
+        "asset_keys": list(
+            Asset.objects.filter(environment_id=dataset.environment_id)
+            .order_by("external_key")
+            .values_list("external_key", flat=True)
+        )
+    }
 
 
 def _update_item_coverage(inspection_item, coverage):
@@ -341,22 +347,14 @@ def _update_run_counts(inspection_run):
     total = item_runs.count()
     successful = item_runs.filter(status=InspectionItemRun.Status.SUCCEEDED).count()
     failed = item_runs.filter(status=InspectionItemRun.Status.FAILED).count()
-    risk_count = Finding.objects.filter(
-        inspection_item_run__inspection_run=inspection_run,
-        status=Finding.Status.ACTIVE,
-    ).count()
     InspectionRun.objects.filter(pk=inspection_run.pk).update(
         total_items=total,
         success_items=successful,
         failed_items=failed,
-        risk_count=risk_count,
     )
 
 
 __all__ = [
     "execute_inspection_item",
     "execute_inspection_run",
-    "execute_item",
-    "run_inspection",
-    "run_inspection_item",
 ]

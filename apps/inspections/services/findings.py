@@ -59,14 +59,7 @@ def _to_model(item_run, spec):
     )
 
 
-# A descriptive alias makes the persistence boundary easy to discover.
-save_findings = persist_findings
-persist_finding_rows = persist_findings
-
-
 __all__ = [
     "FindingSpec",
-    "persist_finding_rows",
     "persist_findings",
-    "save_findings",
 ]

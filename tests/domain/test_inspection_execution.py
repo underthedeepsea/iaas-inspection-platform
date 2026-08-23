@@ -3,6 +3,7 @@ import uuid
 
 import pytest
 
+from apps.assets.models import Asset
 from apps.capabilities.models import Capability, CapabilityVersion, InspectionCapabilityBinding
 from apps.core.models import Environment
 from apps.inspections.models import (
@@ -10,6 +11,7 @@ from apps.inspections.models import (
     InspectionItem,
     InspectionItemRun,
     InspectionRun,
+    MockMetric,
 )
 from apps.mockdata.services import persist_dataset
 from services.mock_generator.generator import generate_dataset
@@ -52,23 +54,31 @@ def create_item(*, code, execution_mode, code_status, required_claims):
     )
 
 
-def register_resolver(claim):
+def register_resolver(
+    claim,
+    *,
+    resolver_code_status=InspectionItem.CodeStatus.CODE_ACTIVE,
+    version_status=CapabilityVersion.Status.ACTIVE,
+    capability_status=Capability.Status.ACTIVE,
+    binding_enabled=True,
+):
     resolver_item = create_item(
         code=f"resolver.{uuid.uuid4().hex}",
         execution_mode=InspectionItem.ExecutionMode.CODE_ONLY,
-        code_status=InspectionItem.CodeStatus.CODE_ACTIVE,
+        code_status=resolver_code_status,
         required_claims=[claim],
     )
     capability = Capability.objects.create(
         capability_id=f"capability.{uuid.uuid4().hex}",
         name=f"Resolver for {claim}",
         domain="TEST",
+        status=capability_status,
     )
     version = CapabilityVersion.objects.create(
         capability=capability,
         version="1.0.0",
         implementation_type=CapabilityVersion.ImplementationType.RULE,
-        status=CapabilityVersion.Status.ACTIVE,
+        status=version_status,
         resolves=[claim],
     )
     InspectionCapabilityBinding.objects.create(
@@ -76,6 +86,7 @@ def register_resolver(claim):
         capability_version=version,
         role=InspectionCapabilityBinding.Role.RESOLVER,
         claim=claim,
+        enabled=binding_enabled,
     )
     return version
 
@@ -107,16 +118,18 @@ def test_control_plane_anti_affinity_is_code_only_and_persists_literal_finding_a
     assert item_run.summary["material_claim_gaps"] == []
     assert item_run.summary["code_coverage_percent"] == 100.0
     assert item_run.asset_scope == {
-        "asset_keys": [
-            "cluster-0",
-            "host-control-0",
-            "host-worker-0",
-            "vm-0",
-            "control-plane-0",
-            "control-plane-1",
-            "gpu-0",
-            "llm-0",
-        ]
+        "asset_keys": sorted(
+            [
+                "cluster-0",
+                "host-control-0",
+                "host-worker-0",
+                "vm-0",
+                "control-plane-0",
+                "control-plane-1",
+                "gpu-0",
+                "llm-0",
+            ]
+        )
     }
     assert item_run.pk == InspectionItemRun.objects.get(
         inspection_run=run,
@@ -144,6 +157,143 @@ def test_control_plane_anti_affinity_is_code_only_and_persists_literal_finding_a
         "host": "host-control-0",
         "members": ["control-plane-0", "control-plane-1"],
     }
+    run.refresh_from_db()
+    assert run.risk_count == 0
+
+
+@pytest.mark.django_db
+def test_asset_scope_uses_mutated_persisted_assets_instead_of_regenerating_dataset():
+    environment = create_environment()
+    dataset = create_dataset(environment, "control_plane_anti_affinity")
+    claim = "topology.control_plane_anti_affinity"
+    register_resolver(claim)
+    renamed_asset = Asset.objects.get(
+        environment=environment,
+        external_key="control-plane-1",
+    )
+    renamed_asset.external_key = "persisted-control-plane-renamed"
+    renamed_asset.save(update_fields=["external_key"])
+    Asset.objects.get(environment=environment, external_key="gpu-0").delete()
+    item = create_item(
+        code="topology.control_plane_anti_affinity.persisted-scope",
+        execution_mode=InspectionItem.ExecutionMode.CODE_ONLY,
+        code_status=InspectionItem.CodeStatus.CODE_ACTIVE,
+        required_claims=[claim],
+    )
+    run = create_run(environment, dataset)
+
+    from apps.inspections.services.execution import execute_inspection_item
+
+    item_run = execute_inspection_item(run, item)
+
+    assert item_run.asset_scope == {
+        "asset_keys": sorted(
+            [
+                "cluster-0",
+                "control-plane-0",
+                "host-control-0",
+                "host-worker-0",
+                "llm-0",
+                "persisted-control-plane-renamed",
+                "vm-0",
+            ]
+        )
+    }
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "resolver_state",
+    ["missing", "shadow", "inactive", "disabled"],
+)
+def test_non_active_registry_resolver_does_not_resolve_detector_claim(resolver_state):
+    environment = create_environment()
+    dataset = create_dataset(environment, "llm_scheduler_pressure")
+    status_claim = "llm.performance.status"
+    gap_claim = "llm.performance.degradation_category"
+    if resolver_state == "shadow":
+        register_resolver(
+            status_claim,
+            resolver_code_status=InspectionItem.CodeStatus.SHADOW,
+            version_status=CapabilityVersion.Status.SHADOW,
+        )
+    elif resolver_state == "inactive":
+        register_resolver(status_claim, capability_status=Capability.Status.DISABLED)
+    elif resolver_state == "disabled":
+        register_resolver(status_claim, binding_enabled=False)
+    item = create_item(
+        code=f"llm.performance.registry.{resolver_state}",
+        execution_mode=InspectionItem.ExecutionMode.CODE_FIRST_AI_FALLBACK,
+        code_status=InspectionItem.CodeStatus.PARTIAL_CODE,
+        required_claims=[status_claim, gap_claim],
+    )
+    run = create_run(environment, dataset)
+
+    from apps.inspections.services.execution import execute_inspection_item
+
+    item_run = execute_inspection_item(run, item)
+
+    assert item_run.summary["resolved_claims"] == []
+    assert item_run.summary["unresolved_claims"] == [status_claim, gap_claim]
+    assert item_run.summary["material_claim_gaps"] == [status_claim, gap_claim]
+    assert item_run.ai_admission_status == InspectionItemRun.AIAdmissionStatus.AI_ELIGIBLE
+
+
+@pytest.mark.django_db
+def test_registry_without_resolve_method_does_not_resolve_detector_claim():
+    environment = create_environment()
+    dataset = create_dataset(environment, "llm_scheduler_pressure")
+    status_claim = "llm.performance.status"
+    gap_claim = "llm.performance.degradation_category"
+    register_resolver(status_claim)
+    item = create_item(
+        code="llm.performance.registry.no-resolve",
+        execution_mode=InspectionItem.ExecutionMode.CODE_FIRST_AI_FALLBACK,
+        code_status=InspectionItem.CodeStatus.PARTIAL_CODE,
+        required_claims=[status_claim, gap_claim],
+    )
+    run = create_run(environment, dataset)
+
+    from apps.inspections.services.execution import execute_inspection_item
+
+    item_run = execute_inspection_item(run, item, registry=object())
+
+    assert item_run.summary["resolved_claims"] == []
+    assert item_run.summary["unresolved_claims"] == [status_claim, gap_claim]
+    assert item_run.summary["material_claim_gaps"] == [status_claim, gap_claim]
+
+
+@pytest.mark.django_db
+def test_ready_dataset_with_deleted_queue_rows_is_data_invalid_and_never_ai_eligible():
+    environment = create_environment()
+    dataset = create_dataset(environment, "llm_scheduler_pressure")
+    MockMetric.objects.filter(dataset=dataset, metric_name="queue_depth").delete()
+    dataset.generator_config = {**dataset.generator_config, "missing_data": []}
+    dataset.save(update_fields=["generator_config"])
+    status_claim = "llm.performance.status"
+    gap_claim = "llm.performance.degradation_category"
+    register_resolver(status_claim)
+    item = create_item(
+        code="llm.performance.deleted-queue",
+        execution_mode=InspectionItem.ExecutionMode.CODE_FIRST_AI_FALLBACK,
+        code_status=InspectionItem.CodeStatus.PARTIAL_CODE,
+        required_claims=[status_claim, gap_claim],
+    )
+    run = create_run(environment, dataset)
+
+    from apps.inspections.services.execution import execute_inspection_item
+
+    item_run = execute_inspection_item(run, item)
+
+    item_run.refresh_from_db()
+    assert dataset.status == dataset.Status.READY
+    assert item_run.ai_admission_status == InspectionItemRun.AIAdmissionStatus.DATA_INVALID
+    assert item_run.summary["data_valid"] is False
+    assert item_run.summary["missing_data"] == ["queue_depth"]
+    assert item_run.summary["resolved_claims"] == []
+    assert item_run.summary["material_claim_gaps"] == []
+    finding = Finding.objects.get(inspection_item_run=item_run)
+    assert finding.finding_code == "DATA_INCOMPLETE"
 
 
 @pytest.mark.django_db

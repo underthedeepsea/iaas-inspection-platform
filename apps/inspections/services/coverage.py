@@ -45,11 +45,10 @@ def compute_claim_coverage(
     """Compute required/resolved Claim sets without invoking AI.
 
     ``code_claims`` is the set established by the deterministic detector.  The
-    Task 5 registry is consulted for every candidate Claim; a detector's own
-    positive result remains authoritative when no separately registered
-    resolver exists.  This keeps the two built-in scenarios code-complete while
-    still exposing undeclared Claims as gaps.  A missing or incomplete dataset
-    suppresses both code resolution and AI admission.
+    Task 5 registry is authoritative for every candidate Claim: a detector fact
+    is code-resolved only when an enabled, active resolver is registered.  A
+    missing or incomplete dataset suppresses both code resolution and AI
+    admission.
     """
 
     if registry is None:
@@ -67,7 +66,7 @@ def compute_claim_coverage(
         for claim in required_claims:
             if claim not in candidate_claims:
                 continue
-            if _registry_resolves(registry, claim) or claim in deterministic_claims:
+            if _registry_resolves(registry, claim):
                 resolved_claims.append(claim)
 
     unresolved_claims = [claim for claim in required_claims if claim not in resolved_claims]
@@ -97,7 +96,7 @@ def compute_claim_coverage(
 def _registry_resolves(registry, claim):
     resolver = getattr(registry, "resolve", None)
     if resolver is None:
-        return True
+        return False
     return resolver(claim) is not None
 
 
@@ -112,16 +111,7 @@ def _unique_claims(claims):
     return result
 
 
-# Keep the vocabulary discoverable for callers that use either verb.
-calculate_claim_coverage = compute_claim_coverage
-resolve_claim_coverage = compute_claim_coverage
-deterministic_coverage = compute_claim_coverage
-
-
 __all__ = [
     "ClaimCoverage",
-    "calculate_claim_coverage",
     "compute_claim_coverage",
-    "deterministic_coverage",
-    "resolve_claim_coverage",
 ]
