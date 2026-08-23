@@ -13,19 +13,71 @@ from apps.risks.services.correlation import (
 from apps.risks.services.lifecycle import record_observation
 
 
+COMPLETED_ITEM_STATUSES = frozenset(
+    {
+        InspectionItemRun.Status.SUCCEEDED,
+        InspectionItemRun.Status.FAILED,
+    }
+)
+
+
+def _batch_stage_done(inspection_run, stage):
+    batch = (inspection_run.config_snapshot or {}).get("batch") or {}
+    return bool((batch.get("stages") or {}).get(stage))
+
+
+def _require_nonterminal_execution(inspection_run, as_of):
+    """Require execution and correlation evidence before nonterminal reverify."""
+
+    if (
+        inspection_run.status != InspectionRun.Status.RUNNING
+        or inspection_run.finished_at is not None
+    ):
+        raise ValueError(
+            "nonterminal reverification requires a RUNNING inspection run "
+            "with completed execution evidence"
+        )
+    if as_of is None:
+        raise ValueError("nonterminal reverification requires an explicit as_of")
+    if not hasattr(as_of, "tzinfo") or timezone.is_naive(as_of):
+        raise ValueError("reverification as_of must be timezone-aware")
+    if inspection_run.started_at is None:
+        raise ValueError("nonterminal reverification requires completed execution evidence")
+
+    item_runs = InspectionItemRun.objects.filter(inspection_run=inspection_run)
+    item_count = item_runs.count()
+    if not item_count:
+        raise ValueError("nonterminal reverification requires completed execution evidence")
+    if (
+        item_runs.exclude(status__in=COMPLETED_ITEM_STATUSES).exists()
+        or item_runs.filter(finished_at__isnull=True).exists()
+        or item_runs.filter(finished_at__gt=as_of).exists()
+    ):
+        raise ValueError("nonterminal reverification requires completed execution evidence")
+
+    succeeded = item_runs.filter(status=InspectionItemRun.Status.SUCCEEDED).count()
+    failed = item_runs.filter(status=InspectionItemRun.Status.FAILED).count()
+    if (
+        inspection_run.total_items != item_count
+        or inspection_run.success_items != succeeded
+        or inspection_run.failed_items != failed
+    ):
+        raise ValueError("nonterminal reverification requires completed execution evidence")
+    if not _batch_stage_done(inspection_run, "correlate_risks"):
+        raise ValueError("nonterminal reverification requires completed correlation evidence")
+    return as_of
+
+
 def _valid_item_runs(inspection_run, *, allow_nonterminal=False, as_of=None):
     if allow_nonterminal:
-        if inspection_run.status not in {
-            InspectionRun.Status.PENDING,
-            InspectionRun.Status.RUNNING,
-            InspectionRun.Status.SUCCEEDED,
-            InspectionRun.Status.PARTIAL,
-            InspectionRun.Status.FAILED,
-        }:
+        if (
+            inspection_run.status != InspectionRun.Status.RUNNING
+            or inspection_run.finished_at is not None
+        ):
             return {}
-        boundary = as_of or inspection_run.finished_at or timezone.now()
-        if timezone.is_naive(boundary):
+        if as_of is None or not hasattr(as_of, "tzinfo") or timezone.is_naive(as_of):
             raise ValueError("reverification as_of must be timezone-aware")
+        boundary = as_of
     elif (
         inspection_run.status != InspectionRun.Status.SUCCEEDED
         or inspection_run.finished_at is None
@@ -89,10 +141,8 @@ def reverify_pending_risks(inspection_run, *, allow_nonterminal=False, as_of=Non
     emitted no matching Finding at all.
     """
 
-    if allow_nonterminal:
-        as_of = as_of or timezone.now()
-        if timezone.is_naive(as_of):
-            raise ValueError("reverification as_of must be timezone-aware")
+    if allow_nonterminal and as_of is None:
+        raise ValueError("nonterminal reverification requires an explicit as_of")
     recovered = []
     with transaction.atomic():
         locked_run = (
@@ -100,6 +150,8 @@ def reverify_pending_risks(inspection_run, *, allow_nonterminal=False, as_of=Non
             .select_related("environment")
             .get(pk=inspection_run.pk)
         )
+        if allow_nonterminal:
+            as_of = _require_nonterminal_execution(locked_run, as_of)
         item_runs = _valid_item_runs(
             locked_run,
             allow_nonterminal=allow_nonterminal,

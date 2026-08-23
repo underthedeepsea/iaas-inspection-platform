@@ -29,6 +29,43 @@ COMPLETED_ITEM_STATUSES = frozenset(
 )
 
 
+def _require_nonterminal_execution(run, as_of):
+    """Require persisted evidence that the running inspection finished execution."""
+
+    if run.status != InspectionRun.Status.RUNNING or run.finished_at is not None:
+        raise ValueError(
+            "nonterminal daily snapshots require a RUNNING inspection run "
+            "with completed execution evidence"
+        )
+    if as_of is None:
+        raise ValueError("nonterminal daily snapshots require an explicit as_of")
+    if not hasattr(as_of, "tzinfo") or timezone.is_naive(as_of):
+        raise ValueError("daily snapshot as_of must be timezone-aware")
+    if run.started_at is None:
+        raise ValueError("nonterminal daily snapshots require completed execution evidence")
+
+    item_runs = InspectionItemRun.objects.filter(inspection_run=run)
+    item_count = item_runs.count()
+    if not item_count:
+        raise ValueError("nonterminal daily snapshots require completed execution evidence")
+    if (
+        item_runs.exclude(status__in=COMPLETED_ITEM_STATUSES).exists()
+        or item_runs.filter(finished_at__isnull=True).exists()
+        or item_runs.filter(finished_at__gt=as_of).exists()
+    ):
+        raise ValueError("nonterminal daily snapshots require completed execution evidence")
+
+    succeeded = item_runs.filter(status=InspectionItemRun.Status.SUCCEEDED).count()
+    failed = item_runs.filter(status=InspectionItemRun.Status.FAILED).count()
+    if (
+        run.total_items != item_count
+        or run.success_items != succeeded
+        or run.failed_items != failed
+    ):
+        raise ValueError("nonterminal daily snapshots require completed execution evidence")
+    return as_of
+
+
 def build_daily_snapshot(
     inspection_run,
     snapshot_date=None,
@@ -44,19 +81,12 @@ def build_daily_snapshot(
             .select_related("environment")
             .get(pk=inspection_run.pk)
         )
-        if not allow_nonterminal and (
-            run.status not in COMPLETED_RUN_STATUSES or run.finished_at is None
-        ):
-            raise ValueError("daily snapshots require a completed inspection run")
-        if allow_nonterminal and run.status not in {
-            InspectionRun.Status.PENDING,
-            InspectionRun.Status.RUNNING,
-            *COMPLETED_RUN_STATUSES,
-        }:
-            raise ValueError("daily snapshots require a valid inspection run state")
-        boundary = run.finished_at or as_of or timezone.now()
-        if timezone.is_naive(boundary):
-            raise ValueError("daily snapshot as_of must be timezone-aware")
+        if allow_nonterminal:
+            boundary = _require_nonterminal_execution(run, as_of)
+        else:
+            if run.status not in COMPLETED_RUN_STATUSES or run.finished_at is None:
+                raise ValueError("daily snapshots require a completed inspection run")
+            boundary = run.finished_at
 
         snapshot_date = snapshot_date or run.run_date
         snapshot = (

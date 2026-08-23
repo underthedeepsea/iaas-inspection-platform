@@ -127,3 +127,15 @@ The first bounded exploratory date (`2026-08-24`) produced Airflow's exact `Back
 
 - Airflow 2.3.2's `dags test` command uses backfill scheduling semantics: future dates deadlock, so the final evidence uses the past date `2026-08-21`.
 - The E2E evidence uses the running local PostgreSQL database and creates the isolated environment/date resources listed above; no model or migration changes were needed.
+
+## Fix Round 2 (2026-08-24)
+
+### RED / GREEN
+
+- Direct-service regressions first failed as intended: six new cases showed that `allow_nonterminal=True` accepted `PENDING`, incomplete `RUNNING`, and implicit `as_of` calls.
+- After the guard implementation, the focused API/Task7/Task8 suite passed: `44 passed in 3.46s`.
+- The full Web suite passed: `111 passed in 4.92s`.
+- Django `check` reported no issues and `migrate --check` passed with no pending migrations.
+- Airflow 2.3.2 bounded parse with project-local `AIRFLOW_HOME` listed `daily_iaas_inspection` successfully.
+
+The nonterminal service opt-in now requires `status=RUNNING`, `finished_at=NULL`, an explicit timezone-aware `as_of`, `started_at`, terminal persisted item runs whose counts match the run aggregate, and no item completion after `as_of`. Reverification additionally requires the persisted `correlate_risks` stage marker. These checks run before snapshot creation, risk locking, correlation, or risk lifecycle writes. The existing API marker chain remains defense in depth, and the valid API nonterminal path remains covered by the idempotent batch API test.

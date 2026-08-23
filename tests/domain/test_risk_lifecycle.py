@@ -382,13 +382,27 @@ def test_nonterminal_reverify_opt_in_uses_as_of_without_finishing_run():
     ).latest("created_at")
 
     completion = pending_history.created_at + timedelta(minutes=1)
-    second_run, _second_item_run = make_run(
+    second_run, second_item_run = make_run(
         environment,
         item,
         completion.date(),
         run_status=InspectionRun.Status.RUNNING,
         run_finished_at=None,
         item_finished_at=completion,
+    )
+    second_run.started_at = completion - timedelta(seconds=1)
+    second_run.total_items = 1
+    second_run.success_items = 1
+    second_run.config_snapshot = {
+        "batch": {"stages": {"execute": True, "correlate_risks": True}}
+    }
+    second_run.save(
+        update_fields=[
+            "started_at",
+            "total_items",
+            "success_items",
+            "config_snapshot",
+        ]
     )
     reverify_pending_risks(
         second_run,
@@ -401,6 +415,58 @@ def test_nonterminal_reverify_opt_in_uses_as_of_without_finishing_run():
     second_run.refresh_from_db()
     assert second_run.status == InspectionRun.Status.RUNNING
     assert second_run.finished_at is None
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "status",
+    [InspectionRun.Status.PENDING, InspectionRun.Status.RUNNING],
+)
+def test_nonterminal_reverify_rejects_pending_or_incomplete_execution(status):
+    from apps.risks.services.reverify import reverify_pending_risks
+
+    environment = make_environment()
+    item = make_item()
+    run, _item_run = make_run(
+        environment,
+        item,
+        DAY_ONE,
+        run_status=status,
+        run_finished_at=None,
+        item_finished_at=None,
+    )
+    as_of = timezone.now()
+
+    with pytest.raises(ValueError, match="completed execution"):
+        reverify_pending_risks(run, allow_nonterminal=True, as_of=as_of)
+
+    run.refresh_from_db()
+    assert run.status == status
+    assert run.finished_at is None
+    assert RiskObservation.objects.count() == 0
+    assert RiskStatusHistory.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_nonterminal_reverify_requires_explicit_as_of():
+    from apps.risks.services.reverify import reverify_pending_risks
+
+    environment = make_environment()
+    item = make_item()
+    run, _item_run = make_run(
+        environment,
+        item,
+        DAY_ONE,
+        run_status=InspectionRun.Status.RUNNING,
+        run_finished_at=None,
+        item_finished_at=None,
+    )
+
+    with pytest.raises(ValueError, match="explicit as_of"):
+        reverify_pending_risks(run, allow_nonterminal=True)
+
+    assert RiskObservation.objects.count() == 0
+    assert RiskStatusHistory.objects.count() == 0
 
 
 @pytest.mark.django_db

@@ -355,6 +355,10 @@ def test_nonterminal_snapshot_opt_in_uses_as_of_without_finishing_run():
     item_run.status = InspectionItemRun.Status.SUCCEEDED
     item_run.finished_at = as_of
     item_run.save(update_fields=["status", "finished_at"])
+    run.started_at = as_of
+    run.total_items = 1
+    run.success_items = 1
+    run.save(update_fields=["started_at", "total_items", "success_items"])
 
     snapshot = build_daily_snapshot(run, allow_nonterminal=True, as_of=as_of)
 
@@ -362,6 +366,40 @@ def test_nonterminal_snapshot_opt_in_uses_as_of_without_finishing_run():
     run.refresh_from_db()
     assert run.status == InspectionRun.Status.RUNNING
     assert run.finished_at is None
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "status",
+    [InspectionRun.Status.PENDING, InspectionRun.Status.RUNNING],
+)
+def test_nonterminal_snapshot_rejects_pending_or_incomplete_execution(status):
+    from apps.inspections.services.snapshot import build_daily_snapshot
+
+    environment = make_environment()
+    run = make_run(environment, finished=False, status=status)
+    as_of = timezone.now()
+
+    with pytest.raises(ValueError, match="completed execution"):
+        build_daily_snapshot(run, allow_nonterminal=True, as_of=as_of)
+
+    assert DailySnapshot.objects.count() == 0
+    run.refresh_from_db()
+    assert run.status == status
+    assert run.finished_at is None
+
+
+@pytest.mark.django_db
+def test_nonterminal_snapshot_requires_explicit_as_of():
+    from apps.inspections.services.snapshot import build_daily_snapshot
+
+    environment = make_environment()
+    run = make_run(environment, finished=False)
+
+    with pytest.raises(ValueError, match="explicit as_of"):
+        build_daily_snapshot(run, allow_nonterminal=True)
+
+    assert DailySnapshot.objects.count() == 0
 
 
 @pytest.mark.django_db
