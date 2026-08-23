@@ -18,36 +18,78 @@ RISK_STATUS_CHOICES = [
 # Legacy values were used by the initial schema before the lifecycle states
 # were introduced.  These mappings preserve their operational meaning while
 # keeping every row valid before the choices are narrowed below.
-LEGACY_STATUS_MAPPING = {
+RISK_FORWARD_STATUS_MAPPING = {
     "ACTIVE": "PERSISTING",
     "ACKNOWLEDGED": "INVESTIGATING",
     "MITIGATING": "IN_PROGRESS",
     "CLOSED": "RECOVERED",
     "INVALID": "FALSE_POSITIVE",
 }
-REVERSE_STATUS_MAPPING = {value: key for key, value in LEGACY_STATUS_MAPPING.items()}
+OBSERVATION_FORWARD_STATUS_MAPPING = {
+    "ACTIVE": "PERSISTING",
+    "ACKNOWLEDGED": "INVESTIGATING",
+    "MITIGATING": "IN_PROGRESS",
+    "CLOSED": "RECOVERED",
+    "INVALID": "FALSE_POSITIVE",
+}
+
+# Reverse mappings deliberately collapse new-only states to the nearest
+# status in each model's 0001 vocabulary.  RECOVERED stays RECOVERED; it is
+# never rewritten to legacy CLOSED.
+RISK_REVERSE_STATUS_MAPPING = {
+    "NEW": "NEW",
+    "PERSISTING": "ACTIVE",
+    "WORSENED": "ACTIVE",
+    "INVESTIGATING": "ACKNOWLEDGED",
+    "LOCATED": "ACKNOWLEDGED",
+    "PENDING_ACTION": "MITIGATING",
+    "IN_PROGRESS": "MITIGATING",
+    "PENDING_REVERIFY": "MITIGATING",
+    "RECOVERED": "RECOVERED",
+    "IGNORED": "INVALID",
+    "FALSE_POSITIVE": "INVALID",
+}
+OBSERVATION_REVERSE_STATUS_MAPPING = {
+    "NEW": "NEW",
+    "PERSISTING": "ACTIVE",
+    "WORSENED": "ACTIVE",
+    "INVESTIGATING": "ACKNOWLEDGED",
+    "LOCATED": "ACKNOWLEDGED",
+    "PENDING_ACTION": "MITIGATING",
+    "IN_PROGRESS": "MITIGATING",
+    "PENDING_REVERIFY": "MITIGATING",
+    "RECOVERED": "RECOVERED",
+    "IGNORED": "INVALID",
+    "FALSE_POSITIVE": "INVALID",
+}
+
+# Kept as the compatibility name used by callers of the first migration.
+LEGACY_STATUS_MAPPING = RISK_FORWARD_STATUS_MAPPING
+REVERSE_STATUS_MAPPING = RISK_REVERSE_STATUS_MAPPING
 
 
 def _migrate_legacy_statuses(apps, schema_editor):
     risk_model = apps.get_model("risks", "Risk")
     observation_model = apps.get_model("risks", "RiskObservation")
     history_model = apps.get_model("risks", "RiskStatusHistory")
-    for old_status, new_status in LEGACY_STATUS_MAPPING.items():
+    for old_status, new_status in RISK_FORWARD_STATUS_MAPPING.items():
         risk_model.objects.filter(status=old_status).update(status=new_status)
-        observation_model.objects.filter(status_after=old_status).update(status_after=new_status)
         history_model.objects.filter(from_status=old_status).update(from_status=new_status)
         history_model.objects.filter(to_status=old_status).update(to_status=new_status)
+    for old_status, new_status in OBSERVATION_FORWARD_STATUS_MAPPING.items():
+        observation_model.objects.filter(status_after=old_status).update(status_after=new_status)
 
 
 def _restore_legacy_statuses(apps, schema_editor):
     risk_model = apps.get_model("risks", "Risk")
     observation_model = apps.get_model("risks", "RiskObservation")
     history_model = apps.get_model("risks", "RiskStatusHistory")
-    for new_status, old_status in REVERSE_STATUS_MAPPING.items():
+    for new_status, old_status in RISK_REVERSE_STATUS_MAPPING.items():
         risk_model.objects.filter(status=new_status).update(status=old_status)
-        observation_model.objects.filter(status_after=new_status).update(status_after=old_status)
         history_model.objects.filter(from_status=new_status).update(from_status=old_status)
         history_model.objects.filter(to_status=new_status).update(to_status=old_status)
+    for new_status, old_status in OBSERVATION_REVERSE_STATUS_MAPPING.items():
+        observation_model.objects.filter(status_after=new_status).update(status_after=old_status)
 
 
 class Migration(migrations.Migration):

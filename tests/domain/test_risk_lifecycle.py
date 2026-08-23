@@ -82,6 +82,18 @@ def make_finding(item_run, asset, *, severity="P2", status=Finding.Status.ACTIVE
     )
 
 
+def make_post_handle_run(environment, item, pending_history, *, run_date=None, **kwargs):
+    completion = pending_history.created_at + timedelta(minutes=1)
+    return make_run(
+        environment,
+        item,
+        run_date or completion.date(),
+        run_finished_at=completion,
+        item_finished_at=completion,
+        **kwargs,
+    )
+
+
 @pytest.mark.django_db
 def test_same_fingerprint_across_days_keeps_uuid_and_persists_history_and_actual_count():
     from apps.risks.services.correlation import correlate_run
@@ -317,7 +329,11 @@ def test_successful_reverify_requires_later_valid_completed_item_run_and_recover
     risk = correlate_run(first_run)[0]
     mark_handled(risk)
 
-    second_run, second_item_run = make_run(environment, item, date(2026, 8, 24))
+    pending_history = RiskStatusHistory.objects.filter(
+        risk=risk,
+        to_status=Risk.Status.PENDING_REVERIFY,
+    ).latest("created_at")
+    second_run, second_item_run = make_post_handle_run(environment, item, pending_history)
     reverify_pending_risks(second_run)
 
     risk.refresh_from_db()
@@ -361,7 +377,11 @@ def test_failed_reverify_with_a_matching_finding_stays_active_and_can_worsen():
     risk = correlate_run(first_run)[0]
     mark_handled(risk)
 
-    second_run, second_item_run = make_run(environment, item, date(2026, 8, 24))
+    pending_history = RiskStatusHistory.objects.filter(
+        risk=risk,
+        to_status=Risk.Status.PENDING_REVERIFY,
+    ).latest("created_at")
+    second_run, second_item_run = make_post_handle_run(environment, item, pending_history)
     make_finding(second_item_run, asset, severity="P1")
     reverify_pending_risks(second_run)
 
@@ -397,7 +417,11 @@ def test_failed_reverify_with_same_severity_returns_to_persisting():
     risk = correlate_run(first_run)[0]
     mark_handled(risk)
 
-    second_run, second_item_run = make_run(environment, item, date(2026, 8, 24))
+    pending_history = RiskStatusHistory.objects.filter(
+        risk=risk,
+        to_status=Risk.Status.PENDING_REVERIFY,
+    ).latest("created_at")
+    second_run, second_item_run = make_post_handle_run(environment, item, pending_history)
     make_finding(second_item_run, asset, severity="P2")
     reverify_pending_risks(second_run)
 
@@ -456,6 +480,7 @@ def test_reverify_does_not_recover_from_invalid_or_unexecuted_evidence():
         "missing_item_finished_at",
         "missing_run_finished_at",
         "before_handle",
+        "item_before_handle",
     ],
 )
 def test_reverify_requires_explicit_valid_completed_run_after_handling(invalid_case):
@@ -496,8 +521,16 @@ def test_reverify_requires_explicit_valid_completed_run_after_handling(invalid_c
     elif invalid_case == "before_handle":
         kwargs["run_finished_at"] = pending_history.created_at - timedelta(seconds=1)
         kwargs["item_finished_at"] = kwargs["run_finished_at"]
+    elif invalid_case == "item_before_handle":
+        kwargs["run_finished_at"] = pending_history.created_at + timedelta(seconds=1)
+        kwargs["item_finished_at"] = pending_history.created_at - timedelta(seconds=1)
 
-    second_run, _ = make_run(environment, item, date(2026, 8, 24), **kwargs)
+    second_run, _ = make_run(
+        environment,
+        item,
+        pending_history.created_at.date(),
+        **kwargs,
+    )
     reverify_pending_risks(second_run)
 
     risk.refresh_from_db()
@@ -523,3 +556,143 @@ def test_legacy_status_migration_has_documented_semantic_mappings():
         "CLOSED": "RECOVERED",
         "INVALID": "FALSE_POSITIVE",
     }
+
+
+def test_legacy_status_migration_forward_and_reverse_transforms_historical_rows():
+    migration = importlib.import_module("apps.risks.migrations.0002_risk_lifecycle_statuses")
+
+    class FakeQuerySet:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def filter(self, **conditions):
+            return FakeQuerySet(
+                [
+                    row
+                    for row in self.rows
+                    if all(row.get(field) == value for field, value in conditions.items())
+                ]
+            )
+
+        def update(self, **values):
+            for row in self.rows:
+                row.update(values)
+
+    class FakeManager:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def filter(self, **conditions):
+            return FakeQuerySet(
+                [
+                    row
+                    for row in self.rows
+                    if all(row.get(field) == value for field, value in conditions.items())
+                ]
+            )
+
+    class FakeModel:
+        def __init__(self, rows):
+            self.objects = FakeManager(rows)
+
+    class FakeApps:
+        def __init__(self, models):
+            self.models = models
+
+        def get_model(self, app_label, model_name):
+            return self.models[model_name]
+
+    risk_rows = [{"status": value} for value in ("ACTIVE", "CLOSED", "RECOVERED")]
+    observation_rows = [
+        {"status_after": value}
+        for value in ("ACTIVE", "CLOSED", "RECOVERED")
+    ]
+    history_rows = [
+        {"from_status": "ACTIVE", "to_status": "CLOSED"},
+        {"from_status": None, "to_status": "INVALID"},
+    ]
+    apps = FakeApps(
+        {
+            "Risk": FakeModel(risk_rows),
+            "RiskObservation": FakeModel(observation_rows),
+            "RiskStatusHistory": FakeModel(history_rows),
+        }
+    )
+
+    migration._migrate_legacy_statuses(apps, None)
+    assert [row["status"] for row in risk_rows] == ["PERSISTING", "RECOVERED", "RECOVERED"]
+    assert [row["status_after"] for row in observation_rows] == [
+        "PERSISTING",
+        "RECOVERED",
+        "RECOVERED",
+    ]
+    assert history_rows == [
+        {"from_status": "PERSISTING", "to_status": "RECOVERED"},
+        {"from_status": None, "to_status": "FALSE_POSITIVE"},
+    ]
+
+    reverse_risk_rows = [
+        {"status": value}
+        for value in (
+            "PERSISTING",
+            "WORSENED",
+            "INVESTIGATING",
+            "LOCATED",
+            "PENDING_ACTION",
+            "IN_PROGRESS",
+            "PENDING_REVERIFY",
+            "RECOVERED",
+            "IGNORED",
+            "FALSE_POSITIVE",
+        )
+    ]
+    reverse_observation_rows = [
+        {"status_after": value}
+        for value in (
+            "PERSISTING",
+            "WORSENED",
+            "INVESTIGATING",
+            "LOCATED",
+            "PENDING_ACTION",
+            "IN_PROGRESS",
+            "PENDING_REVERIFY",
+            "RECOVERED",
+            "IGNORED",
+            "FALSE_POSITIVE",
+        )
+    ]
+    reverse_history_rows = [{"from_status": "WORSENED", "to_status": "RECOVERED"}]
+    reverse_apps = FakeApps(
+        {
+            "Risk": FakeModel(reverse_risk_rows),
+            "RiskObservation": FakeModel(reverse_observation_rows),
+            "RiskStatusHistory": FakeModel(reverse_history_rows),
+        }
+    )
+
+    migration._restore_legacy_statuses(reverse_apps, None)
+    assert [row["status"] for row in reverse_risk_rows] == [
+        "ACTIVE",
+        "ACTIVE",
+        "ACKNOWLEDGED",
+        "ACKNOWLEDGED",
+        "MITIGATING",
+        "MITIGATING",
+        "MITIGATING",
+        "RECOVERED",
+        "INVALID",
+        "INVALID",
+    ]
+    assert [row["status_after"] for row in reverse_observation_rows] == [
+        "ACTIVE",
+        "ACTIVE",
+        "ACKNOWLEDGED",
+        "ACKNOWLEDGED",
+        "MITIGATING",
+        "MITIGATING",
+        "MITIGATING",
+        "RECOVERED",
+        "INVALID",
+        "INVALID",
+    ]
+    assert reverse_history_rows == [{"from_status": "ACTIVE", "to_status": "RECOVERED"}]

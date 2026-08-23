@@ -34,7 +34,7 @@ def _valid_item_runs(inspection_run):
     }
 
 
-def _has_prior_observation(risk, inspection_run):
+def _has_post_handle_completion(risk, inspection_run, item_run):
     pending_history = RiskStatusHistory.objects.filter(
         risk=risk,
         to_status=Risk.Status.PENDING_REVERIFY,
@@ -42,7 +42,8 @@ def _has_prior_observation(risk, inspection_run):
     return bool(
         pending_history
         and inspection_run.finished_at
-        and inspection_run.finished_at > pending_history.created_at
+        and item_run.finished_at
+        and item_run.finished_at > pending_history.created_at
     )
 
 
@@ -118,7 +119,11 @@ def reverify_pending_risks(inspection_run):
         )
         for risk in pending:
             item_run = item_runs.get(risk.inspection_item_id)
-            if item_run is None or not _has_prior_observation(risk, locked_run):
+            if item_run is None or not _has_post_handle_completion(
+                risk,
+                locked_run,
+                item_run,
+            ):
                 continue
             matching_finding = _matching_non_active_finding(
                 risk,

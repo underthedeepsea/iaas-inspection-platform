@@ -32,6 +32,29 @@
 - `DJANGO_SETTINGS_MODULE=config.settings.dev .../pytest -q` — `68 passed`.
 - `DJANGO_SETTINGS_MODULE=config.settings.dev .../python manage.py makemigrations --check --dry-run --verbosity 1` — `No changes detected`.
 - `DJANGO_SETTINGS_MODULE=config.settings.dev .../python manage.py check` — `System check identified no issues (0 silenced)`.
+
+## Fix Round 2 evidence
+
+### RED / GREEN
+
+- RED: focused regression suite reported `2 failed, 19 passed`: a candidate whose item completed before handling incorrectly recovered when only the aggregate run completed afterward, and reverse migration behavior was unsafe/unimplemented for new-only statuses.
+- GREEN: focused suite — `21 passed`.
+- Full suite — `83 passed`.
+
+### Fixes verified
+
+- Reverification now requires the relevant `InspectionItemRun.finished_at` itself to be later than the latest `PENDING_REVERIFY` history timestamp, in addition to aggregate/item success and explicit `data_valid=True`; the mixed pre-handle-item/post-handle-aggregate case remains pending.
+- Migration status mappings are separate for `Risk` and `RiskObservation` forward/reverse paths. Reverse mappings collapse every new-only lifecycle status to a valid 0001 status, while `RECOVERED` remains `RECOVERED` and is never rewritten to `CLOSED`.
+- Migration tests execute the forward and reverse functions against fake historical app/model rows for Risk, RiskObservation, and status history.
+- Valid recovery fixtures derive aggregate and item completion timestamps from `pending_history.created_at + timedelta(...)`, avoiding wall-clock dependence.
+
+### Fix Round 2 commands and results
+
+- `DJANGO_SETTINGS_MODULE=config.settings.dev .../pytest -q tests/domain/test_risk_lifecycle.py` — `21 passed`.
+- `DJANGO_SETTINGS_MODULE=config.settings.dev .../pytest -q` — `83 passed`.
+- `DJANGO_SETTINGS_MODULE=config.settings.dev .../python manage.py makemigrations --check --dry-run --verbosity 1` — `No changes detected`.
+- `DJANGO_SETTINGS_MODULE=config.settings.dev .../python manage.py check` — `System check identified no issues (0 silenced)`.
+- `git diff --check` and Python compilation — passed.
 - `.../python -m compileall -q apps/risks tests/domain/test_risk_lifecycle.py` — passed.
 - `git diff --check` — passed.
 
