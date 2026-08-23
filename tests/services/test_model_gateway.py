@@ -1,0 +1,254 @@
+import json
+from types import SimpleNamespace
+from unittest.mock import Mock
+
+import httpx
+import pytest
+
+
+def _final_payload():
+    return {
+        "action": "FINAL",
+        "answer": {"summary": "queue is healthy", "confidence": 0.8},
+    }
+
+
+def test_parse_action_accepts_documented_final_payload():
+    from services.model_gateway.base import FinalAction, parse_action
+
+    action = parse_action(_final_payload())
+
+    assert isinstance(action, FinalAction)
+    assert action.action == "FINAL"
+    assert action.summary == "queue is healthy"
+    assert action.confidence == 0.8
+
+
+def test_parse_action_accepts_documented_call_tool_payload():
+    from services.model_gateway.base import CallToolAction, parse_action
+
+    action = parse_action(
+        {
+            "action": "CALL_TOOL",
+            "tool": {
+                "capability_id": "llm.scheduler.pressure",
+                "arguments": {"asset_id": "llm-0"},
+                "reason": "need scheduler queue ratio",
+            },
+        }
+    )
+
+    assert isinstance(action, CallToolAction)
+    assert action.action == "CALL_TOOL"
+    assert action.capability_id == "llm.scheduler.pressure"
+    assert action.arguments == {"asset_id": "llm-0"}
+    assert action.reason == "need scheduler queue ratio"
+
+
+def test_parse_action_rejects_unknown_action_with_stable_code():
+    from services.model_gateway.base import StructuredOutputInvalidError, parse_action
+
+    with pytest.raises(StructuredOutputInvalidError) as raised:
+        parse_action({"action": "WRITE_DATABASE", "payload": {}})
+
+    assert raised.value.code == "STRUCTURED_OUTPUT_INVALID"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"action": "FINAL", "answer": {"summary": "missing confidence"}},
+        {
+            "action": "CALL_TOOL",
+            "tool": {
+                "capability_id": "capability.id",
+                "arguments": [],
+                "reason": "not an object",
+            },
+        },
+    ],
+)
+def test_parse_action_rejects_malformed_documented_actions(payload):
+    from services.model_gateway.base import StructuredOutputInvalidError, parse_action
+
+    with pytest.raises(StructuredOutputInvalidError) as raised:
+        parse_action(payload)
+
+    assert raised.value.code == "STRUCTURED_OUTPUT_INVALID"
+
+
+def test_ollama_invoke_posts_json_chat_request_from_configuration(monkeypatch):
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://ollama.internal:11434/")
+    monkeypatch.setenv("OLLAMA_MODEL", "qwen3:8b")
+    monkeypatch.setenv("LLM_TIMEOUT_SECONDS", "17")
+    response = Mock()
+    response.raise_for_status.return_value = None
+    response.json.return_value = {
+        "model": "qwen3:8b",
+        "message": {"content": json.dumps(_final_payload())},
+        "prompt_eval_count": 12,
+        "eval_count": 6,
+    }
+    post = Mock(return_value=response)
+    monkeypatch.setattr("httpx.post", post)
+
+    from services.model_gateway.base import ModelRequest
+    from services.model_gateway.ollama import OllamaProvider
+
+    result = OllamaProvider().invoke(
+        ModelRequest(messages=[{"role": "user", "content": "status?"}])
+    )
+
+    assert result.action.summary == "queue is healthy"
+    assert result.model == "qwen3:8b"
+    assert result.usage["prompt_tokens"] == 12
+    assert result.usage["completion_tokens"] == 6
+    post.assert_called_once_with(
+        "http://ollama.internal:11434/api/chat",
+        json={
+            "model": "qwen3:8b",
+            "stream": False,
+            "messages": [{"role": "user", "content": "status?"}],
+            "format": "json",
+        },
+        timeout=17.0,
+    )
+
+
+def test_ollama_request_cannot_override_configured_model_or_base_url(monkeypatch):
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://ollama.internal:11434")
+    monkeypatch.setenv("OLLAMA_MODEL", "qwen3:8b")
+    response = Mock()
+    response.raise_for_status.return_value = None
+    response.json.return_value = {
+        "message": {"content": json.dumps(_final_payload())},
+    }
+    post = Mock(return_value=response)
+    monkeypatch.setattr("httpx.post", post)
+
+    from services.model_gateway.base import ModelRequest
+    from services.model_gateway.ollama import OllamaProvider
+
+    request = ModelRequest(
+        messages=[{"role": "user", "content": "status?"}],
+        model="attacker-model",
+        base_url="http://attacker.invalid",
+    )
+    OllamaProvider().invoke(request)
+
+    assert post.call_args.args[0] == "http://ollama.internal:11434/api/chat"
+    assert post.call_args.kwargs["json"]["model"] == "qwen3:8b"
+
+
+def test_ollama_health_failure_is_llm_unavailable_without_endpoint_leak(monkeypatch):
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://user:secret@ollama.internal:11434")
+    get = Mock(side_effect=httpx.ConnectError("cannot connect to http://user:secret@ollama.internal"))
+    monkeypatch.setattr("httpx.get", get)
+
+    from services.model_gateway.base import LLMUnavailableError
+    from services.model_gateway.ollama import OllamaProvider
+
+    with pytest.raises(LLMUnavailableError) as raised:
+        OllamaProvider().health_check()
+
+    assert raised.value.code == "LLM_UNAVAILABLE"
+    assert "secret" not in str(raised.value)
+    assert "ollama.internal" not in str(raised.value)
+
+
+def test_ollama_health_http_failure_is_llm_unavailable(monkeypatch):
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://ollama.internal:11434")
+    response = Mock()
+    response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "503", request=Mock(), response=Mock()
+    )
+    get = Mock(return_value=response)
+    monkeypatch.setattr("httpx.get", get)
+
+    from services.model_gateway.base import LLMUnavailableError
+    from services.model_gateway.ollama import OllamaProvider
+
+    with pytest.raises(LLMUnavailableError):
+        OllamaProvider().health_check()
+
+    response.raise_for_status.assert_called_once_with()
+
+
+def test_ollama_health_success_checks_status_once(monkeypatch):
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://ollama.internal:11434")
+    response = Mock()
+    response.raise_for_status.return_value = None
+    get = Mock(return_value=response)
+    monkeypatch.setattr("httpx.get", get)
+
+    from services.model_gateway.ollama import OllamaProvider
+
+    assert OllamaProvider().health_check() is True
+
+    response.raise_for_status.assert_called_once_with()
+
+
+def test_ollama_invalid_provider_json_is_structured_output_invalid(monkeypatch):
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://ollama.internal:11434")
+    monkeypatch.setenv("OLLAMA_MODEL", "qwen3:8b")
+    response = Mock()
+    response.raise_for_status.return_value = None
+    response.json.return_value = {"message": {"content": "not json"}}
+    monkeypatch.setattr("httpx.post", Mock(return_value=response))
+
+    from services.model_gateway.base import StructuredOutputInvalidError, ModelRequest
+    from services.model_gateway.ollama import OllamaProvider
+
+    with pytest.raises(StructuredOutputInvalidError) as raised:
+        OllamaProvider().invoke(ModelRequest(messages=[]))
+
+    assert raised.value.code == "STRUCTURED_OUTPUT_INVALID"
+
+
+def test_openai_compatible_provider_uses_configured_chat_endpoint(monkeypatch):
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://model.internal/v1/")
+    monkeypatch.setenv("OPENAI_MODEL", "company-model")
+    monkeypatch.setenv("OPENAI_API_KEY", "secret-key")
+    response = Mock()
+    response.raise_for_status.return_value = None
+    response.json.return_value = {
+        "model": "company-model",
+        "choices": [{"message": {"content": json.dumps(_final_payload())}}],
+        "usage": {"prompt_tokens": 2, "completion_tokens": 3, "total_tokens": 5},
+    }
+    post = Mock(return_value=response)
+    monkeypatch.setattr("httpx.post", post)
+
+    from services.model_gateway.base import ModelRequest
+    from services.model_gateway.openai_compatible import OpenAICompatibleProvider
+
+    result = OpenAICompatibleProvider().invoke(
+        ModelRequest(messages=[{"role": "user", "content": "status?"}])
+    )
+
+    assert result.action.action == "FINAL"
+    assert result.usage["total_tokens"] == 5
+    post.assert_called_once_with(
+        "https://model.internal/v1/chat/completions",
+        headers={"Authorization": "Bearer secret-key"},
+        json={
+            "model": "company-model",
+            "messages": [{"role": "user", "content": "status?"}],
+            "response_format": {"type": "json_object"},
+        },
+        timeout=120.0,
+    )
+
+
+def test_provider_error_metadata_does_not_include_credentials():
+    from services.model_gateway.base import ModelResponse
+
+    response = ModelResponse(
+        action=None,
+        model="qwen3:8b",
+        provider="ollama",
+        metadata={"base_url": "http://user:secret@ollama.internal:11434"},
+    )
+
+    assert "secret" not in response.safe_metadata
+    assert "base_url" not in response.safe_metadata
