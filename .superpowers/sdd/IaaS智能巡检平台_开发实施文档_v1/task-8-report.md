@@ -99,3 +99,84 @@ git diff --check
 - `assets_total` is the current persisted asset count for the run's
   environment; `assets_covered` is the distinct union of completed item-run
   scope keys.
+
+## Fix Round 1
+
+### RED
+
+Regression tests were added before the production changes. The first focused
+run reported the intended missing behaviors:
+
+```text
+DJANGO_SETTINGS_MODULE=config.settings.dev /Users/lars.li/Documents/AI-inspect/.venv-web/bin/python -m pytest tests/domain/test_daily_snapshot.py -q
+....FFF.                                                                 [100%]
+3 failed, 5 passed in 1.51s
+```
+
+The failures were: a different source run overwrote an existing date row, a
+historical snapshot used later current Risk state, and a finished `PARTIAL`
+run was rejected. The independent invalid `NO_AI`/`AI_ELIGIBLE` gate was
+already green and remains explicitly covered.
+
+A chronology regression then failed as expected when an older lifecycle event
+was inserted after a newer event (`1 failed, 7 deselected`); this proved row ID
+ordering was insufficient before the event-time fix.
+
+### GREEN
+
+The focused and full suites pass after the fix:
+
+```text
+DJANGO_SETTINGS_MODULE=config.settings.dev /Users/lars.li/Documents/AI-inspect/.venv-web/bin/python -m pytest tests/domain/test_daily_snapshot.py -q
+........                                                                 [100%]
+8 passed in 1.41s
+
+DJANGO_SETTINGS_MODULE=config.settings.dev /Users/lars.li/Documents/AI-inspect/.venv-web/bin/python -m pytest -q
+........................................................................ [ 78%]
+....................                                                     [100%]
+92 passed in 2.98s
+```
+
+### Fixes verified
+
+- A snapshot date owned by another `InspectionRun` now raises a conflict
+  before aggregation or writes; same-run retries still lock and refresh the
+  existing row.
+- Risk totals, P1/P2, and pending-action/pending-reverify metrics rebuild each
+  Risk's status and severity from persisted `RiskStatusHistory` and
+  `RiskObservation` events whose linked run finish time (or persisted event
+  timestamp when unlinked) is at or before `InspectionRun.finished_at`.
+  Later-only Risks and later transitions therefore do not leak into a retried
+  historical snapshot. Event time, not database primary-key order, controls
+  the latest state.
+- Completed aggregate runs are `SUCCEEDED`, `PARTIAL`, or `FAILED` when they
+  have `finished_at`; accepting terminal `FAILED` runs is the documented
+  business choice for preserving a completed historical boundary.
+- Completed item runs include terminal `SUCCEEDED` and `FAILED` rows with
+  `finished_at`. They contribute to `inspection_item_count`, deterministic
+  deflection, and data-completeness denominators. Valid claim/case numerators
+  require `SUCCEEDED` plus `summary["data_valid"] is True`; invalid
+  `NO_AI`/`AI_ELIGIBLE` rows are neither case.
+
+### Fix Round 1 verification
+
+```text
+DJANGO_SETTINGS_MODULE=config.settings.dev /Users/lars.li/Documents/AI-inspect/.venv-web/bin/python manage.py makemigrations --check --dry-run
+No changes detected
+
+DJANGO_SETTINGS_MODULE=config.settings.dev /Users/lars.li/Documents/AI-inspect/.venv-web/bin/python manage.py check
+System check identified no issues (0 silenced).
+
+/Users/lars.li/Documents/AI-inspect/.venv-web/bin/python -m compileall -q apps/inspections/services tests/domain/test_daily_snapshot.py
+git diff --check
+```
+
+### Fix Round 1 self-review and concerns
+
+- The source-run/date conflict is checked while the existing snapshot row is
+  locked, so the original source reference cannot be silently replaced.
+- Historical lifecycle reconstruction remains scoped to the run's
+  environment and excludes terminal effective states; rows without any
+  persisted pre-boundary lifecycle event fall back to their stored Risk state
+  only when their `first_seen_at` is already at or before the boundary.
+- No model, migration, API, Airflow, UI, or trend code was added.

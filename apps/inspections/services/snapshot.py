@@ -1,17 +1,31 @@
 """Persist one deterministic daily snapshot from a completed inspection run."""
 
+from collections import defaultdict
 from decimal import Decimal, ROUND_HALF_UP
 
 from django.db import transaction
 
 from apps.assets.models import Asset
 from apps.inspections.models import DailySnapshot, InspectionItemRun, InspectionRun
-from apps.risks.models import Risk, RiskStatusHistory
+from apps.risks.models import Risk, RiskObservation, RiskStatusHistory
 from apps.risks.services.lifecycle import TERMINAL_RISK_STATUSES
 
 
 RATE_QUANTUM = Decimal("0.001")
 HUNDRED = Decimal("100")
+COMPLETED_RUN_STATUSES = frozenset(
+    {
+        InspectionRun.Status.SUCCEEDED,
+        InspectionRun.Status.PARTIAL,
+        InspectionRun.Status.FAILED,
+    }
+)
+COMPLETED_ITEM_STATUSES = frozenset(
+    {
+        InspectionItemRun.Status.SUCCEEDED,
+        InspectionItemRun.Status.FAILED,
+    }
+)
 
 
 def build_daily_snapshot(inspection_run, snapshot_date=None):
@@ -23,27 +37,29 @@ def build_daily_snapshot(inspection_run, snapshot_date=None):
             .select_related("environment")
             .get(pk=inspection_run.pk)
         )
-        if (
-            run.status != InspectionRun.Status.SUCCEEDED
-            or run.finished_at is None
-        ):
+        if run.status not in COMPLETED_RUN_STATUSES or run.finished_at is None:
             raise ValueError("daily snapshots require a completed inspection run")
 
         snapshot_date = snapshot_date or run.run_date
-        item_runs = list(
-            InspectionItemRun.objects.filter(
-                inspection_run=run,
-                status=InspectionItemRun.Status.SUCCEEDED,
-                finished_at__isnull=False,
-            ).only("summary", "asset_scope", "ai_admission_status")
-        )
-        stats = _snapshot_stats(run, item_runs)
-
         snapshot = (
             DailySnapshot.objects.select_for_update()
             .filter(environment_id=run.environment_id, snapshot_date=snapshot_date)
             .first()
         )
+        if snapshot is not None and snapshot.inspection_run_id != run.pk:
+            raise ValueError(
+                "daily snapshot already exists for this date with a different inspection run"
+            )
+
+        item_runs = list(
+            InspectionItemRun.objects.filter(
+                inspection_run=run,
+                status__in=COMPLETED_ITEM_STATUSES,
+                finished_at__isnull=False,
+            ).only("status", "summary", "asset_scope", "ai_admission_status")
+        )
+        stats = _snapshot_stats(run, item_runs)
+
         values = {
             "environment_id": run.environment_id,
             "snapshot_date": snapshot_date,
@@ -64,7 +80,10 @@ def _snapshot_stats(run, item_runs):
     valid_item_runs = [
         item_run
         for item_run in item_runs
-        if (item_run.summary or {}).get("data_valid") is True
+        if (
+            item_run.status == InspectionItemRun.Status.SUCCEEDED
+            and (item_run.summary or {}).get("data_valid") is True
+        )
     ]
     code_only_cases = sum(
         item_run.ai_admission_status == InspectionItemRun.AIAdmissionStatus.NO_AI
@@ -84,20 +103,20 @@ def _snapshot_stats(run, item_runs):
         for item_run in valid_item_runs
     )
     covered_asset_keys = _covered_asset_keys(item_runs)
-    risks = _risks_at_boundary(run)
+    risk_counts = _risk_counts_at_boundary(run)
 
     return {
         "assets_total": Asset.objects.filter(environment_id=run.environment_id).count(),
         "assets_covered": len(covered_asset_keys),
         "inspection_item_count": len(item_runs),
-        "risk_total": risks.count(),
-        "p1_count": risks.filter(severity="P1").count(),
-        "p2_count": risks.filter(severity="P2").count(),
+        "risk_total": risk_counts["risk_total"],
+        "p1_count": risk_counts["p1_count"],
+        "p2_count": risk_counts["p2_count"],
         "new_count": _history_count(run, Risk.Status.NEW),
         "worsened_count": _history_count(run, Risk.Status.WORSENED),
         "recovered_count": _history_count(run, Risk.Status.RECOVERED),
-        "pending_action_count": risks.filter(status=Risk.Status.PENDING_ACTION).count(),
-        "pending_reverify_count": risks.filter(status=Risk.Status.PENDING_REVERIFY).count(),
+        "pending_action_count": risk_counts["pending_action_count"],
+        "pending_reverify_count": risk_counts["pending_reverify_count"],
         "code_only_cases": code_only_cases,
         "ai_dependent_cases": ai_dependent_cases,
         "code_coverage_rate": _rate(resolved_claim_count, required_claim_count),
@@ -111,10 +130,96 @@ def _snapshot_stats(run, item_runs):
     }
 
 
-def _risks_at_boundary(run):
-    return Risk.objects.filter(environment_id=run.environment_id).exclude(
-        status__in=TERMINAL_RISK_STATUSES,
+def _risk_counts_at_boundary(run):
+    boundary = run.finished_at
+    risks = list(Risk.objects.filter(environment_id=run.environment_id))
+    histories_by_risk = defaultdict(list)
+    for history in (
+        RiskStatusHistory.objects.filter(risk__environment_id=run.environment_id)
+        .select_related("inspection_run")
+        .order_by("created_at", "pk")
+    ):
+        event_time = _lifecycle_event_time(history.inspection_run, history.created_at)
+        if event_time <= boundary:
+            histories_by_risk[history.risk_id].append(history)
+
+    observations_by_risk = defaultdict(list)
+    for observation in (
+        RiskObservation.objects.filter(risk__environment_id=run.environment_id)
+        .select_related("inspection_run")
+        .order_by("created_at", "pk")
+    ):
+        event_time = _lifecycle_event_time(
+            observation.inspection_run,
+            observation.observed_at,
+        )
+        if event_time <= boundary:
+            observations_by_risk[observation.risk_id].append(observation)
+
+    states = []
+    for risk in risks:
+        histories = histories_by_risk.get(risk.pk, ())
+        observations = observations_by_risk.get(risk.pk, ())
+        if not histories and not observations and risk.first_seen_at > boundary:
+            continue
+
+        status = _status_at_boundary(risk, histories, observations)
+        if status in TERMINAL_RISK_STATUSES:
+            continue
+        severity = _severity_at_boundary(risk, observations)
+        states.append((status, severity))
+
+    return {
+        "risk_total": len(states),
+        "p1_count": sum(severity == "P1" for _status, severity in states),
+        "p2_count": sum(severity == "P2" for _status, severity in states),
+        "pending_action_count": sum(
+            status == Risk.Status.PENDING_ACTION for status, _severity in states
+        ),
+        "pending_reverify_count": sum(
+            status == Risk.Status.PENDING_REVERIFY for status, _severity in states
+        ),
+    }
+
+
+def _lifecycle_event_time(inspection_run, fallback):
+    return getattr(inspection_run, "finished_at", None) or fallback
+
+
+def _status_at_boundary(risk, histories, observations):
+    events = [
+        (
+            _lifecycle_event_time(history.inspection_run, history.created_at),
+            2,
+            history.pk,
+            history.to_status,
+        )
+        for history in histories
+    ]
+    events.extend(
+        (
+            _lifecycle_event_time(observation.inspection_run, observation.observed_at),
+            1,
+            observation.pk,
+            observation.status_after,
+        )
+        for observation in observations
     )
+    if not events:
+        return risk.status
+    return max(events, key=lambda event: (event[0], event[1], event[2]))[3]
+
+
+def _severity_at_boundary(risk, observations):
+    if not observations:
+        return risk.severity
+    return max(
+        observations,
+        key=lambda observation: (
+            _lifecycle_event_time(observation.inspection_run, observation.observed_at),
+            observation.pk,
+        ),
+    ).severity
 
 
 def _history_count(run, status):

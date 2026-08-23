@@ -13,7 +13,7 @@ from apps.inspections.models import (
     InspectionItemRun,
     InspectionRun,
 )
-from apps.risks.models import Risk, RiskStatusHistory
+from apps.risks.models import Risk, RiskObservation, RiskStatusHistory
 
 
 SNAPSHOT_DATE = date(2026, 8, 23)
@@ -37,7 +37,13 @@ def make_item(*, code=None):
     )
 
 
-def make_run(environment, *, run_date=SNAPSHOT_DATE, finished=True):
+def make_run(
+    environment,
+    *,
+    run_date=SNAPSHOT_DATE,
+    finished=True,
+    status=None,
+):
     finished_at = (
         timezone.make_aware(
             datetime.combine(run_date, datetime.min.time()),
@@ -50,7 +56,8 @@ def make_run(environment, *, run_date=SNAPSHOT_DATE, finished=True):
         environment=environment,
         run_date=run_date,
         trigger_type=InspectionRun.TriggerType.MANUAL,
-        status=InspectionRun.Status.SUCCEEDED if finished else InspectionRun.Status.RUNNING,
+        status=status
+        or (InspectionRun.Status.SUCCEEDED if finished else InspectionRun.Status.RUNNING),
         finished_at=finished_at,
     )
 
@@ -65,16 +72,14 @@ def make_item_run(
     resolved_claims=None,
     asset_keys=(),
     finished=True,
+    status=None,
 ):
     inspection_item = inspection_item or make_item()
     return InspectionItemRun.objects.create(
         inspection_run=inspection_run,
         inspection_item=inspection_item,
-        status=(
-            InspectionItemRun.Status.SUCCEEDED
-            if finished
-            else InspectionItemRun.Status.RUNNING
-        ),
+        status=status
+        or (InspectionItemRun.Status.SUCCEEDED if finished else InspectionItemRun.Status.RUNNING),
         ai_admission_status=admission_status,
         summary={
             "data_valid": data_valid,
@@ -83,6 +88,26 @@ def make_item_run(
         },
         asset_scope={"asset_keys": list(asset_keys)},
         finished_at=inspection_run.finished_at if finished else None,
+    )
+
+
+def make_observation(
+    inspection_run,
+    inspection_item_run,
+    risk,
+    *,
+    status_after,
+    severity,
+    detected=True,
+):
+    return RiskObservation.objects.create(
+        risk=risk,
+        inspection_run=inspection_run,
+        inspection_item_run=inspection_item_run,
+        observed_at=inspection_run.finished_at,
+        detected=detected,
+        severity=severity,
+        status_after=status_after,
     )
 
 
@@ -313,6 +338,195 @@ def test_daily_snapshot_zero_denominators_are_stored_as_decimal_zero():
 
     snapshot = build_daily_snapshot(run)
 
+    assert snapshot.code_coverage_rate == Decimal("0.000")
+    assert snapshot.deterministic_deflection_rate == Decimal("0.000")
+    assert snapshot.ai_displacement_rate == Decimal("0.000")
+    assert snapshot.data_completeness_rate == Decimal("0.000")
+
+
+@pytest.mark.django_db
+def test_daily_snapshot_rejects_different_source_run_for_existing_environment_date():
+    from apps.inspections.services.snapshot import build_daily_snapshot
+
+    environment = make_environment()
+    first_run = make_run(environment)
+    make_item_run(first_run)
+    first = build_daily_snapshot(first_run)
+
+    conflicting_run = make_run(environment)
+    make_item_run(conflicting_run)
+
+    with pytest.raises(ValueError, match="different inspection run"):
+        build_daily_snapshot(conflicting_run)
+
+    persisted = DailySnapshot.objects.get(pk=first.pk)
+    assert persisted.inspection_run_id == first_run.id
+
+
+@pytest.mark.django_db
+def test_daily_snapshot_reconstructs_risk_metrics_at_source_run_boundary():
+    from apps.inspections.services.snapshot import build_daily_snapshot
+
+    environment = make_environment()
+    item = make_item()
+    source_run = make_run(environment)
+    source_item_run = make_item_run(source_run, item)
+    risk = make_risk(
+        source_run,
+        item,
+        status=Risk.Status.NEW,
+        severity="P1",
+        code="boundary-risk",
+    )
+    RiskStatusHistory.objects.create(
+        risk=risk,
+        from_status=None,
+        to_status=Risk.Status.NEW,
+        source=RiskStatusHistory.Source.SYSTEM,
+        inspection_run=source_run,
+    )
+    make_observation(
+        source_run,
+        source_item_run,
+        risk,
+        status_after=Risk.Status.NEW,
+        severity="P1",
+    )
+    prior_run = make_run(environment, run_date=date(2026, 8, 22))
+    prior_item_run = make_item_run(prior_run, item)
+    # Insert an older event after the source event; ordering must use the
+    # persisted run boundary, not history/observation primary-key order.
+    RiskStatusHistory.objects.create(
+        risk=risk,
+        from_status=None,
+        to_status=Risk.Status.PENDING_ACTION,
+        source=RiskStatusHistory.Source.SYSTEM,
+        inspection_run=prior_run,
+    )
+    make_observation(
+        prior_run,
+        prior_item_run,
+        risk,
+        status_after=Risk.Status.PENDING_ACTION,
+        severity="P2",
+    )
+
+    later_run = make_run(environment, run_date=date(2026, 8, 24))
+    later_item_run = make_item_run(later_run, item)
+    later_only_risk = make_risk(
+        later_run,
+        item,
+        status=Risk.Status.PENDING_REVERIFY,
+        severity="P2",
+        code="later-only-risk",
+    )
+    RiskStatusHistory.objects.create(
+        risk=risk,
+        from_status=Risk.Status.NEW,
+        to_status=Risk.Status.PENDING_ACTION,
+        source=RiskStatusHistory.Source.HUMAN,
+        inspection_run=later_run,
+    )
+    make_observation(
+        later_run,
+        later_item_run,
+        risk,
+        status_after=Risk.Status.PENDING_ACTION,
+        severity="P2",
+    )
+    RiskStatusHistory.objects.create(
+        risk=later_only_risk,
+        from_status=None,
+        to_status=Risk.Status.PENDING_REVERIFY,
+        source=RiskStatusHistory.Source.SYSTEM,
+        inspection_run=later_run,
+    )
+    make_observation(
+        later_run,
+        later_item_run,
+        later_only_risk,
+        status_after=Risk.Status.PENDING_REVERIFY,
+        severity="P2",
+    )
+    risk.status = Risk.Status.PENDING_ACTION
+    risk.severity = "P2"
+    risk.save(update_fields=["status", "severity", "updated_at"])
+
+    snapshot = build_daily_snapshot(source_run)
+
+    assert snapshot.risk_total == 1
+    assert snapshot.p1_count == 1
+    assert snapshot.p2_count == 0
+    assert snapshot.pending_action_count == 0
+    assert snapshot.pending_reverify_count == 0
+
+
+@pytest.mark.django_db
+def test_daily_snapshot_accepts_partial_run_and_counts_failed_terminal_items_in_denominators():
+    from apps.inspections.services.snapshot import build_daily_snapshot
+
+    environment = make_environment()
+    run = make_run(
+        environment,
+        status=InspectionRun.Status.PARTIAL,
+    )
+    make_item_run(
+        run,
+        admission_status=InspectionItemRun.AIAdmissionStatus.NO_AI,
+        required_claims=("claim.ok",),
+        resolved_claims=("claim.ok",),
+    )
+    make_item_run(
+        run,
+        admission_status=InspectionItemRun.AIAdmissionStatus.AI_ELIGIBLE,
+        required_claims=("claim.failed", "claim.failed.2"),
+        resolved_claims=("claim.failed", "claim.failed.2"),
+        status=InspectionItemRun.Status.FAILED,
+    )
+    make_item_run(
+        run,
+        admission_status=InspectionItemRun.AIAdmissionStatus.NO_AI,
+        data_valid=False,
+        status=InspectionItemRun.Status.FAILED,
+    )
+
+    snapshot = build_daily_snapshot(run)
+
+    assert snapshot.inspection_item_count == 3
+    assert snapshot.code_only_cases == 1
+    assert snapshot.ai_dependent_cases == 0
+    assert snapshot.code_coverage_rate == Decimal("100.000")
+    assert snapshot.deterministic_deflection_rate == Decimal("33.333")
+    assert snapshot.data_completeness_rate == Decimal("33.333")
+    assert snapshot.ai_displacement_rate == Decimal("100.000")
+
+
+@pytest.mark.django_db
+def test_daily_snapshot_invalid_data_is_neither_code_only_nor_ai_dependent():
+    from apps.inspections.services.snapshot import build_daily_snapshot
+
+    environment = make_environment()
+    run = make_run(environment)
+    make_item_run(
+        run,
+        admission_status=InspectionItemRun.AIAdmissionStatus.NO_AI,
+        data_valid=False,
+        required_claims=("claim.code",),
+        resolved_claims=("claim.code",),
+    )
+    make_item_run(
+        run,
+        admission_status=InspectionItemRun.AIAdmissionStatus.AI_ELIGIBLE,
+        data_valid=False,
+        required_claims=("claim.ai",),
+        resolved_claims=("claim.ai",),
+    )
+
+    snapshot = build_daily_snapshot(run)
+
+    assert snapshot.inspection_item_count == 2
+    assert snapshot.code_only_cases == 0
+    assert snapshot.ai_dependent_cases == 0
     assert snapshot.code_coverage_rate == Decimal("0.000")
     assert snapshot.deterministic_deflection_rate == Decimal("0.000")
     assert snapshot.ai_displacement_rate == Decimal("0.000")
