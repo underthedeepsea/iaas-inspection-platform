@@ -369,6 +369,59 @@ def test_nonterminal_snapshot_opt_in_uses_as_of_without_finishing_run():
 
 
 @pytest.mark.django_db
+def test_nonterminal_snapshot_allows_zero_item_run_with_execution_evidence():
+    from apps.inspections.services.snapshot import build_daily_snapshot
+
+    environment = make_environment()
+    as_of = timezone.now()
+    run = InspectionRun.objects.create(
+        environment=environment,
+        run_date=SNAPSHOT_DATE,
+        trigger_type=InspectionRun.TriggerType.AIRFLOW,
+        status=InspectionRun.Status.RUNNING,
+        started_at=as_of,
+        total_items=0,
+        success_items=0,
+        failed_items=0,
+        config_snapshot={"batch": {"stages": {"execute": True}}},
+    )
+
+    snapshot = build_daily_snapshot(run, allow_nonterminal=True, as_of=as_of)
+
+    assert snapshot.inspection_run_id == run.pk
+    assert snapshot.inspection_item_count == 0
+    run.refresh_from_db()
+    assert run.status == InspectionRun.Status.RUNNING
+    assert run.finished_at is None
+
+
+@pytest.mark.django_db
+def test_nonterminal_snapshot_rejects_zero_item_run_without_execution_evidence():
+    from apps.inspections.services.snapshot import build_daily_snapshot
+
+    environment = make_environment()
+    as_of = timezone.now()
+    run = InspectionRun.objects.create(
+        environment=environment,
+        run_date=SNAPSHOT_DATE,
+        trigger_type=InspectionRun.TriggerType.AIRFLOW,
+        status=InspectionRun.Status.RUNNING,
+        started_at=as_of,
+        total_items=0,
+        success_items=0,
+        failed_items=0,
+    )
+
+    with pytest.raises(ValueError, match="completed execution"):
+        build_daily_snapshot(run, allow_nonterminal=True, as_of=as_of)
+
+    assert DailySnapshot.objects.count() == 0
+    run.refresh_from_db()
+    assert run.status == InspectionRun.Status.RUNNING
+    assert run.finished_at is None
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize(
     "status",
     [InspectionRun.Status.PENDING, InspectionRun.Status.RUNNING],

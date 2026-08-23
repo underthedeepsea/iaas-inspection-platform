@@ -29,6 +29,11 @@ COMPLETED_ITEM_STATUSES = frozenset(
 )
 
 
+def _batch_stage_done(inspection_run, stage):
+    batch = (inspection_run.config_snapshot or {}).get("batch") or {}
+    return bool((batch.get("stages") or {}).get(stage))
+
+
 def _require_nonterminal_execution(run, as_of):
     """Require persisted evidence that the running inspection finished execution."""
 
@@ -47,6 +52,11 @@ def _require_nonterminal_execution(run, as_of):
     item_runs = InspectionItemRun.objects.filter(inspection_run=run)
     item_count = item_runs.count()
     if not item_count:
+        if (
+            (run.total_items, run.success_items, run.failed_items) == (0, 0, 0)
+            and _batch_stage_done(run, "execute")
+        ):
+            return as_of
         raise ValueError("nonterminal daily snapshots require completed execution evidence")
     if (
         item_runs.exclude(status__in=COMPLETED_ITEM_STATUSES).exists()

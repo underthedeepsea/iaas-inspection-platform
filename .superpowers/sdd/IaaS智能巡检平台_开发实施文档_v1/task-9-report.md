@@ -139,3 +139,23 @@ The first bounded exploratory date (`2026-08-24`) produced Airflow's exact `Back
 - Airflow 2.3.2 bounded parse with project-local `AIRFLOW_HOME` listed `daily_iaas_inspection` successfully.
 
 The nonterminal service opt-in now requires `status=RUNNING`, `finished_at=NULL`, an explicit timezone-aware `as_of`, `started_at`, terminal persisted item runs whose counts match the run aggregate, and no item completion after `as_of`. Reverification additionally requires the persisted `correlate_risks` stage marker. These checks run before snapshot creation, risk locking, correlation, or risk lifecycle writes. The existing API marker chain remains defense in depth, and the valid API nonterminal path remains covered by the idempotent batch API test.
+
+## Fix Round 3 (2026-08-24)
+
+### RED
+
+- Added direct Task 7 and Task 8 regressions for a legitimate `RUNNING` run with no persisted item runs and all three aggregate counts equal to zero. Both initially failed on the Fix Round 2 `item_count == 0` guard.
+- Added a complete seven-stage API regression with no enabled inspection items; it initially failed at `reverify` with the same invalid execution-evidence response. The negative direct-service cases for zero-item runs without evidence remained failing-safe.
+
+### GREEN
+
+- Focused Task 7/Task 8/API suite: `49 passed in 3.86s`.
+- Full Web suite: `116 passed in 5.58s`.
+- DAG structure tests: `5 passed in 0.47s`.
+- Django `check`: `System check identified no issues (0 silenced).`; `migrate --check` passed with no pending migrations.
+- `compileall` and `git diff --check` passed.
+- Airflow 2.3.2 project-local parse: `airflow dags list --subdir airflow/dags/daily_iaas_inspection.py` listed `daily_iaas_inspection` successfully after bounded `airflow db init`.
+
+The nonterminal guards now admit a zero-item `RUNNING` run only when persisted `total_items`, `success_items`, and `failed_items` are all exactly zero and the batch evidence is present: snapshot requires the `execute` marker; reverification requires both `execute` and `correlate_risks` markers. `PENDING`, nonzero/incomplete `RUNNING`, and zero-item runs without the required evidence remain rejected before any snapshot, risk, or lifecycle write. The API regression proves dataset/run retries plus execute, correlate, reverify, snapshot, and complete retries finish with `SUCCEEDED`, terminal fields set only at complete, zero item/snapshot counts, and no findings, risks, observations, or histories.
+
+No new model or migration was needed. The bounded genuine `airflow dags test` evidence recorded above remains valid for the DAG (the round-3 change is limited to the reused Task 7/8 service guards); this round's zero-item path is exercised end-to-end through the authenticated Django batch API regression.

@@ -418,6 +418,65 @@ def test_nonterminal_reverify_opt_in_uses_as_of_without_finishing_run():
 
 
 @pytest.mark.django_db
+def test_nonterminal_reverify_allows_zero_item_run_with_execution_and_correlation_evidence():
+    from apps.risks.services.reverify import reverify_pending_risks
+
+    environment = make_environment()
+    as_of = timezone.now()
+    run = InspectionRun.objects.create(
+        environment=environment,
+        run_date=DAY_ONE,
+        trigger_type=InspectionRun.TriggerType.AIRFLOW,
+        status=InspectionRun.Status.RUNNING,
+        started_at=as_of,
+        total_items=0,
+        success_items=0,
+        failed_items=0,
+        config_snapshot={
+            "batch": {"stages": {"execute": True, "correlate_risks": True}}
+        },
+    )
+
+    recovered = reverify_pending_risks(run, allow_nonterminal=True, as_of=as_of)
+
+    assert recovered == []
+    run.refresh_from_db()
+    assert run.status == InspectionRun.Status.RUNNING
+    assert run.finished_at is None
+    assert run.risk_count == 0
+    assert RiskObservation.objects.count() == 0
+    assert RiskStatusHistory.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_nonterminal_reverify_rejects_zero_item_run_without_execution_or_correlation_evidence():
+    from apps.risks.services.reverify import reverify_pending_risks
+
+    environment = make_environment()
+    as_of = timezone.now()
+    run = InspectionRun.objects.create(
+        environment=environment,
+        run_date=DAY_ONE,
+        trigger_type=InspectionRun.TriggerType.AIRFLOW,
+        status=InspectionRun.Status.RUNNING,
+        started_at=as_of,
+        total_items=0,
+        success_items=0,
+        failed_items=0,
+    )
+
+    with pytest.raises(ValueError, match="completed execution"):
+        reverify_pending_risks(run, allow_nonterminal=True, as_of=as_of)
+
+    run.refresh_from_db()
+    assert run.status == InspectionRun.Status.RUNNING
+    assert run.finished_at is None
+    assert run.risk_count == 0
+    assert RiskObservation.objects.count() == 0
+    assert RiskStatusHistory.objects.count() == 0
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize(
     "status",
     [InspectionRun.Status.PENDING, InspectionRun.Status.RUNNING],

@@ -152,6 +152,65 @@ def test_every_batch_stage_is_retry_safe_and_returns_same_resources():
 
 
 @pytest.mark.django_db(transaction=True)
+def test_seven_batch_stages_complete_with_zero_enabled_inspection_items():
+    environment = _environment()
+    client = Client()
+    dataset_payload = {
+        "environment_id": str(environment.pk),
+        "dataset_date": DAY.isoformat(),
+        "seed": 20260823,
+        "scenario": "control_plane_anti_affinity",
+    }
+
+    dataset_first = _post(client, "/datasets/", dataset_payload)
+    dataset_retry = _post(client, "/datasets/", dataset_payload)
+    assert dataset_first.status_code == dataset_retry.status_code == 200
+    assert dataset_first.json()["dataset_id"] == dataset_retry.json()["dataset_id"]
+
+    run_payload = {
+        "dataset_id": dataset_first.json()["dataset_id"],
+        "environment_id": str(environment.pk),
+        "run_date": DAY.isoformat(),
+        "dag_run_id": "zero-enabled-items-dag-run",
+    }
+    run_first = _post(client, "/inspection-runs/", run_payload)
+    run_retry = _post(client, "/inspection-runs/", run_payload)
+    assert run_first.status_code == run_retry.status_code == 200
+    assert run_first.json()["inspection_run_id"] == run_retry.json()["inspection_run_id"]
+    run_id = run_first.json()["inspection_run_id"]
+
+    for path in (
+        f"/inspection-runs/{run_id}/execute/",
+        f"/inspection-runs/{run_id}/correlate-risks/",
+        f"/inspection-runs/{run_id}/reverify/",
+        f"/inspection-runs/{run_id}/snapshot/",
+        f"/inspection-runs/{run_id}/complete/",
+    ):
+        first = _post(client, path)
+        retry = _post(client, path)
+        assert first.status_code == retry.status_code == 200
+
+    run = InspectionRun.objects.get(pk=run_id)
+    assert run.status == InspectionRun.Status.SUCCEEDED
+    assert run.finished_at is not None
+    assert (run.total_items, run.success_items, run.failed_items) == (0, 0, 0)
+    assert (run.config_snapshot or {}).get("batch", {}).get("stages") == {
+        "execute": True,
+        "correlate_risks": True,
+        "reverify": True,
+        "snapshot": True,
+        "complete": True,
+    }
+    snapshot = DailySnapshot.objects.get(inspection_run=run)
+    assert snapshot.inspection_item_count == 0
+    assert InspectionItemRun.objects.count() == 0
+    assert Finding.objects.count() == 0
+    assert Risk.objects.count() == 0
+    assert RiskObservation.objects.count() == 0
+    assert RiskStatusHistory.objects.count() == 0
+
+
+@pytest.mark.django_db(transaction=True)
 def test_out_of_order_stages_return_structured_conflict_without_side_effects():
     environment = _environment()
     client = Client()

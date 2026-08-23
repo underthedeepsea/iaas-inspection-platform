@@ -47,6 +47,13 @@ def _require_nonterminal_execution(inspection_run, as_of):
     item_runs = InspectionItemRun.objects.filter(inspection_run=inspection_run)
     item_count = item_runs.count()
     if not item_count:
+        if (
+            (inspection_run.total_items, inspection_run.success_items, inspection_run.failed_items)
+            == (0, 0, 0)
+            and _batch_stage_done(inspection_run, "execute")
+            and _batch_stage_done(inspection_run, "correlate_risks")
+        ):
+            return as_of
         raise ValueError("nonterminal reverification requires completed execution evidence")
     if (
         item_runs.exclude(status__in=COMPLETED_ITEM_STATUSES).exists()
