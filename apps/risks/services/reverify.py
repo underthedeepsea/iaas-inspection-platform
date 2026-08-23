@@ -6,17 +6,18 @@ from django.utils import timezone
 from apps.inspections.models import Finding, InspectionItemRun, InspectionRun
 from apps.risks.models import Risk, RiskObservation, RiskStatusHistory
 from apps.risks.services.correlation import (
+    _correlate_run_in_transaction,
     _update_run_risk_count,
-    correlate_run,
     fingerprint_for_finding,
 )
 from apps.risks.services.lifecycle import record_observation
 
 
 def _valid_item_runs(inspection_run):
-    # Task 6 marks completion on InspectionItemRun; the aggregate run can
-    # remain PENDING while callers execute one item at a time.
-    if inspection_run.status == InspectionRun.Status.FAILED:
+    if (
+        inspection_run.status != InspectionRun.Status.SUCCEEDED
+        or inspection_run.finished_at is None
+    ):
         return {}
     item_runs = (
         InspectionItemRun.objects.filter(
@@ -28,16 +29,21 @@ def _valid_item_runs(inspection_run):
     return {
         item_run.inspection_item_id: item_run
         for item_run in item_runs
-        if (item_run.summary or {}).get("data_valid", True)
+        if item_run.finished_at is not None
+        and (item_run.summary or {}).get("data_valid") is True
     }
 
 
 def _has_prior_observation(risk, inspection_run):
-    return RiskObservation.objects.filter(
+    pending_history = RiskStatusHistory.objects.filter(
         risk=risk,
-        detected=True,
-        inspection_run__run_date__lt=inspection_run.run_date,
-    ).exists()
+        to_status=Risk.Status.PENDING_REVERIFY,
+    ).order_by("-created_at").first()
+    return bool(
+        pending_history
+        and inspection_run.finished_at
+        and inspection_run.finished_at > pending_history.created_at
+    )
 
 
 def _matching_non_active_finding(risk, item_run, environment, inspection_item):
@@ -64,44 +70,70 @@ def reverify_pending_risks(inspection_run):
     Finding at all.
     """
 
-    item_runs = _valid_item_runs(inspection_run)
-    if not item_runs:
-        return []
-
-    # This also handles a failed reverification: an active matching Finding
-    # moves PENDING_REVERIFY to PERSISTING/WORSENED before missing findings
-    # are evaluated below.
-    correlate_run(inspection_run)
-
     recovered = []
     with transaction.atomic():
+        locked_run = (
+            InspectionRun.objects.select_for_update()
+            .select_related("environment")
+            .get(pk=inspection_run.pk)
+        )
+        item_runs = _valid_item_runs(locked_run)
+        if not item_runs:
+            _update_run_risk_count(locked_run)
+            return []
+
+        # Lock every risk for the candidate items before correlation.  A
+        # concurrent mark_handled therefore either lands before this run is
+        # evaluated or waits until it has been fully evaluated.
+        locked_risk_ids = list(
+            Risk.objects.select_for_update()
+            .filter(
+                environment_id=locked_run.environment_id,
+                inspection_item_id__in=item_runs.keys(),
+            )
+            .values_list("pk", flat=True)
+        )
+        pending_risk_ids = list(
+            Risk.objects.filter(
+                pk__in=locked_risk_ids,
+                status=Risk.Status.PENDING_REVERIFY,
+            ).values_list("pk", flat=True)
+        )
+
+        # This also handles a failed reverification: an active matching
+        # Finding moves PENDING_REVERIFY to PERSISTING/WORSENED before
+        # missing findings are evaluated below.
+        _correlate_run_in_transaction(
+            locked_run,
+            inspection_item_ids=item_runs.keys(),
+        )
+
         pending = (
             Risk.objects.select_for_update()
             .filter(
-                environment_id=inspection_run.environment_id,
+                pk__in=pending_risk_ids,
                 status=Risk.Status.PENDING_REVERIFY,
-                inspection_item_id__in=item_runs.keys(),
             )
             .select_related("inspection_item")
         )
         for risk in pending:
-            item_run = item_runs[risk.inspection_item_id]
-            if not _has_prior_observation(risk, inspection_run):
+            item_run = item_runs.get(risk.inspection_item_id)
+            if item_run is None or not _has_prior_observation(risk, locked_run):
                 continue
             matching_finding = _matching_non_active_finding(
                 risk,
                 item_run,
-                inspection_run.environment,
+                locked_run.environment,
                 risk.inspection_item,
             )
             if matching_finding is not None:
                 # Invalid/resolved evidence is not proof of recovery.
                 continue
 
-            observed_at = item_run.finished_at or inspection_run.finished_at or timezone.now()
+            observed_at = item_run.finished_at
             _observation, created = record_observation(
                 risk=risk,
-                inspection_run=inspection_run,
+                inspection_run=locked_run,
                 inspection_item_run=item_run,
                 observed_at=observed_at,
                 detected=False,
@@ -124,11 +156,11 @@ def reverify_pending_risks(inspection_run):
                 to_status=Risk.Status.RECOVERED,
                 reason="Reverification found no active matching finding",
                 source=RiskStatusHistory.Source.REVERIFY,
-                inspection_run=inspection_run,
+                inspection_run=locked_run,
             )
             recovered.append(risk)
 
-        _update_run_risk_count(inspection_run)
+        _update_run_risk_count(locked_run)
     return recovered
 
 

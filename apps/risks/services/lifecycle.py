@@ -37,9 +37,12 @@ TERMINAL_RISK_STATUSES = frozenset(
 
 
 def severity_rank(severity):
-    """Return the numeric rank for a finding severity, with P4 as the fallback."""
+    """Return the numeric rank for a known finding severity."""
 
-    return SEVERITY_RANK.get(severity, SEVERITY_RANK["P4"])
+    try:
+        return SEVERITY_RANK[severity]
+    except (KeyError, TypeError):
+        raise ValueError(f"unknown severity: {severity!r}") from None
 
 
 def observation_status(risk, observed_severity):
@@ -145,6 +148,8 @@ def transition_risk(
 ):
     """Lock a risk, apply a lifecycle status, and write its history."""
 
+    if to_status == Risk.Status.RECOVERED:
+        raise ValueError("only verified reverification may transition a risk to RECOVERED")
     with transaction.atomic():
         return _apply_transition(
             _locked_risk(risk),

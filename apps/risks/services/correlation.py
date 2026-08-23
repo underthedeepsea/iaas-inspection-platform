@@ -6,14 +6,36 @@ import hashlib
 from django.db import transaction
 from django.utils import timezone
 
+from apps.assets.models import Asset
 from apps.inspections.models import Finding, InspectionItemRun, InspectionRun
 from apps.risks.models import Risk, RiskObservation, RiskStatusHistory
 from apps.risks.services.lifecycle import (
-    TERMINAL_RISK_STATUSES,
     observation_status,
     record_observation,
     severity_rank,
 )
+
+
+ENVIRONMENT_ASSET_SENTINEL = "__ENVIRONMENT__"
+
+
+def canonical_fingerprint(
+    environment_key,
+    inspection_item_code,
+    finding_code,
+    asset_external_key,
+):
+    """Hash only the typed canonical identity fields used for correlation."""
+
+    fields = (
+        environment_key,
+        inspection_item_code,
+        finding_code,
+        asset_external_key,
+    )
+    if any(not isinstance(value, str) or not value.strip() for value in fields):
+        raise ValueError("fingerprint identity fields must be non-empty strings")
+    return hashlib.sha256("\x1f".join(value.strip() for value in fields).encode("utf-8")).hexdigest()
 
 
 def fingerprint_for_finding(finding, *, environment=None, inspection_item=None):
@@ -28,16 +50,18 @@ def fingerprint_for_finding(finding, *, environment=None, inspection_item=None):
     environment_key = getattr(environment, "slug", None) or getattr(environment, "name", "")
     item_key = getattr(inspection_item, "code", "")
     finding_key = getattr(finding, "finding_code", "")
-    asset_key = getattr(asset, "external_key", None)
-    if not asset_key:
-        value = getattr(finding, "value", {}) or {}
-        asset_key = value.get("asset_key") or value.get("asset") or "<environment>"
-
-    canonical = "\x1f".join(
-        str(part).strip()
-        for part in (environment_key, item_key, finding_key, asset_key)
-    )
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    asset_key = ENVIRONMENT_ASSET_SENTINEL
+    if (
+        isinstance(asset, Asset)
+        and not asset._state.adding
+        and asset.pk
+        and asset.external_key
+    ):
+        if not environment or not getattr(environment, "pk", None):
+            asset_key = asset.external_key
+        elif asset.environment_id == environment.pk:
+            asset_key = asset.external_key
+    return canonical_fingerprint(environment_key, item_key, finding_key, asset_key)
 
 
 def build_fingerprint(environment, inspection_item, finding):
@@ -142,110 +166,116 @@ def _history_reason(from_status, status_after, representative):
 
 
 def _update_run_risk_count(inspection_run):
-    count = (
-        Risk.objects.filter(environment_id=inspection_run.environment_id)
-        .exclude(status__in=TERMINAL_RISK_STATUSES)
-        .count()
-    )
+    count = RiskObservation.objects.filter(
+        inspection_run=inspection_run,
+        detected=True,
+    ).values("risk_id").distinct().count()
     InspectionRun.objects.filter(pk=inspection_run.pk).update(risk_count=count)
     inspection_run.risk_count = count
     return count
 
 
+def _correlate_run_in_transaction(inspection_run, *, inspection_item_ids=None):
+    correlated = []
+    item_runs_query = InspectionItemRun.objects.filter(
+        inspection_run=inspection_run,
+        status=InspectionItemRun.Status.SUCCEEDED,
+    )
+    if inspection_item_ids is not None:
+        item_runs_query = item_runs_query.filter(inspection_item_id__in=inspection_item_ids)
+    item_runs = (
+        item_runs_query
+        .select_related("inspection_item", "inspection_run__environment")
+        .order_by("inspection_item__code", "pk")
+    )
+    for item_run in item_runs:
+        findings = list(
+            Finding.objects.filter(
+                inspection_item_run=item_run,
+                status=Finding.Status.ACTIVE,
+            )
+            .select_related("asset")
+            .order_by("finding_code", "pk")
+        )
+        grouped = defaultdict(list)
+        for finding in findings:
+            fingerprint = fingerprint_for_finding(
+                finding,
+                environment=inspection_run.environment,
+                inspection_item=item_run.inspection_item,
+            )
+            grouped[fingerprint].append(finding)
+
+        for fingerprint, risk_findings in grouped.items():
+            representative = min(
+                risk_findings,
+                key=lambda finding: severity_rank(finding.severity),
+            )
+            observed_at = _observed_at(inspection_run, item_run, risk_findings)
+            risk, created = _get_or_create_risk(
+                inspection_run.environment,
+                item_run.inspection_item,
+                representative,
+                fingerprint,
+                observed_at,
+            )
+            if not created and RiskObservation.objects.filter(
+                risk=risk,
+                inspection_run=inspection_run,
+            ).exists():
+                correlated.append(risk)
+                continue
+
+            from_status = None if created else risk.status
+            status_after = (
+                Risk.Status.NEW
+                if created
+                else observation_status(risk, representative.severity)
+            )
+            if not created:
+                _update_existing_risk(
+                    risk,
+                    representative,
+                    item_run.inspection_item,
+                    status_after,
+                    observed_at,
+                    inspection_run.run_date,
+                )
+            _observation, observation_created = record_observation(
+                risk=risk,
+                inspection_run=inspection_run,
+                inspection_item_run=item_run,
+                observed_at=observed_at,
+                detected=True,
+                severity=representative.severity,
+                status_after=status_after,
+                finding_count=len(risk_findings),
+                snapshot=_snapshot(fingerprint, risk_findings),
+            )
+            if observation_created:
+                RiskStatusHistory.objects.create(
+                    risk=risk,
+                    from_status=from_status,
+                    to_status=status_after,
+                    reason=(
+                        "Initial active finding correlated"
+                        if created
+                        else _history_reason(from_status, status_after, representative)
+                    ),
+                    source=RiskStatusHistory.Source.SYSTEM,
+                    inspection_run=inspection_run,
+                )
+            correlated.append(risk)
+
+    _update_run_risk_count(inspection_run)
+    return correlated
+
+
 def correlate_run(inspection_run):
     """Correlate all active Findings from successful item runs in one run."""
 
-    correlated = []
     with transaction.atomic():
-        item_runs = (
-            InspectionItemRun.objects.filter(
-                inspection_run=inspection_run,
-                status=InspectionItemRun.Status.SUCCEEDED,
-            )
-            .select_related("inspection_item", "inspection_run__environment")
-            .order_by("inspection_item__code", "pk")
-        )
-        for item_run in item_runs:
-            findings = list(
-                Finding.objects.filter(
-                    inspection_item_run=item_run,
-                    status=Finding.Status.ACTIVE,
-                )
-                .select_related("asset")
-                .order_by("finding_code", "pk")
-            )
-            grouped = defaultdict(list)
-            for finding in findings:
-                fingerprint = fingerprint_for_finding(
-                    finding,
-                    environment=inspection_run.environment,
-                    inspection_item=item_run.inspection_item,
-                )
-                grouped[fingerprint].append(finding)
-
-            for fingerprint, risk_findings in grouped.items():
-                representative = min(
-                    risk_findings,
-                    key=lambda finding: severity_rank(finding.severity),
-                )
-                observed_at = _observed_at(inspection_run, item_run, risk_findings)
-                risk, created = _get_or_create_risk(
-                    inspection_run.environment,
-                    item_run.inspection_item,
-                    representative,
-                    fingerprint,
-                    observed_at,
-                )
-                if not created and RiskObservation.objects.filter(
-                    risk=risk,
-                    inspection_run=inspection_run,
-                ).exists():
-                    correlated.append(risk)
-                    continue
-
-                from_status = None if created else risk.status
-                status_after = (
-                    Risk.Status.NEW
-                    if created
-                    else observation_status(risk, representative.severity)
-                )
-                if not created:
-                    _update_existing_risk(
-                        risk,
-                        representative,
-                        item_run.inspection_item,
-                        status_after,
-                        observed_at,
-                        inspection_run.run_date,
-                    )
-                _observation, observation_created = record_observation(
-                    risk=risk,
-                    inspection_run=inspection_run,
-                    inspection_item_run=item_run,
-                    observed_at=observed_at,
-                    detected=True,
-                    severity=representative.severity,
-                    status_after=status_after,
-                    finding_count=len(risk_findings),
-                    snapshot=_snapshot(fingerprint, risk_findings),
-                )
-                if observation_created:
-                    RiskStatusHistory.objects.create(
-                        risk=risk,
-                        from_status=from_status,
-                        to_status=status_after,
-                        reason=(
-                            "Initial active finding correlated"
-                            if created
-                            else _history_reason(from_status, status_after, representative)
-                        ),
-                        source=RiskStatusHistory.Source.SYSTEM,
-                        inspection_run=inspection_run,
-                    )
-                correlated.append(risk)
-
-        _update_run_risk_count(inspection_run)
-    return correlated
+        return _correlate_run_in_transaction(inspection_run)
 
 
 # Names used by batch callers in earlier design drafts.
@@ -256,9 +286,11 @@ correlate_risks = correlate_run
 
 __all__ = [
     "build_fingerprint",
+    "canonical_fingerprint",
     "correlate_findings",
     "correlate_inspection_run",
     "correlate_risks",
     "correlate_run",
     "fingerprint_for_finding",
+    "ENVIRONMENT_ASSET_SENTINEL",
 ]
