@@ -3,6 +3,7 @@ import uuid
 import pytest
 from django.apps import apps
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
@@ -24,6 +25,28 @@ def test_environment_defaults_are_preserved():
     assert environment.timezone == "Asia/Shanghai"
     assert environment.is_active is True
     assert environment.metadata == {}
+
+
+@pytest.mark.parametrize(
+    ("model_label", "field_name"),
+    [
+        ("inspections.InspectionItem", "version"),
+        ("inspections.MockDataset", "version"),
+        ("capabilities.CapabilityVersion", "version"),
+        ("investigations.ConversationMessage", "prompt_version"),
+    ],
+)
+def test_project_version_fields_require_exact_numeric_semantic_versions(
+    model_label,
+    field_name,
+):
+    """Relaxing full-match validation must allow a bare or newline version."""
+    field = apps.get_model(model_label)._meta.get_field(field_name)
+
+    assert field.clean("1.0.0", None) == "1.0.0"
+    for invalid_version in ("1", "1.0.0\n"):
+        with pytest.raises(ValidationError):
+            field.clean(invalid_version, None)
 
 
 @pytest.mark.django_db

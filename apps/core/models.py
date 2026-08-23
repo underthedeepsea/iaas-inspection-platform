@@ -5,7 +5,7 @@ from django.core.validators import RegexValidator
 
 
 semantic_version_validator = RegexValidator(
-    regex=r"^\d+\.\d+\.\d+$",
+    regex=r"\A\d+\.\d+\.\d+\Z",
     message="Use a numeric semantic version in x.x.x format.",
 )
 
