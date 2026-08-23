@@ -13,12 +13,26 @@ from apps.risks.services.correlation import (
 from apps.risks.services.lifecycle import record_observation
 
 
-def _valid_item_runs(inspection_run):
-    if (
+def _valid_item_runs(inspection_run, *, allow_nonterminal=False, as_of=None):
+    if allow_nonterminal:
+        if inspection_run.status not in {
+            InspectionRun.Status.PENDING,
+            InspectionRun.Status.RUNNING,
+            InspectionRun.Status.SUCCEEDED,
+            InspectionRun.Status.PARTIAL,
+            InspectionRun.Status.FAILED,
+        }:
+            return {}
+        boundary = as_of or inspection_run.finished_at or timezone.now()
+        if timezone.is_naive(boundary):
+            raise ValueError("reverification as_of must be timezone-aware")
+    elif (
         inspection_run.status != InspectionRun.Status.SUCCEEDED
         or inspection_run.finished_at is None
     ):
         return {}
+    else:
+        boundary = inspection_run.finished_at
     item_runs = (
         InspectionItemRun.objects.filter(
             inspection_run=inspection_run,
@@ -30,19 +44,23 @@ def _valid_item_runs(inspection_run):
         item_run.inspection_item_id: item_run
         for item_run in item_runs
         if item_run.finished_at is not None
+        and item_run.finished_at <= boundary
         and (item_run.summary or {}).get("data_valid") is True
     }
 
 
-def _has_post_handle_completion(risk, inspection_run, item_run):
+def _has_post_handle_completion(risk, inspection_run, item_run, *, as_of=None):
     pending_history = RiskStatusHistory.objects.filter(
         risk=risk,
         to_status=Risk.Status.PENDING_REVERIFY,
     ).order_by("-created_at").first()
+    boundary = inspection_run.finished_at or as_of
     return bool(
         pending_history
-        and inspection_run.finished_at
+        and boundary
         and item_run.finished_at
+        and item_run.finished_at <= boundary
+        and (as_of is None or item_run.finished_at <= as_of)
         and item_run.finished_at > pending_history.created_at
     )
 
@@ -63,7 +81,7 @@ def _matching_non_active_finding(risk, item_run, environment, inspection_item):
     return None
 
 
-def reverify_pending_risks(inspection_run):
+def reverify_pending_risks(inspection_run, *, allow_nonterminal=False, as_of=None):
     """Reverify pending risks using a later, successful, valid item run.
 
     Active Findings from an eligible item run are correlated first.  A pending
@@ -71,6 +89,10 @@ def reverify_pending_risks(inspection_run):
     emitted no matching Finding at all.
     """
 
+    if allow_nonterminal:
+        as_of = as_of or timezone.now()
+        if timezone.is_naive(as_of):
+            raise ValueError("reverification as_of must be timezone-aware")
     recovered = []
     with transaction.atomic():
         locked_run = (
@@ -78,7 +100,11 @@ def reverify_pending_risks(inspection_run):
             .select_related("environment")
             .get(pk=inspection_run.pk)
         )
-        item_runs = _valid_item_runs(locked_run)
+        item_runs = _valid_item_runs(
+            locked_run,
+            allow_nonterminal=allow_nonterminal,
+            as_of=as_of,
+        )
         if not item_runs:
             _update_run_risk_count(locked_run)
             return []
@@ -140,6 +166,7 @@ def reverify_pending_risks(inspection_run):
                 risk,
                 locked_run,
                 item_run,
+                as_of=as_of if allow_nonterminal else None,
             ):
                 continue
             matching_finding = _matching_non_active_finding(

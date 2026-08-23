@@ -32,6 +32,15 @@ from services.mock_generator.generator import generate_dataset
 logger = logging.getLogger(__name__)
 
 
+STAGE_ORDER = (
+    "execute",
+    "correlate_risks",
+    "reverify",
+    "snapshot",
+    "complete",
+)
+
+
 class BatchAPIError(Exception):
     def __init__(self, code, message, status=400, details=None):
         super().__init__(message)
@@ -223,6 +232,23 @@ def _stage_done(run, stage):
     return bool((batch.get("stages") or {}).get(stage))
 
 
+def _require_predecessor(run, stage):
+    try:
+        stage_index = STAGE_ORDER.index(stage)
+    except ValueError:
+        raise BatchAPIError("invalid_stage", f"unknown batch stage: {stage}", 409) from None
+    if stage_index == 0:
+        return
+    predecessor = STAGE_ORDER[stage_index - 1]
+    if not _stage_done(run, predecessor):
+        raise BatchAPIError(
+            "invalid_stage_order",
+            f"{stage} requires the {predecessor} stage to complete first",
+            409,
+            details={"required_stage": predecessor},
+        )
+
+
 def _mark_stage(run, stage):
     snapshot = dict(run.config_snapshot or {})
     batch = dict(snapshot.get("batch") or {})
@@ -395,24 +421,48 @@ def inspection_runs(request):
                 )
         else:
             try:
-                run = InspectionRun.objects.create(
-                    environment_id=environment_id,
-                    dataset_id=dataset_id,
-                    run_date=run_date,
-                    trigger_type=InspectionRun.TriggerType.AIRFLOW,
-                    airflow_dag_run_id=dag_run_id,
-                    config_snapshot={
-                        "batch": {
-                            "environment_id": str(environment_id),
-                            "dataset_id": str(dataset_id),
-                            "run_date": run_date.isoformat(),
-                            "dag_run_id": dag_run_id,
-                            "stages": {},
-                        }
-                    },
-                )
+                # Keep the insert in a savepoint.  A concurrent unique-key
+                # winner must not poison the surrounding transaction before
+                # we read the canonical row for the idempotent retry.
+                with transaction.atomic():
+                    run = InspectionRun.objects.create(
+                        environment_id=environment_id,
+                        dataset_id=dataset_id,
+                        run_date=run_date,
+                        trigger_type=InspectionRun.TriggerType.AIRFLOW,
+                        airflow_dag_run_id=dag_run_id,
+                        config_snapshot={
+                            "batch": {
+                                "environment_id": str(environment_id),
+                                "dataset_id": str(dataset_id),
+                                "run_date": run_date.isoformat(),
+                                "dag_run_id": dag_run_id,
+                                "stages": {},
+                            }
+                        },
+                    )
             except IntegrityError:
-                run = InspectionRun.objects.select_for_update().get(airflow_dag_run_id=dag_run_id)
+                run = (
+                    InspectionRun.objects.select_for_update()
+                    .filter(airflow_dag_run_id=dag_run_id)
+                    .first()
+                )
+                if run is None:
+                    raise BatchAPIError(
+                        "dag_run_conflict",
+                        "dag_run_id could not be created because another request won the race",
+                        409,
+                    ) from None
+                if (
+                    run.environment_id != environment_id
+                    or run.dataset_id != dataset_id
+                    or run.run_date != run_date
+                ):
+                    raise BatchAPIError(
+                        "immutable_input_conflict",
+                        "dag_run_id is already bound to different immutable input",
+                        409,
+                    )
 
     return _run_response(run)
 
@@ -433,6 +483,7 @@ def execute(request, run_id):
         run = _run(run.pk, lock=True)
         if _stage_done(run, "execute"):
             return _run_response(run)
+        _require_predecessor(run, "execute")
         if run.started_at is None:
             run.started_at = timezone.now()
         run.status = InspectionRun.Status.RUNNING
@@ -448,6 +499,7 @@ def correlate_risks(request, run_id):
     with transaction.atomic():
         run = _run(run.pk, lock=True)
         if not _stage_done(run, "correlate_risks"):
+            _require_predecessor(run, "correlate_risks")
             correlate_run(run)
             _mark_stage(run, "correlate_risks")
     run.refresh_from_db()
@@ -468,10 +520,12 @@ def reverify(request, run_id):
     with transaction.atomic():
         run = _run(run.pk, lock=True)
         if not _stage_done(run, "reverify"):
-            # Task 8's reverify service intentionally accepts only a completed
-            # successful run.  Reconcile that state here before delegating.
-            _finish_run(run)
-            reverify_pending_risks(run)
+            _require_predecessor(run, "reverify")
+            reverify_pending_risks(
+                run,
+                allow_nonterminal=True,
+                as_of=timezone.now(),
+            )
             _mark_stage(run, "reverify")
     return _run_response(run)
 
@@ -492,9 +546,13 @@ def snapshot(request, run_id):
         if _stage_done(run, "snapshot"):
             existing = DailySnapshot.objects.get(environment_id=run.environment_id, snapshot_date=run.run_date)
         else:
-            _finish_run(run)
+            _require_predecessor(run, "snapshot")
             try:
-                existing = build_daily_snapshot(run)
+                existing = build_daily_snapshot(
+                    run,
+                    allow_nonterminal=True,
+                    as_of=timezone.now(),
+                )
             except ValueError as error:
                 raise BatchAPIError("immutable_input_conflict", str(error), 409) from None
             _mark_stage(run, "snapshot")
@@ -514,6 +572,7 @@ def complete(request, run_id):
     with transaction.atomic():
         run = _run(run.pk, lock=True)
         if not _stage_done(run, "complete"):
+            _require_predecessor(run, "complete")
             _finish_run(run)
             _mark_stage(run, "complete")
     return _run_response(run)

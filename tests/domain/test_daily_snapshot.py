@@ -345,6 +345,26 @@ def test_daily_snapshot_zero_denominators_are_stored_as_decimal_zero():
 
 
 @pytest.mark.django_db
+def test_nonterminal_snapshot_opt_in_uses_as_of_without_finishing_run():
+    from apps.inspections.services.snapshot import build_daily_snapshot
+
+    environment = make_environment()
+    run = make_run(environment, finished=False)
+    as_of = timezone.now()
+    item_run = make_item_run(run, finished=False)
+    item_run.status = InspectionItemRun.Status.SUCCEEDED
+    item_run.finished_at = as_of
+    item_run.save(update_fields=["status", "finished_at"])
+
+    snapshot = build_daily_snapshot(run, allow_nonterminal=True, as_of=as_of)
+
+    assert snapshot.inspection_run_id == run.pk
+    run.refresh_from_db()
+    assert run.status == InspectionRun.Status.RUNNING
+    assert run.finished_at is None
+
+
+@pytest.mark.django_db
 def test_daily_snapshot_rejects_different_source_run_for_existing_environment_date():
     from apps.inspections.services.snapshot import build_daily_snapshot
 

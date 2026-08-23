@@ -359,6 +359,51 @@ def test_successful_reverify_requires_later_valid_completed_item_run_and_recover
 
 
 @pytest.mark.django_db
+def test_nonterminal_reverify_opt_in_uses_as_of_without_finishing_run():
+    from apps.risks.services.correlation import correlate_run
+    from apps.risks.services.lifecycle import mark_handled
+    from apps.risks.services.reverify import reverify_pending_risks
+
+    environment = make_environment()
+    item = make_item()
+    asset = Asset.objects.create(
+        environment=environment,
+        external_key="worker-0",
+        asset_type=Asset.AssetType.HOST,
+        name="worker-0",
+    )
+    first_run, first_item_run = make_run(environment, item, DAY_ONE)
+    make_finding(first_item_run, asset)
+    risk = correlate_run(first_run)[0]
+    mark_handled(risk)
+    pending_history = RiskStatusHistory.objects.filter(
+        risk=risk,
+        to_status=Risk.Status.PENDING_REVERIFY,
+    ).latest("created_at")
+
+    completion = pending_history.created_at + timedelta(minutes=1)
+    second_run, _second_item_run = make_run(
+        environment,
+        item,
+        completion.date(),
+        run_status=InspectionRun.Status.RUNNING,
+        run_finished_at=None,
+        item_finished_at=completion,
+    )
+    reverify_pending_risks(
+        second_run,
+        allow_nonterminal=True,
+        as_of=completion + timedelta(seconds=1),
+    )
+
+    risk.refresh_from_db()
+    assert risk.status == Risk.Status.RECOVERED
+    second_run.refresh_from_db()
+    assert second_run.status == InspectionRun.Status.RUNNING
+    assert second_run.finished_at is None
+
+
+@pytest.mark.django_db
 def test_failed_reverify_with_a_matching_finding_stays_active_and_can_worsen():
     from apps.risks.services.correlation import correlate_run
     from apps.risks.services.lifecycle import mark_handled

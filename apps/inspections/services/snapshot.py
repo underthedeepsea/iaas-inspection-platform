@@ -4,6 +4,7 @@ from collections import defaultdict
 from decimal import Decimal, ROUND_HALF_UP
 
 from django.db import transaction
+from django.utils import timezone
 
 from apps.assets.models import Asset
 from apps.inspections.models import DailySnapshot, InspectionItemRun, InspectionRun
@@ -28,8 +29,14 @@ COMPLETED_ITEM_STATUSES = frozenset(
 )
 
 
-def build_daily_snapshot(inspection_run, snapshot_date=None):
-    """Create or refresh the snapshot for one completed ``InspectionRun``."""
+def build_daily_snapshot(
+    inspection_run,
+    snapshot_date=None,
+    *,
+    allow_nonterminal=False,
+    as_of=None,
+):
+    """Create or refresh a snapshot, optionally at a nonterminal boundary."""
 
     with transaction.atomic():
         run = (
@@ -37,8 +44,19 @@ def build_daily_snapshot(inspection_run, snapshot_date=None):
             .select_related("environment")
             .get(pk=inspection_run.pk)
         )
-        if run.status not in COMPLETED_RUN_STATUSES or run.finished_at is None:
+        if not allow_nonterminal and (
+            run.status not in COMPLETED_RUN_STATUSES or run.finished_at is None
+        ):
             raise ValueError("daily snapshots require a completed inspection run")
+        if allow_nonterminal and run.status not in {
+            InspectionRun.Status.PENDING,
+            InspectionRun.Status.RUNNING,
+            *COMPLETED_RUN_STATUSES,
+        }:
+            raise ValueError("daily snapshots require a valid inspection run state")
+        boundary = run.finished_at or as_of or timezone.now()
+        if timezone.is_naive(boundary):
+            raise ValueError("daily snapshot as_of must be timezone-aware")
 
         snapshot_date = snapshot_date or run.run_date
         snapshot = (
@@ -58,7 +76,8 @@ def build_daily_snapshot(inspection_run, snapshot_date=None):
                 finished_at__isnull=False,
             ).only("status", "summary", "asset_scope", "ai_admission_status")
         )
-        stats = _snapshot_stats(run, item_runs)
+        item_runs = [item_run for item_run in item_runs if item_run.finished_at <= boundary]
+        stats = _snapshot_stats(run, item_runs, boundary=boundary)
 
         values = {
             "environment_id": run.environment_id,
@@ -76,7 +95,7 @@ def build_daily_snapshot(inspection_run, snapshot_date=None):
     return snapshot
 
 
-def _snapshot_stats(run, item_runs):
+def _snapshot_stats(run, item_runs, *, boundary=None):
     valid_item_runs = [
         item_run
         for item_run in item_runs
@@ -103,7 +122,7 @@ def _snapshot_stats(run, item_runs):
         for item_run in valid_item_runs
     )
     covered_asset_keys = _covered_asset_keys(item_runs)
-    risk_counts = _risk_counts_at_boundary(run)
+    risk_counts = _risk_counts_at_boundary(run, boundary=boundary)
 
     return {
         "assets_total": Asset.objects.filter(environment_id=run.environment_id).count(),
@@ -130,8 +149,10 @@ def _snapshot_stats(run, item_runs):
     }
 
 
-def _risk_counts_at_boundary(run):
-    boundary = run.finished_at
+def _risk_counts_at_boundary(run, *, boundary=None):
+    boundary = boundary or run.finished_at
+    if boundary is None:
+        raise ValueError("risk metrics require a snapshot boundary")
     risks = list(Risk.objects.filter(environment_id=run.environment_id))
     histories_by_risk = defaultdict(list)
     for history in (

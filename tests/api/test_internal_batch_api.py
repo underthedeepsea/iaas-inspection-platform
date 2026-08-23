@@ -1,8 +1,10 @@
 from datetime import date
 import json
 import uuid
+from unittest.mock import patch
 
 import pytest
+from django.db import IntegrityError
 from django.test import Client
 
 from apps.core.models import Environment
@@ -108,6 +110,9 @@ def test_every_batch_stage_is_retry_safe_and_returns_same_resources():
     assert execute_first.status_code == execute_retry.status_code == 200
     assert InspectionItemRun.objects.count() == 1
     assert Finding.objects.count() == 1
+    run = InspectionRun.objects.get(pk=run_id)
+    assert run.status == InspectionRun.Status.RUNNING
+    assert run.finished_at is None
 
     correlate_path = f"/inspection-runs/{run_id}/correlate-risks/"
     correlate_first = _post(client, correlate_path)
@@ -123,6 +128,9 @@ def test_every_batch_stage_is_retry_safe_and_returns_same_resources():
     assert reverify_first.status_code == reverify_retry.status_code == 200
     assert RiskObservation.objects.count() == 1
     assert RiskStatusHistory.objects.count() == 1
+    run.refresh_from_db()
+    assert run.status == InspectionRun.Status.RUNNING
+    assert run.finished_at is None
 
     snapshot_path = f"/inspection-runs/{run_id}/snapshot/"
     snapshot_first = _post(client, snapshot_path)
@@ -130,6 +138,9 @@ def test_every_batch_stage_is_retry_safe_and_returns_same_resources():
     assert snapshot_first.status_code == snapshot_retry.status_code == 200
     assert snapshot_first.json()["snapshot_id"] == snapshot_retry.json()["snapshot_id"]
     assert DailySnapshot.objects.count() == 1
+    run.refresh_from_db()
+    assert run.status == InspectionRun.Status.RUNNING
+    assert run.finished_at is None
 
     complete_path = f"/inspection-runs/{run_id}/complete/"
     complete_first = _post(client, complete_path)
@@ -138,6 +149,135 @@ def test_every_batch_stage_is_retry_safe_and_returns_same_resources():
     assert complete_first.json()["inspection_run_id"] == complete_retry.json()["inspection_run_id"]
     assert InspectionRun.objects.get(pk=run_id).status == InspectionRun.Status.SUCCEEDED
     assert RiskStatusHistory.objects.count() == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_out_of_order_stages_return_structured_conflict_without_side_effects():
+    environment = _environment()
+    client = Client()
+    dataset = _post(
+        client,
+        "/datasets/",
+        {
+            "environment_id": str(environment.pk),
+            "dataset_date": DAY.isoformat(),
+            "seed": 20260823,
+            "scenario": "control_plane_anti_affinity",
+        },
+    ).json()
+    run = _post(
+        client,
+        "/inspection-runs/",
+        {
+            "dataset_id": dataset["dataset_id"],
+            "environment_id": str(environment.pk),
+            "run_date": DAY.isoformat(),
+            "dag_run_id": "out-of-order-dag-run",
+        },
+    ).json()
+
+    for path, predecessor in (
+        (
+            f"/inspection-runs/{run['inspection_run_id']}/correlate-risks/",
+            "execute",
+        ),
+        (f"/inspection-runs/{run['inspection_run_id']}/reverify/", "correlate_risks"),
+        (f"/inspection-runs/{run['inspection_run_id']}/snapshot/", "reverify"),
+        (f"/inspection-runs/{run['inspection_run_id']}/complete/", "snapshot"),
+    ):
+        response = _post(client, path)
+        assert response.status_code == 409
+        assert response.json()["error"]["code"] == "invalid_stage_order"
+        assert response.json()["error"]["details"]["required_stage"] == predecessor
+
+    persisted = InspectionRun.objects.get(pk=run["inspection_run_id"])
+    assert persisted.status == InspectionRun.Status.PENDING
+    assert persisted.finished_at is None
+    assert (persisted.config_snapshot or {}).get("batch", {}).get("stages") == {}
+    assert DailySnapshot.objects.count() == 0
+    assert InspectionItemRun.objects.count() == 0
+    assert RiskObservation.objects.count() == 0
+
+
+@pytest.mark.django_db(transaction=True)
+def test_snapshot_failure_keeps_run_nonterminal_and_does_not_mark_stage():
+    environment = _environment()
+    _item()
+    client = Client()
+    dataset = _post(
+        client,
+        "/datasets/",
+        {
+            "environment_id": str(environment.pk),
+            "dataset_date": DAY.isoformat(),
+            "seed": 20260823,
+            "scenario": "control_plane_anti_affinity",
+        },
+    ).json()
+    run = _post(
+        client,
+        "/inspection-runs/",
+        {
+            "dataset_id": dataset["dataset_id"],
+            "environment_id": str(environment.pk),
+            "run_date": DAY.isoformat(),
+            "dag_run_id": "snapshot-failure-dag-run",
+        },
+    ).json()
+    run_id = run["inspection_run_id"]
+    assert _post(client, f"/inspection-runs/{run_id}/execute/").status_code == 200
+    assert _post(client, f"/inspection-runs/{run_id}/correlate-risks/").status_code == 200
+    assert _post(client, f"/inspection-runs/{run_id}/reverify/").status_code == 200
+
+    with patch(
+        "apps.inspections.api_internal.build_daily_snapshot",
+        side_effect=ValueError("snapshot test failure"),
+    ):
+        response = _post(client, f"/inspection-runs/{run_id}/snapshot/")
+
+    assert response.status_code == 409
+    persisted = InspectionRun.objects.get(pk=run_id)
+    assert persisted.status == InspectionRun.Status.RUNNING
+    assert persisted.finished_at is None
+    assert not (persisted.config_snapshot or {}).get("batch", {}).get("stages", {}).get(
+        "snapshot",
+        False,
+    )
+    assert DailySnapshot.objects.count() == 0
+
+
+@pytest.mark.django_db(transaction=True)
+def test_dag_run_integrity_error_is_translated_to_conflict_without_broken_transaction():
+    environment = _environment()
+    client = Client()
+    dataset = _post(
+        client,
+        "/datasets/",
+        {
+            "environment_id": str(environment.pk),
+            "dataset_date": DAY.isoformat(),
+            "seed": 20260823,
+            "scenario": "control_plane_anti_affinity",
+        },
+    ).json()
+
+    with patch.object(InspectionRun.objects, "create", side_effect=IntegrityError("duplicate")):
+        response = _post(
+            client,
+            "/inspection-runs/",
+            {
+                "dataset_id": dataset["dataset_id"],
+                "environment_id": str(environment.pk),
+                "run_date": DAY.isoformat(),
+                "dag_run_id": "concurrent-integrity-error",
+            },
+        )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "dag_run_conflict"
+    # The outer atomic block must remain usable after the inner savepoint.
+    assert Environment.objects.filter(pk=environment.pk).exists()
+    assert InspectionRun.objects.count() == 0
 
 
 @pytest.mark.django_db

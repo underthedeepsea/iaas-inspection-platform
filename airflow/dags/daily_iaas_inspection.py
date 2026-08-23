@@ -2,6 +2,7 @@
 
 from datetime import datetime, timedelta
 import os
+import uuid
 
 import requests
 from airflow import DAG
@@ -15,7 +16,24 @@ INTERNAL_TOKEN = os.getenv("AIRFLOW_INTERNAL_TOKEN", "")
 HTTP_TIMEOUT_SECONDS = float(os.getenv("INSPECTION_HTTP_TIMEOUT_SECONDS", "30"))
 DEFAULT_SEED = os.getenv("MOCK_DEFAULT_SEED", "20260823")
 DEFAULT_SCENARIO = os.getenv("MOCK_DEFAULT_SCENARIO", "llm_scheduler_pressure")
-ENVIRONMENT_ID = os.getenv("INSPECTION_ENVIRONMENT_ID", "")
+
+
+def _configured_environment_id():
+    value = os.getenv("INSPECTION_ENVIRONMENT_ID", "").strip()
+    if not value:
+        raise RuntimeError(
+            "INSPECTION_ENVIRONMENT_ID must be configured as a valid UUID"
+        )
+    try:
+        return str(uuid.UUID(value))
+    except (TypeError, ValueError, AttributeError):
+        raise RuntimeError(
+            "INSPECTION_ENVIRONMENT_ID must be configured as a valid UUID"
+        ) from None
+
+
+# Fail at the Airflow DAG import boundary instead of posting an empty UUID.
+ENVIRONMENT_ID = _configured_environment_id()
 
 
 def _post(path, payload):
@@ -34,53 +52,62 @@ def _date(context):
 
 
 def generate_dataset_task(**context):
-    return _post(
+    environment_id = _configured_environment_id()
+    response = _post(
         "datasets/",
         {
-            "environment_id": ENVIRONMENT_ID,
+            "environment_id": environment_id,
             "dataset_date": _date(context),
             "seed": DEFAULT_SEED,
             "scenario": DEFAULT_SCENARIO,
         },
     )
+    return {"dataset_id": response["dataset_id"]}
 
 
 def create_run_task(**context):
+    environment_id = _configured_environment_id()
     dataset = context["ti"].xcom_pull(task_ids="generate_dataset")
-    return _post(
+    response = _post(
         "inspection-runs/",
         {
             "dataset_id": dataset["dataset_id"],
-            "environment_id": ENVIRONMENT_ID,
+            "environment_id": environment_id,
             "run_date": _date(context),
             "dag_run_id": context["run_id"],
         },
     )
+    return {"inspection_run_id": response["inspection_run_id"]}
 
 
 def execute_inspections_task(**context):
     run = context["ti"].xcom_pull(task_ids="create_run")
-    return _post(f"inspection-runs/{run['inspection_run_id']}/execute/", {})
+    _post(f"inspection-runs/{run['inspection_run_id']}/execute/", {})
+    return None
 
 
 def correlate_risks_task(**context):
     run = context["ti"].xcom_pull(task_ids="create_run")
-    return _post(f"inspection-runs/{run['inspection_run_id']}/correlate-risks/", {})
+    _post(f"inspection-runs/{run['inspection_run_id']}/correlate-risks/", {})
+    return None
 
 
 def reverify_pending_risks_task(**context):
     run = context["ti"].xcom_pull(task_ids="create_run")
-    return _post(f"inspection-runs/{run['inspection_run_id']}/reverify/", {})
+    _post(f"inspection-runs/{run['inspection_run_id']}/reverify/", {})
+    return None
 
 
 def build_snapshot_task(**context):
     run = context["ti"].xcom_pull(task_ids="create_run")
-    return _post(f"inspection-runs/{run['inspection_run_id']}/snapshot/", {})
+    _post(f"inspection-runs/{run['inspection_run_id']}/snapshot/", {})
+    return None
 
 
 def complete_run_task(**context):
     run = context["ti"].xcom_pull(task_ids="create_run")
-    return _post(f"inspection-runs/{run['inspection_run_id']}/complete/", {})
+    _post(f"inspection-runs/{run['inspection_run_id']}/complete/", {})
+    return None
 
 
 with DAG(
