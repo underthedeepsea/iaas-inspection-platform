@@ -437,6 +437,54 @@ def test_failed_reverify_with_same_severity_returns_to_persisting():
 
 
 @pytest.mark.django_db
+def test_pre_handle_finding_is_not_correlated_by_post_handle_aggregate_run():
+    from apps.risks.services.correlation import correlate_run
+    from apps.risks.services.lifecycle import mark_handled
+    from apps.risks.services.reverify import reverify_pending_risks
+
+    environment = make_environment()
+    item = make_item()
+    asset = Asset.objects.create(
+        environment=environment,
+        external_key="worker-0",
+        asset_type=Asset.AssetType.HOST,
+        name="worker-0",
+    )
+    first_run, first_item_run = make_run(environment, item, DAY_ONE)
+    make_finding(first_item_run, asset, severity="P2")
+    risk = correlate_run(first_run)[0]
+    mark_handled(risk)
+    pending_history = RiskStatusHistory.objects.filter(
+        risk=risk,
+        to_status=Risk.Status.PENDING_REVERIFY,
+    ).latest("created_at")
+
+    aggregate_finished_at = pending_history.created_at + timedelta(seconds=1)
+    item_finished_at = pending_history.created_at - timedelta(seconds=1)
+    second_run, second_item_run = make_run(
+        environment,
+        item,
+        pending_history.created_at.date(),
+        run_finished_at=aggregate_finished_at,
+        item_finished_at=item_finished_at,
+    )
+    make_finding(second_item_run, asset, severity="P1")
+
+    reverify_pending_risks(second_run)
+
+    risk.refresh_from_db()
+    assert risk.status == Risk.Status.PENDING_REVERIFY
+    assert not RiskObservation.objects.filter(
+        risk=risk,
+        inspection_run=second_run,
+    ).exists()
+    assert not RiskStatusHistory.objects.filter(
+        risk=risk,
+        inspection_run=second_run,
+    ).exists()
+
+
+@pytest.mark.django_db
 def test_reverify_does_not_recover_from_invalid_or_unexecuted_evidence():
     from apps.risks.services.correlation import correlate_run
     from apps.risks.services.lifecycle import mark_handled

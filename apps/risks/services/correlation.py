@@ -175,7 +175,12 @@ def _update_run_risk_count(inspection_run):
     return count
 
 
-def _correlate_run_in_transaction(inspection_run, *, inspection_item_ids=None):
+def _correlate_run_in_transaction(
+    inspection_run,
+    *,
+    inspection_item_ids=None,
+    pending_reverify_cutoffs=None,
+):
     correlated = []
     item_runs_query = InspectionItemRun.objects.filter(
         inspection_run=inspection_run,
@@ -207,6 +212,17 @@ def _correlate_run_in_transaction(inspection_run, *, inspection_item_ids=None):
             grouped[fingerprint].append(finding)
 
         for fingerprint, risk_findings in grouped.items():
+            pending_cutoff = (pending_reverify_cutoffs or {}).get(
+                (inspection_run.environment_id, fingerprint)
+            )
+            if pending_cutoff is not None and (
+                item_run.finished_at is None
+                or item_run.finished_at <= pending_cutoff
+            ):
+                # A Finding emitted by an item run completed before handling
+                # is not evidence for this reverification candidate.  Skip it
+                # before creating an observation or changing the pending risk.
+                continue
             representative = min(
                 risk_findings,
                 key=lambda finding: severity_rank(finding.severity),

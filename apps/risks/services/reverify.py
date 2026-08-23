@@ -66,9 +66,9 @@ def _matching_non_active_finding(risk, item_run, environment, inspection_item):
 def reverify_pending_risks(inspection_run):
     """Reverify pending risks using a later, successful, valid item run.
 
-    Active Findings are correlated first.  A pending risk is recovered only
-    when its same InspectionItem completed validly and emitted no matching
-    Finding at all.
+    Active Findings from an eligible item run are correlated first.  A pending
+    risk is recovered only when its same InspectionItem completed validly and
+    emitted no matching Finding at all.
     """
 
     recovered = []
@@ -100,13 +100,30 @@ def reverify_pending_risks(inspection_run):
                 status=Risk.Status.PENDING_REVERIFY,
             ).values_list("pk", flat=True)
         )
+        pending_reverify_cutoffs = {}
+        pending_risks = Risk.objects.filter(pk__in=pending_risk_ids).only(
+            "environment_id",
+            "fingerprint",
+        )
+        for risk in pending_risks:
+            pending_history = RiskStatusHistory.objects.filter(
+                risk_id=risk.pk,
+                to_status=Risk.Status.PENDING_REVERIFY,
+            ).order_by("-created_at", "-pk").first()
+            if pending_history is not None:
+                pending_reverify_cutoffs[
+                    (risk.environment_id, risk.fingerprint)
+                ] = pending_history.created_at
 
-        # This also handles a failed reverification: an active matching
-        # Finding moves PENDING_REVERIFY to PERSISTING/WORSENED before
-        # missing findings are evaluated below.
+        # Active Findings are correlated only when their item run completed
+        # after the latest pending-handling history for the matching risk.
+        # This also handles a failed reverification: a valid, later active
+        # Finding moves PENDING_REVERIFY to PERSISTING/WORSENED before missing
+        # findings are evaluated below.
         _correlate_run_in_transaction(
             locked_run,
             inspection_item_ids=item_runs.keys(),
+            pending_reverify_cutoffs=pending_reverify_cutoffs,
         )
 
         pending = (

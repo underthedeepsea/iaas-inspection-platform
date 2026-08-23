@@ -94,3 +94,35 @@
 - `DJANGO_SETTINGS_MODULE=config.settings.dev .../pytest -q` — `81 passed`.
 - `DJANGO_SETTINGS_MODULE=config.settings.dev .../python manage.py makemigrations --check --dry-run --verbosity 1` — `No changes detected`.
 - `DJANGO_SETTINGS_MODULE=config.settings.dev .../python manage.py check` — `System check identified no issues (0 silenced)`.
+
+## Fix Round 3 evidence
+
+### RED / GREEN
+
+- RED: the new mixed-timestamp regression failed with `1 failed, 21 deselected`; a Finding from an item run completed before handling was correlated by an aggregate run completed afterward, moving the pending risk to `WORSENED`.
+- GREEN: focused lifecycle suite — `22 passed`.
+- Full suite — `84 passed`.
+
+### Fixes verified
+
+- Reverification now passes the latest `PENDING_REVERIFY` history timestamp into correlation. For a pending risk, an active Finding is eligible for presence correlation only when its own `InspectionItemRun.finished_at` is strictly later than that timestamp; stale findings are skipped before observations or lifecycle transitions are created.
+- Existing valid post-handle active Finding coverage still verifies `PENDING_REVERIFY→PERSISTING` for equal severity and `PENDING_REVERIFY→WORSENED` for increased severity.
+- The mixed pre-handle item/post-handle aggregate case remains `PENDING_REVERIFY` and creates no observation or status history for the candidate run.
+
+### Fix Round 3 commands and results
+
+- `DJANGO_SETTINGS_MODULE=config.settings.dev .../pytest -q tests/domain/test_risk_lifecycle.py -k pre_handle_finding_is_not_correlated_by_post_handle_aggregate_run` — RED: `1 failed, 21 deselected`.
+- `DJANGO_SETTINGS_MODULE=config.settings.dev .../pytest -q tests/domain/test_risk_lifecycle.py` — `22 passed`.
+- `DJANGO_SETTINGS_MODULE=config.settings.dev .../pytest -q` — `84 passed`.
+- `DJANGO_SETTINGS_MODULE=config.settings.dev .../python manage.py makemigrations --check --dry-run --verbosity 1` — `No changes detected`.
+- `DJANGO_SETTINGS_MODULE=config.settings.dev .../python manage.py check` — `System check identified no issues (0 silenced)`.
+- `git diff --check` — passed.
+
+### Fix Round 3 self-review
+
+- The eligibility cutoff is applied inside the same transaction and before `_get_or_create_risk`, `record_observation`, and lifecycle updates; the existing run/risk locks remain in force.
+- The cutoff is keyed by environment and canonical fingerprint, and uses the latest pending-history timestamp, so unrelated risks and later valid item runs retain normal correlation behavior.
+
+### Fix Round 3 concerns
+
+- None beyond the existing intentional behavior that invalid, incomplete, or pre-handle evidence leaves a risk in `PENDING_REVERIFY`.
