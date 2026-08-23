@@ -5,6 +5,8 @@ import sys
 
 from django.conf import settings
 
+from .errors import ReadOnlyCapabilityError
+
 
 class ExecExecutionError(RuntimeError):
     pass
@@ -20,6 +22,8 @@ class ExecExecutor:
         self.allowlist = Path(allowlist or self.project_root / "plugins" / "exec").resolve()
 
     def execute(self, capability_version, payload):
+        if capability_version.capability.read_only is not True:
+            raise ReadOnlyCapabilityError("EXEC capabilities require a read-only capability")
         script = self._script_path(capability_version.script_path)
         try:
             completed = subprocess.run(

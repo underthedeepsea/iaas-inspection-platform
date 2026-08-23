@@ -56,3 +56,24 @@ def test_shadow_resolver_is_not_formally_resolved_but_is_available_to_shadow_run
 
     assert registry.resolve("network.rx_path_pressure") is None
     assert registry.resolve_shadow("network.rx_path_pressure") == shadow
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("disabled_part", ["binding", "item", "capability"])
+def test_resolve_excludes_disabled_bindings_items_and_capabilities(disabled_part):
+    from services.plugin_runtime.registry import CapabilityRegistry
+
+    expected = create_resolver(code_status="CODE_ACTIVE", version_status="ACTIVE")
+    binding = InspectionCapabilityBinding.objects.get(capability_version=expected)
+
+    if disabled_part == "binding":
+        binding.enabled = False
+        binding.save(update_fields=["enabled"])
+    elif disabled_part == "item":
+        binding.inspection_item.enabled = False
+        binding.inspection_item.save(update_fields=["enabled"])
+    else:
+        expected.capability.status = Capability.Status.DISABLED
+        expected.capability.save(update_fields=["status"])
+
+    assert CapabilityRegistry().resolve("network.rx_path_pressure") is None
