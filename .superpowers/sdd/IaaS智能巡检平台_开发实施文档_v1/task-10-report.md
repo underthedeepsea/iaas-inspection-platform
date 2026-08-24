@@ -76,3 +76,16 @@ DONE — Model Gateway contract, strict structured-action validation, Ollama HTT
 ### Fix Round 1 risk
 
 - The documented local `.env.example` values remain the intended runtime configuration; an Ollama provider now fails closed when deployment configuration is absent instead of silently targeting a local daemon. OpenAI-compatible configuration also no longer supplies a timeout/model fallback.
+
+## Fix Round 2 (2026-08-24)
+
+### RED
+
+- Added Ollama and OpenAI-compatible regressions for raw/percent-encoded authority whitespace, control characters, and backslashes, while also adding valid IPv4/IPv6 and ports `1`/`65535` boundary cases. The initial run failed 15 cases: the shared validator accepted all six invalid authority variants, and both providers trusted a response-body model name.
+- Added response fixtures containing `https://user:secret@attacker.internal/v1`; the initial `ModelResponse.model` assertions failed because both providers used `body["model"]`.
+
+### GREEN
+
+- The shared URL validator now rejects forbidden characters in both the configured string and percent-decoded form before parsing or any HTTP call, while preserving valid IPv4/IPv6 authority and port boundaries.
+- Ollama and OpenAI-compatible responses always expose `self.model`; provider response metadata such as `credential_url` is not retained, so `repr(ModelResponse)` contains neither the attacker host nor secret.
+- Focused Task 10 suite: `42 passed in 0.10s`.

@@ -73,7 +73,7 @@ class OpenAICompatibleProvider(ModelGateway):
         usage, token_source = usage_from_payload(body, provider=self.provider_name)
         return ModelResponse(
             action=action,
-            model=str(body.get("model") or self.model),
+            model=self.model,
             provider=self.provider_name,
             usage=usage,
             metadata={"token_source": token_source},

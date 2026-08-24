@@ -84,7 +84,8 @@ def test_ollama_invoke_posts_json_chat_request_from_configuration(monkeypatch):
     response = Mock()
     response.raise_for_status.return_value = None
     response.json.return_value = {
-        "model": "qwen3:8b",
+        "model": "response-model",
+        "credential_url": "https://user:secret@attacker.internal/v1",
         "message": {"content": json.dumps(_final_payload())},
         "prompt_eval_count": 12,
         "eval_count": 6,
@@ -114,6 +115,32 @@ def test_ollama_invoke_posts_json_chat_request_from_configuration(monkeypatch):
         },
         timeout=17.0,
     )
+    assert "attacker.internal" not in repr(result)
+    assert "secret" not in repr(result)
+
+
+def test_ollama_response_model_is_always_the_configured_model(monkeypatch):
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://ollama.internal:11434")
+    monkeypatch.setenv("OLLAMA_MODEL", "configured-model")
+    monkeypatch.setenv("LLM_TIMEOUT_SECONDS", "17")
+    response = Mock()
+    response.raise_for_status.return_value = None
+    response.json.return_value = {
+        "model": "response-model",
+        "credential_url": "https://user:secret@attacker.internal/v1",
+        "message": {"content": json.dumps(_final_payload())},
+    }
+    post = Mock(return_value=response)
+    monkeypatch.setattr("httpx.post", post)
+
+    from services.model_gateway.base import ModelRequest
+    from services.model_gateway.ollama import OllamaProvider
+
+    result = OllamaProvider().invoke(ModelRequest(messages=[]))
+
+    assert result.model == "configured-model"
+    assert "attacker.internal" not in repr(result)
+    assert "secret" not in repr(result)
 
 
 def test_ollama_request_cannot_override_configured_model_or_base_url(monkeypatch):
@@ -274,7 +301,8 @@ def test_openai_compatible_provider_uses_configured_chat_endpoint(monkeypatch):
     response = Mock()
     response.raise_for_status.return_value = None
     response.json.return_value = {
-        "model": "company-model",
+        "model": "response-model",
+        "credential_url": "https://user:secret@attacker.internal/v1",
         "choices": [{"message": {"content": json.dumps(_final_payload())}}],
         "usage": {"prompt_tokens": 2, "completion_tokens": 3, "total_tokens": 5},
     }
@@ -289,7 +317,10 @@ def test_openai_compatible_provider_uses_configured_chat_endpoint(monkeypatch):
     )
 
     assert result.action.action == "FINAL"
+    assert result.model == "company-model"
     assert result.usage["total_tokens"] == 5
+    assert "attacker.internal" not in repr(result)
+    assert "secret" not in repr(result)
     post.assert_called_once_with(
         "https://model.internal/v1/chat/completions",
         headers={"Authorization": "Bearer secret-key"},
@@ -300,6 +331,61 @@ def test_openai_compatible_provider_uses_configured_chat_endpoint(monkeypatch):
         },
         timeout=120.0,
     )
+
+
+@pytest.mark.parametrize(
+    ("provider", "base_url_env", "model_env", "model"),
+    [
+        ("ollama", "OLLAMA_BASE_URL", "OLLAMA_MODEL", "ollama-model"),
+        ("openai", "OPENAI_BASE_URL", "OPENAI_MODEL", "openai-model"),
+    ],
+)
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "http://bad host.internal:11434",
+        "http://bad\thost.internal:11434",
+        "http://bad\nhost.internal:11434",
+        "http://bad\\host.internal:11434",
+        "http://bad%20host.internal:11434",
+        "http://bad%5Chost.internal:11434",
+    ],
+)
+def test_provider_rejects_invalid_authority_characters_before_http(
+    monkeypatch, provider, base_url_env, model_env, model, base_url
+):
+    monkeypatch.setenv(base_url_env, base_url)
+    monkeypatch.setenv(model_env, model)
+    monkeypatch.setenv("LLM_TIMEOUT_SECONDS", "17")
+    if provider == "openai":
+        monkeypatch.setenv("OPENAI_API_KEY", "secret-key")
+    http_client = Mock()
+
+    from services.model_gateway.base import ModelGatewayConfigurationError
+    from services.model_gateway.ollama import OllamaProvider
+    from services.model_gateway.openai_compatible import OpenAICompatibleProvider
+
+    provider_class = OllamaProvider if provider == "ollama" else OpenAICompatibleProvider
+    with pytest.raises(ModelGatewayConfigurationError) as raised:
+        provider_class(http_client=http_client)
+
+    assert raised.value.code == "MODEL_GATEWAY_CONFIGURATION_INVALID"
+    assert http_client.mock_calls == []
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "http://127.0.0.1:1",
+        "http://127.0.0.1:65535",
+        "http://[::1]:1",
+        "http://[2001:db8::1]:65535",
+    ],
+)
+def test_normalize_base_url_accepts_valid_ip_and_port_boundaries(base_url):
+    from services.model_gateway.base import normalize_base_url
+
+    assert normalize_base_url(base_url) == base_url
 
 
 def test_model_response_has_no_raw_and_metadata_is_a_strict_safe_allowlist():

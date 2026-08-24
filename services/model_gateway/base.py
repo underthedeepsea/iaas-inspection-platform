@@ -14,7 +14,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 
 class ModelGatewayError(RuntimeError):
@@ -275,7 +275,9 @@ def normalize_base_url(value: Any) -> str:
     base_url = value
     if not isinstance(base_url, str) or not base_url.strip():
         raise ModelGatewayConfigurationError("model base URL configuration is invalid")
-    base_url = base_url.strip().rstrip("/")
+    if _has_forbidden_url_characters(base_url):
+        raise ModelGatewayConfigurationError("model base URL configuration is invalid")
+    base_url = base_url.rstrip("/")
     try:
         parsed = urlparse(base_url)
         port = parsed.port
@@ -293,6 +295,20 @@ def normalize_base_url(value: Any) -> str:
     ):
         raise ModelGatewayConfigurationError("model base URL configuration is invalid")
     return base_url
+
+
+def _has_forbidden_url_characters(value: str) -> bool:
+    try:
+        decoded = unquote(value)
+    except (TypeError, ValueError):
+        return True
+    return any(
+        character == "\\"
+        or character.isspace()
+        or ord(character) < 0x20
+        or ord(character) == 0x7F
+        for character in f"{value}{decoded}"
+    )
 
 
 def configured_model(name: str) -> str:
