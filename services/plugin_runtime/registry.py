@@ -2,6 +2,7 @@ import re
 import uuid
 
 from django.db import transaction
+from django.db.models import F, Q
 from jsonschema import SchemaError, ValidationError, validate
 
 from apps.capabilities.models import Capability, CapabilityVersion, InspectionCapabilityBinding
@@ -35,7 +36,7 @@ class CapabilityRegistry:
         return self._resolve(
             claim,
             version_status=CapabilityVersion.Status.ACTIVE,
-            code_status=InspectionItem.CodeStatus.CODE_ACTIVE,
+            formal=True,
         )
 
     def resolve_capability(self, capability_id, *, claim=None):
@@ -133,26 +134,31 @@ class CapabilityRegistry:
         return self._resolve(
             claim,
             version_status=CapabilityVersion.Status.SHADOW,
-            code_status=InspectionItem.CodeStatus.SHADOW,
+            formal=False,
         )
 
     @staticmethod
-    def _resolve(claim, *, version_status, code_status):
-        binding = (
-            InspectionCapabilityBinding.objects.select_related("capability_version")
-            .filter(
-                claim=claim,
-                role=InspectionCapabilityBinding.Role.RESOLVER,
-                enabled=True,
-                inspection_item__enabled=True,
-                inspection_item__code_status=code_status,
-                capability_version__status=version_status,
-                capability_version__capability__status=Capability.Status.ACTIVE,
-                capability_version__resolves__contains=[claim],
-            )
-            .order_by("priority", "created_at")
-            .first()
+    def _resolve(claim, *, version_status, formal):
+        bindings = InspectionCapabilityBinding.objects.select_related("capability_version").filter(
+            claim=claim,
+            role=InspectionCapabilityBinding.Role.RESOLVER,
+            enabled=True,
+            inspection_item__enabled=True,
+            capability_version__status=version_status,
+            capability_version__capability__status=Capability.Status.ACTIVE,
+            capability_version__resolves__contains=[claim],
         )
+        if formal:
+            bindings = bindings.filter(
+                capability_version__capability__current_version_id=F("capability_version_id"),
+            ).filter(
+                Q(inspection_item__code_status=InspectionItem.CodeStatus.CODE_ACTIVE)
+                | Q(
+                    inspection_item__code_status=InspectionItem.CodeStatus.PARTIAL_CODE,
+                    inspection_item__resolved_claims__contains=[claim],
+                )
+            )
+        binding = bindings.order_by("priority", "created_at").first()
         return binding.capability_version if binding else None
 
 

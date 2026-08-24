@@ -7,6 +7,8 @@ import re
 from django.db import transaction
 from django.utils import timezone
 
+from apps.audits.services import record_event
+from apps.core.models import Environment
 from apps.inspections.models import InspectionItem
 from apps.investigations.models import HumanFeedback
 from apps.learning.models import CodeizationTask, Experience, ExperienceEvidence
@@ -24,11 +26,12 @@ def create_experience_from_feedback(feedback, *, actor=None, evidence=None, evid
     """Create the one DISCOVERED Experience allowed by a root-cause feedback."""
 
     feedback = _model(feedback, HumanFeedback, "feedback")
+    if type(feedback.create_experience) is not bool:
+        raise ExperienceError("create_experience must be a boolean")
     if feedback.feedback_type != HumanFeedback.FeedbackType.CONFIRMED_ROOT_CAUSE:
         raise ExperienceError("only confirmed root-cause feedback can create an experience")
     if not feedback.create_experience:
         raise ExperienceError("feedback did not opt in to experience creation")
-    actor = actor or feedback.user
     _require_actor(actor)
     if evidence is not None and evidences is not None:
         raise ExperienceError("supply evidence or evidences, not both")
@@ -55,6 +58,19 @@ def create_experience_from_feedback(feedback, *, actor=None, evidence=None, evid
             or experience.source_investigation_id != feedback.investigation_id
         ):
             raise ExperienceError("feedback identity is already bound to another experience")
+        if _created:
+            record_event(
+                actor=actor,
+                environment=feedback.environment,
+                event_type="experience.created",
+                object_type="Experience",
+                object_id=experience.pk,
+                payload={
+                    "from_status": Experience.Status.DISCOVERED,
+                    "to_status": Experience.Status.DISCOVERED,
+                    "target_claim": experience.target_claim,
+                },
+            )
         for evidence_row in evidences:
             ExperienceEvidence.objects.get_or_create(
                 experience=experience,
@@ -99,6 +115,18 @@ def confirm_experience(
         locked.target_claim = target_claim
         locked.confirmed_at = timezone.now()
         locked.save(update_fields=["status", "human_summary", "target_claim", "confirmed_at", "updated_at"])
+        record_event(
+            actor=actor,
+            environment=_experience_environment(locked),
+            event_type="experience.confirmed",
+            object_type="Experience",
+            object_id=locked.pk,
+            payload={
+                "from_status": Experience.Status.DISCOVERED,
+                "to_status": locked.status,
+                "target_claim": locked.target_claim,
+            },
+        )
         return locked
 
 
@@ -171,6 +199,21 @@ def create_codeization_task(
             owner=owner or getattr(actor, "username", ""),
             historical_support=locked_experience.support_count,
             precision=locked_experience.precision,
+        )
+        record_event(
+            actor=actor,
+            environment=_experience_environment(locked_experience),
+            event_type="codeization_task.created",
+            object_type="CodeizationTask",
+            object_id=task.pk,
+            payload={
+                "from_status": CodeizationTask.Status.CODE_PENDING,
+                "to_status": CodeizationTask.Status.CODE_PENDING,
+                "target_claim": task.target_claim,
+                "target_capability_id": task.target_capability_id,
+                "task_type": task.task_type,
+                "implementation_type": task.implementation_type,
+            },
         )
     return task
 
@@ -249,6 +292,15 @@ def _validate_item_context(experience, inspection_item):
     scope_item = (experience.applicable_scope or {}).get("inspection_item_id")
     if scope_item and str(inspection_item.pk) != str(scope_item):
         raise ExperienceError("inspection item does not belong to the experience context")
+
+
+def _experience_environment(experience):
+    if experience.source_risk_id:
+        return experience.source_risk.environment
+    environment_id = (experience.applicable_scope or {}).get("environment_id")
+    if environment_id:
+        return Environment.objects.filter(pk=environment_id).first()
+    return None
 
 
 def _evidence_environment(evidence):

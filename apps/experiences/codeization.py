@@ -3,18 +3,23 @@
 from __future__ import annotations
 
 import re
+from decimal import Decimal
 
 from django.db import transaction
 from django.utils import timezone
 
+from apps.audits.services import record_event
 from apps.capabilities.models import Capability, CapabilityVersion, InspectionCapabilityBinding
 from apps.inspections.models import InspectionItem
 from apps.learning.models import CodeizationTask, Experience
 
-from .services import ExperienceError, _model, _require_actor, canonical_claim
+from .services import ExperienceError, _experience_environment, _model, _require_actor, canonical_claim
 
 
 _VERSION_RE = re.compile(r"\A\d+\.\d+\.\d+\Z")
+MIN_SHADOW_CASES = 3
+MIN_SHADOW_PRECISION = Decimal("0.8")
+MAX_SHADOW_FALSE_POSITIVES = 0
 
 
 def move_to_shadow(
@@ -49,18 +54,17 @@ def move_to_shadow(
         if item.enabled is not True:
             raise ExperienceError("inspection item is disabled")
         capability, version_row = _locked_capability_version(task, capability_version)
-        _validate_candidate(task, capability, version_row)
         if task.status == CodeizationTask.Status.SHADOW:
             if version_row.status != CapabilityVersion.Status.SHADOW:
                 raise ExperienceError("shadow task must have a shadow capability version")
             return task
+        _validate_candidate(task, capability, version_row)
         if task.status != CodeizationTask.Status.CODE_PENDING:
             raise ExperienceError("only CODE_PENDING tasks can enter SHADOW")
         if experience.status != Experience.Status.CODE_PENDING:
             raise ExperienceError("experience must be CODE_PENDING before SHADOW")
         version_row.status = CapabilityVersion.Status.SHADOW
         version_row.save(update_fields=["status"])
-        _disable_resolvers(item, task.target_claim)
         _ensure_binding(item, version_row, task.target_claim, enabled=True)
         task.status = CodeizationTask.Status.SHADOW
         task.started_at = task.started_at or timezone.now()
@@ -68,9 +72,38 @@ def move_to_shadow(
         experience.status = Experience.Status.SHADOW
         experience.code_status = Experience.CodeStatus.SHADOW
         experience.save(update_fields=["status", "code_status", "updated_at"])
-        item.code_status = InspectionItem.CodeStatus.SHADOW
-        item.resolved_claims = [claim for claim in (item.resolved_claims or []) if claim != task.target_claim]
-        item.save(update_fields=["code_status", "resolved_claims", "updated_at"])
+        if item.code_status in {
+            InspectionItem.CodeStatus.NOT_CODED,
+            InspectionItem.CodeStatus.CODE_PENDING,
+        }:
+            item.code_status = InspectionItem.CodeStatus.SHADOW
+            item.save(update_fields=["code_status", "updated_at"])
+        record_event(
+            actor=actor,
+            environment=_experience_environment(experience),
+            event_type="codeization_task.shadow",
+            object_type="CodeizationTask",
+            object_id=task.pk,
+            payload={
+                "from_status": CodeizationTask.Status.CODE_PENDING,
+                "to_status": task.status,
+                "target_claim": task.target_claim,
+                "target_capability_id": task.target_capability_id,
+                "version": version_row.version,
+            },
+        )
+        record_event(
+            actor=actor,
+            environment=_experience_environment(experience),
+            event_type="capability_version.shadow",
+            object_type="CapabilityVersion",
+            object_id=version_row.pk,
+            payload={
+                "from_status": CapabilityVersion.Status.CANDIDATE,
+                "to_status": version_row.status,
+                "version": version_row.version,
+            },
+        )
         return task
 
 
@@ -109,7 +142,10 @@ def activate_codeization_task(
         _validate_version_identity(task, capability, version_row)
         _validate_read_only(capability, version_row)
         if task.status == CodeizationTask.Status.CODE_ACTIVE:
-            if version_row.status == CapabilityVersion.Status.ACTIVE and capability.current_version_id == version_row.pk:
+            if (
+                version_row.status == CapabilityVersion.Status.ACTIVE
+                and capability.current_version_id == version_row.pk
+            ):
                 return task
             raise ExperienceError("active task cannot be rebound to another version")
         if task.status != CodeizationTask.Status.SHADOW:
@@ -118,13 +154,30 @@ def activate_codeization_task(
             raise ExperienceError("experience must be SHADOW before code activation")
         if version_row.status != CapabilityVersion.Status.SHADOW:
             raise ExperienceError("capability version must pass through SHADOW before ACTIVE")
-
+        _require_shadow_thresholds(task)
+        if capability.current_version_id:
+            CapabilityVersion.objects.select_for_update().get(
+                pk=capability.current_version_id,
+            )
         old_versions = list(
             CapabilityVersion.objects.select_for_update().filter(
                 capability=capability,
                 status=CapabilityVersion.Status.ACTIVE,
             ).exclude(pk=version_row.pk)
         )
+        active_bindings = list(
+            InspectionCapabilityBinding.objects.select_for_update(of=("self",)).filter(
+                capability_version__capability=capability,
+                capability_version__status=CapabilityVersion.Status.ACTIVE,
+                role=InspectionCapabilityBinding.Role.RESOLVER,
+                enabled=True,
+            )
+        )
+        if any(
+            binding.inspection_item_id != item.pk or binding.claim != task.target_claim
+            for binding in active_bindings
+        ):
+            raise ExperienceError("active capability is still required by another resolver")
         for old_version in old_versions:
             old_version.status = CapabilityVersion.Status.RETIRED
             old_version.retired_at = timezone.now()
@@ -141,13 +194,13 @@ def activate_codeization_task(
 
         resolved = list(dict.fromkeys([*(item.resolved_claims or []), task.target_claim]))
         item.resolved_claims = resolved
-        item.code_status = InspectionItem.CodeStatus.CODE_ACTIVE
+        item.code_status = aggregate_code_status(item, resolved_claims=resolved)
         required = list(dict.fromkeys(item.required_claims or []))
         covered = len(set(required) & set(resolved))
         item.code_coverage_percent = 100 if not required else covered * 100 / len(required)
         item.execution_mode = (
             InspectionItem.ExecutionMode.CODE_ONLY
-            if not required or covered == len(required)
+            if item.code_status == InspectionItem.CodeStatus.CODE_ACTIVE
             else InspectionItem.ExecutionMode.CODE_FIRST_AI_FALLBACK
         )
         item.save(
@@ -165,6 +218,32 @@ def activate_codeization_task(
         experience.status = Experience.Status.CODE_ACTIVE
         experience.code_status = Experience.CodeStatus.CODE_ACTIVE
         experience.save(update_fields=["status", "code_status", "updated_at"])
+        record_event(
+            actor=actor,
+            environment=_experience_environment(experience),
+            event_type="codeization_task.active",
+            object_type="CodeizationTask",
+            object_id=task.pk,
+            payload={
+                "from_status": CodeizationTask.Status.SHADOW,
+                "to_status": task.status,
+                "target_claim": task.target_claim,
+                "target_capability_id": task.target_capability_id,
+                "version": version_row.version,
+            },
+        )
+        record_event(
+            actor=actor,
+            environment=_experience_environment(experience),
+            event_type="capability_version.active",
+            object_type="CapabilityVersion",
+            object_id=version_row.pk,
+            payload={
+                "from_status": CapabilityVersion.Status.SHADOW,
+                "to_status": version_row.status,
+                "version": version_row.version,
+            },
+        )
         return task
 
 
@@ -283,6 +362,31 @@ def _locked_capability_version(task, supplied):
     return capability, version_row
 
 
+def aggregate_code_status(item, *, resolved_claims=None):
+    """Derive aggregate item code state from required and resolved claims."""
+
+    required = list(dict.fromkeys(item.required_claims or []))
+    resolved = set(resolved_claims if resolved_claims is not None else item.resolved_claims or [])
+    covered = resolved.intersection(required)
+    if not required or len(covered) == len(required):
+        return InspectionItem.CodeStatus.CODE_ACTIVE
+    if covered:
+        return InspectionItem.CodeStatus.PARTIAL_CODE
+    if item.code_status == InspectionItem.CodeStatus.SHADOW:
+        return InspectionItem.CodeStatus.SHADOW
+    return InspectionItem.CodeStatus.NOT_CODED
+
+
+def _require_shadow_thresholds(task):
+    if (
+        task.shadow_cases < MIN_SHADOW_CASES
+        or task.precision is None
+        or task.precision < MIN_SHADOW_PRECISION
+        or task.critical_false_positive != MAX_SHADOW_FALSE_POSITIVES
+    ):
+        raise ExperienceError("shadow validation thresholds are not met")
+
+
 def _validate_candidate(task, capability, version):
     _validate_version_identity(task, capability, version)
     _validate_read_only(capability, version)
@@ -345,6 +449,9 @@ activate_capability_version = activate_codeization_task
 
 
 __all__ = [
+    "MAX_SHADOW_FALSE_POSITIVES",
+    "MIN_SHADOW_CASES",
+    "MIN_SHADOW_PRECISION",
     "activate_capability",
     "activate_codeization_task",
     "activate_task",
@@ -352,6 +459,7 @@ __all__ = [
     "promote_to_shadow",
     "promote_capability_version",
     "activate_capability_version",
+    "aggregate_code_status",
     "transition_task",
     "transition_codeization_task",
 ]

@@ -2,59 +2,62 @@
 
 ## Scope
 
-Implemented the Task 13 domain services without adding duplicate models or a
-new model app. `HumanFeedback` remains in `apps.investigations`, while
-`Experience`, `ExperienceEvidence`, `CodeizationTask`, and all Capability
-models remain the existing persisted models.
+Task 13 uses the existing `HumanFeedback`, `Experience`, `ExperienceEvidence`,
+`CodeizationTask`, `InspectionItem`, Capability, and binding models. It adds
+domain services only; no duplicate model app and no source-code generation or
+execution were introduced.
 
-## RED / GREEN evidence
+## Fix Round 1 RED / GREEN evidence
 
-The focused tests were written before the new service packages existed. The
-first database-enabled run failed as expected with six `ModuleNotFoundError`
-failures for `apps.feedback` / `apps.experiences`.
-
-After the minimal implementation and fixes, the focused suite is green:
+The reviewer regression tests were added before the corresponding fixes. The
+first database-enabled Fix Round 1 run was RED with 9 failures (old resolver
+retirement/item downgrade, partial/current Registry lookup, shared replacement,
+thresholds, retry ordering, actor/boolean validation, audit writes, and
+concurrent retry). The focused suite is now GREEN:
 
 ```text
 DJANGO_SETTINGS_MODULE=config.settings.dev \
   /Users/lars.li/Documents/AI-inspect/.venv-web/bin/python -m pytest -q \
-  tests/domain/test_feedback_experience.py
-......                                                                   [100%]
-6 passed in 1.35s
+  tests/domain/test_feedback_experience.py tests/services/test_capability_registry.py
+25 passed in 2.09s
 ```
 
-The initial sandboxed attempt could not connect to local PostgreSQL
-(`Operation not permitted`); the RED run above used the approved local
-database connection and proves the intended missing-package failure.
+Additional RED/GREEN regression checks covered the `applicable_scope` guard,
+strict persisted `create_experience` typing, and audit transition payloads.
 
 ## Implementation
 
-- `apps/feedback/services.py`: explicit-actor feedback persistence, enum and
-  rating validation, environment/risk/investigation/conversation/message/
-  evidence context consistency, HELPFUL-only persistence, and opt-in
-  `CONFIRMED_ROOT_CAUSE` Experience creation.
-- `apps/experiences/services.py`: stable `feedback:<feedback UUID>` Experience
-  identity, idempotent `DISCOVERED` creation, evidence links, locked
-  confirmation, canonical target claims, and `CODE_PENDING` task creation
-  after confirmation.
+- `apps/feedback/services.py`: explicit authenticated actor, exact boolean
+  validation, context/environment consistency, HELPFUL-only Experience
+  behavior, and transactional feedback audit plus opt-in root-cause
+  Experience creation.
+- `apps/experiences/services.py`: explicit-actor/idempotent conversion,
+  locked confirmation and task creation, canonical claims, scope validation,
+  evidence links, and same-transaction audit events.
 - `apps/experiences/codeization.py`: row-locked
-  `CODE_PENDING -> SHADOW -> CODE_ACTIVE` transitions, candidate-to-SHADOW and
-  SHADOW-to-ACTIVE CapabilityVersion gates, read-only/claim/version checks,
-  resolver binding management, current-version replacement, InspectionItem
-  code status/coverage/resolved claims, and terminal task/Experience updates.
-- `tests/domain/test_feedback_experience.py`: focused domain coverage for
-  HELPFUL, idempotent Experience creation, confirmation/task separation,
-  state transitions, registry resolution, cross-environment rejection, and
-  illegal backtracking/direct activation.
+  `CODE_PENDING -> SHADOW -> CODE_ACTIVE` transitions, candidate/version
+  identity and read-only checks, SHADOW retry idempotency before candidate
+  validation, aggregate item status derivation, shared-capability fail-closed
+  replacement, and transition audits. Shadow activation thresholds are the
+  project constants `shadow_cases >= 3`, `precision >= 0.8`, and
+  `critical_false_positive == 0`; a new version cannot skip SHADOW.
+- `services/plugin_runtime/registry.py`: formal resolver lookup requires an
+  enabled binding, enabled item, ACTIVE capability version equal to the exact
+  `Capability.current_version`, and covered claim eligibility for partial
+  items. Shadow lookup does not require aggregate item status SHADOW.
+- `apps/audits/services.py`: bounded non-sensitive audit payload boundary.
+- Tests cover old-resolver survival, partial claims, shared replacement and
+  rollback, threshold boundaries, idempotent/concurrent SHADOW retry, actor
+  and boolean guards, context consistency, and audit rows.
 
-No source code is generated or executed by codeization. REST/API/auth and
-platform-admin authorization remain Task 14 scope.
+REST/API/auth remains Task 14 scope. Services accept the explicit actor and do
+not generate or execute source code.
 
 ## Verification
 
 ```text
 DJANGO_SETTINGS_MODULE=config.settings.dev /Users/lars.li/Documents/AI-inspect/.venv-web/bin/python -m pytest -q
-214 passed in 14.34s
+225 passed in 16.09s
 
 DJANGO_SETTINGS_MODULE=config.settings.dev /Users/lars.li/Documents/AI-inspect/.venv-web/bin/python manage.py check
 System check identified no issues (0 silenced).
@@ -66,12 +69,12 @@ No changes detected
 git diff --check
 ```
 
-No migration is required: this task only adds service packages and tests.
+No migration is required: this round changes service code, tests, fixtures,
+and the report only.
 
-## Concerns
+## Risks / follow-up
 
-- The existing models do not have a dedicated confirmation-actor or
-  codeization-actor field; feedback preserves the authenticated user and task
-  owner preserves the actor username for later audit integration.
-- The services intentionally do not expose REST views or authorization policy;
-  those belong to Task 14.
+- The existing models have no dedicated transition-actor columns; audit rows
+  preserve the authenticated actor, environment, object identity, and safe
+  transition metadata.
+- REST authorization and API serializers remain Task 14 responsibilities.

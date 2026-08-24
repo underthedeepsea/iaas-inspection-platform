@@ -84,6 +84,8 @@ def register_resolver(
         status=version_status,
         resolves=[claim],
     )
+    capability.current_version = version
+    capability.save(update_fields=["current_version"])
     InspectionCapabilityBinding.objects.create(
         inspection_item=resolver_item,
         capability_version=version,

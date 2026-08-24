@@ -29,6 +29,8 @@ def create_resolver(*, code_status, version_status):
         status=version_status,
         resolves=["network.rx_path_pressure"],
     )
+    capability.current_version = version
+    capability.save(update_fields=["current_version"])
     InspectionCapabilityBinding.objects.create(
         inspection_item=create_item(code_status),
         capability_version=version,

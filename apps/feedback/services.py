@@ -6,6 +6,7 @@ from collections.abc import Iterable
 
 from django.db import transaction
 
+from apps.audits.services import record_event
 from apps.core.models import Environment
 from apps.investigations.models import (
     Conversation,
@@ -52,6 +53,8 @@ def create_feedback(
         raise FeedbackError("rating must be an integer from 1 to 5")
     if not isinstance(comment, str) or not isinstance(confirmed_conclusion, str):
         raise FeedbackError("comment and confirmed_conclusion must be strings")
+    if type(create_experience) is not bool:
+        raise FeedbackError("create_experience must be a boolean")
     if correction is None:
         correction = {}
     if not isinstance(correction, dict):
@@ -122,7 +125,18 @@ def create_feedback(
             comment=comment.strip(),
             confirmed_conclusion=confirmed_conclusion.strip(),
             correction=correction,
-            create_experience=bool(create_experience),
+            create_experience=create_experience,
+        )
+        record_event(
+            actor=actor,
+            environment=environment,
+            event_type="feedback.created",
+            object_type="HumanFeedback",
+            object_id=feedback.pk,
+            payload={
+                "feedback_type": feedback.feedback_type,
+                "create_experience": feedback.create_experience,
+            },
         )
         if (
             feedback_type == HumanFeedback.FeedbackType.CONFIRMED_ROOT_CAUSE
