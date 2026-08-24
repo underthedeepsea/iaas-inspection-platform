@@ -171,6 +171,70 @@ git diff --check
   atomic authorization and dispatch. Injected registries must expose the same
   atomic operation; otherwise the graph fails closed with no backend dispatch.
 
+## Fix Round 2 — reviewer hardening
+
+### RED / GREEN
+
+- Added regression coverage before production changes for input-budget
+  recursion configuration, strict atomic dispatch results, bounded supplied
+  messages, terminal budget history, and direct Action validation.
+- The initial Fix Round 2 focused run was RED: 25 tests ran with 6 expected
+  failures. The explicit insufficient-recursion-limit regression was then
+  added and independently observed RED before its structured-failure guard
+  was implemented.
+- Final focused graph suite is GREEN: 26 passed.
+
+### Contract decisions
+
+- A non-empty caller config without recursion_limit receives the current
+  invocation's effective budget-derived limit, not the factory default.
+  Explicit limits below that safe minimum fail closed as a stable
+  UNRESOLVED/RECURSION_LIMIT_TOO_LOW result; no LangGraph recursion exception
+  escapes and no gateway/tool call starts.
+- Atomic registry execution must return exactly (version, raw_result), with
+  non-null version. The graph always re-runs capability/claim/schema checks
+  and validates the returned version output schema before Evidence.
+- Every model request includes the fixed protocol/read-only system message,
+  compressed investigation context, and a deterministic whole-packet
+  MAX_CONTEXT_BYTES ceiling. Supplied message history contributes role
+  metadata only; raw log contents are never passed through.
+- A selected/pending call encountered after a hard budget is converted to
+  REJECTED/BUDGET_EXHAUSTED history before the terminal result. A tool selected
+  during the final allowed round remains executable; the next round is
+  stopped by the existing round gate.
+- Direct FinalAction/CallToolAction responses are round-tripped through
+  parse_action(action.to_dict()); malformed dataclass actions become stable
+  FAILED/STRUCTURED_OUTPUT_INVALID results.
+
+### Fix Round 2 verification
+
+~~~text
+DJANGO_SETTINGS_MODULE=config.settings.dev PYTHONPATH=. \
+  .venv-web/bin/pytest -q tests/services/test_investigation_graph.py
+26 passed
+
+DJANGO_SETTINGS_MODULE=config.settings.dev PYTHONPATH=. \
+  .venv-web/bin/pytest -q tests/services/test_investigation_graph.py \
+  tests/services/test_model_gateway.py tests/services/test_plugin_security.py
+95 passed
+
+DJANGO_SETTINGS_MODULE=config.settings.dev PYTHONPATH=. \
+  .venv-web/bin/pytest -q
+186 passed
+
+DJANGO_SETTINGS_MODULE=config.settings.dev PYTHONPATH=. \
+  .venv-web/bin/python manage.py check
+System check identified no issues (0 silenced).
+
+DJANGO_SETTINGS_MODULE=config.settings.dev PYTHONPATH=. \
+  .venv-web/bin/python manage.py makemigrations --check --dry-run
+No changes detected
+
+python3 -m compileall -q services \
+  tests/services/test_investigation_graph.py tests/services/test_capability_registry.py
+git diff --check
+~~~
+
 ## Files
 
 - `services/investigation_graph/state.py`

@@ -15,6 +15,7 @@ from services.model_gateway.base import (
     CallToolAction,
     FinalAction,
     ModelRequest,
+    StructuredOutputInvalidError,
     parse_action,
 )
 from services.plugin_runtime.executor import ExecutionOrigin
@@ -55,6 +56,15 @@ class _ToolBoundaryError(RuntimeError):
     def __init__(self, code: str):
         self.code = code
         super().__init__(code)
+
+
+_PROTOCOL_SYSTEM_MESSAGE = (
+    "Return exactly one documented FINAL or CALL_TOOL JSON action. "
+    "Tool calls are read-only and may use only the supplied investigation context."
+)
+_PROMPT_CONTEXT_BYTES = 1024
+_PROMPT_EVIDENCE_BYTES = 512
+_PROMPT_HISTORY_BYTES = 512
 
 
 def build_context(state: Mapping[str, Any]) -> dict[str, Any]:
@@ -263,15 +273,15 @@ def execute_readonly_tool(
             executor=executor,
             origin=ExecutionOrigin.LLM,
         )
-        if isinstance(execution, tuple) and len(execution) == 2:
-            version, raw_result = execution
-        else:
-            version, raw_result = None, execution
-        if version is not None:
-            reason = _validate_capability(version, capability_id, arguments, claim=claim)
-            if reason is not None:
-                raise _ToolBoundaryError("CAPABILITY_REJECTED")
-        output_schema = getattr(version, "output_schema", {})
+        if not isinstance(execution, tuple) or len(execution) != 2:
+            raise _ToolBoundaryError("ATOMIC_RESULT_INVALID")
+        version, raw_result = execution
+        if version is None:
+            raise _ToolBoundaryError("ATOMIC_RESULT_INVALID")
+        reason = _validate_capability(version, capability_id, arguments, claim=claim)
+        if reason is not None:
+            raise _ToolBoundaryError("CAPABILITY_REJECTED")
+        output_schema = getattr(version, "output_schema", None)
         _validate_schema_instance(raw_result, output_schema, "output")
         compact = _bounded_json(
             _compact_output(raw_result, allowed_keys=_public_output_keys(output_schema)),
@@ -450,47 +460,89 @@ def _validate_schema_instance(value: Any, schema: Any, label: str) -> None:
 
 def _response_action(response: Any):
     if isinstance(response, (FinalAction, CallToolAction)):
-        return response
+        return _round_trip_action(response)
     if isinstance(response, Mapping):
         return parse_action(response)
     action = getattr(response, "action", None)
     if isinstance(action, (FinalAction, CallToolAction)):
-        return action
+        return _round_trip_action(action)
     if isinstance(action, Mapping):
         return parse_action(action)
     content = getattr(response, "content", None)
+    if isinstance(content, (FinalAction, CallToolAction)):
+        return _round_trip_action(content)
     if content is not None:
         return parse_action(content)
     return parse_action(response)
 
 
+def _round_trip_action(action: FinalAction | CallToolAction):
+    try:
+        payload = action.to_dict()
+    except Exception as exc:
+        raise StructuredOutputInvalidError("structured model action is invalid") from exc
+    return parse_action(payload)
+
+
 def _request_messages(state: Mapping[str, Any]) -> list[dict[str, Any]]:
-    supplied = state.get("messages")
-    if isinstance(supplied, list) and supplied:
-        return [
-            {"role": _safe_text(item.get("role"))[:32], "content": _safe_text(item.get("content"))[:4000]}
-            for item in supplied
-            if isinstance(item, Mapping)
-        ]
-    context = _safe_mapping(state.get("context"))
-    evidence = _safe_evidence_list(state.get("evidence"))
+    context = _bounded_json(
+        _safe_mapping(state.get("context")),
+        _PROMPT_CONTEXT_BYTES,
+        protected={"missing_claim", "budgets"},
+    )
+    evidence = _bounded_json(
+        _safe_evidence_list(state.get("evidence")),
+        _PROMPT_EVIDENCE_BYTES,
+    )
+    history = _safe_messages(state.get("messages"))
+    history = _bounded_json(
+        [{"role": item["role"]} for item in history],
+        _PROMPT_HISTORY_BYTES,
+    )
     body = {
-        "question": _safe_text(state.get("question"))[:4000],
+        "question": _safe_text(state.get("question"))[:512],
         "context": context,
         "evidence": evidence,
+        "history": history,
         "constraints": {
             "read_only_only": True,
             "max_rounds": _positive_int(state.get("max_rounds"), 3),
             "max_tool_calls": _positive_int(state.get("max_tool_calls"), DEFAULT_MAX_TOOL_CALLS),
         },
     }
-    return [
-        {
-            "role": "system",
-            "content": "Return exactly one documented FINAL or CALL_TOOL JSON action. Tool calls are read-only.",
-        },
-        {"role": "user", "content": json.dumps(body, ensure_ascii=False, separators=(",", ":"))},
-    ]
+    return _bounded_prompt_messages(body)
+
+
+def _bounded_prompt_messages(body: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Keep the fixed protocol envelope and complete packet within the cap."""
+
+    system = {"role": "system", "content": _PROTOCOL_SYSTEM_MESSAGE}
+    candidate = dict(body)
+    for _ in range(16):
+        content = json.dumps(candidate, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        packet = [system, {"role": "user", "content": content}]
+        if _serialized_bytes(packet) <= MAX_CONTEXT_BYTES:
+            return packet
+        current_size = _serialized_bytes(candidate)
+        candidate = _bounded_json(
+            candidate,
+            max(current_size - 256, 0),
+            protected={"context", "constraints"},
+        )
+
+    fallback = {
+        "question": "",
+        "context": _bounded_json(
+            body.get("context"),
+            256,
+            protected={"missing_claim", "budgets"},
+        ),
+        "evidence": [],
+        "history": [],
+        "constraints": body.get("constraints", {"read_only_only": True}),
+    }
+    content = json.dumps(fallback, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return [system, {"role": "user", "content": content}]
 
 
 def _compact_output(value: Any, *, allowed_keys: set[str] | None = None) -> dict[str, Any]:
@@ -735,6 +787,7 @@ _SENSITIVE_KEYS = {
     "uri",
 }
 _SAFE_HISTORY_LABELS = {
+    "BUDGET_EXHAUSTED",
     "FAILED",
     "PENDING",
     "REJECTED",
@@ -918,6 +971,28 @@ def _terminal_failure(state: Mapping[str, Any], code: str, message: str) -> dict
 
 def _budget_stop(state: Mapping[str, Any], reason: str) -> dict[str, Any]:
     result = dict(state)
+    pending_ids = []
+    for candidate in (
+        result.get("selected_capability"),
+        result.get("pending_tool"),
+    ):
+        if isinstance(candidate, Mapping):
+            capability_id = _canonical_capability_id(candidate.get("capability_id"))
+            if capability_id:
+                pending_ids.append(capability_id)
+    for item in _safe_tool_history(result.get("tool_history")):
+        if item.get("status") in {"SELECTED", "PENDING"}:
+            capability_id = _canonical_capability_id(item.get("capability_id"))
+            if capability_id:
+                pending_ids.append(capability_id)
+    for capability_id in dict.fromkeys(pending_ids):
+        _update_tool_history(
+            result,
+            capability_id,
+            status="REJECTED",
+            outcome="BUDGET_EXHAUSTED",
+            error_code="BUDGET_EXHAUSTED",
+        )
     result.update(
         {
             "status": "UNRESOLVED",

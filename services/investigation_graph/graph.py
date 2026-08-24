@@ -119,11 +119,16 @@ class _ConfiguredGraph:
         )
 
     def invoke(self, values: Mapping[str, Any] | None = None, config: Any = None, **kwargs: Any):
-        state, config = self._prepare(values, config)
+        state, config, blocked = self._prepare(values, config)
+        if blocked:
+            return final_answer(state)
         return self._compiled.invoke(state, config=config, **kwargs)
 
     def stream(self, values: Mapping[str, Any] | None = None, config: Any = None, **kwargs: Any):
-        state, config = self._prepare(values, config)
+        state, config, blocked = self._prepare(values, config)
+        if blocked:
+            yield final_answer(state)
+            return
         yield from self._compiled.stream(state, config=config, **kwargs)
 
     def _prepare(self, values: Mapping[str, Any] | None, config: Any):
@@ -142,8 +147,26 @@ class _ConfiguredGraph:
             config = {"recursion_limit": effective_limit}
         elif "recursion_limit" not in config:
             config = dict(config)
-            config["recursion_limit"] = self.recursion_limit
-        return state, config
+            config["recursion_limit"] = effective_limit
+        else:
+            configured_limit = config.get("recursion_limit")
+            if (
+                isinstance(configured_limit, bool)
+                or not isinstance(configured_limit, int)
+                or configured_limit < effective_limit
+            ):
+                state.update(
+                    {
+                        "status": "UNRESOLVED",
+                        "error_code": "RECURSION_LIMIT_TOO_LOW",
+                        "error_message": "configured recursion limit is below the safe investigation budget",
+                        "summary": "Investigation stopped before execution",
+                        "conclusion": "configured recursion limit is below the safe investigation budget",
+                        "next_steps": ["Increase recursion_limit and retry the investigation."],
+                    }
+                )
+                return state, config, True
+        return state, config, False
 
     def __getattr__(self, name: str):
         return getattr(self._compiled, name)

@@ -50,6 +50,16 @@ class AtomicRegistry(FakeRegistry):
         return self.version, executor.execute(self.version, payload, origin=origin)
 
 
+class BareResultRegistry(FakeRegistry):
+    def execute_readonly(self, capability_id, *, claim, payload, executor, origin):
+        return {"scheduler_queue_ratio": 2.15}
+
+
+class NoneVersionRegistry(FakeRegistry):
+    def execute_readonly(self, capability_id, *, claim, payload, executor, origin):
+        return None, {"scheduler_queue_ratio": 2.15}
+
+
 class FakeExecutor:
     def __init__(self, result=None):
         self.result = result or {"scheduler_queue_ratio": 2.15}
@@ -479,3 +489,163 @@ def test_atomic_registry_rechecks_authorization_before_dispatch():
     assert registry.atomic_calls
     assert executor.calls == []
     assert result["status"] == "UNRESOLVED"
+
+
+def test_input_budgets_derive_recursion_limit_when_config_is_nonempty():
+    from services.investigation_graph.graph import build_investigation_graph
+
+    gateway = FakeGateway([call_tool_action()] * 8)
+    version = active_readonly_version()
+    graph = build_investigation_graph(
+        gateway=gateway,
+        registry=FakeRegistry(version),
+        executor=FakeExecutor(),
+    )
+
+    result = graph.invoke(
+        {
+            "question": "Why?",
+            "context": {"missing_claim": "degradation_category"},
+            "missing_claim": "degradation_category",
+            "max_rounds": 8,
+            "max_tool_calls": 8,
+        },
+        config={"configurable": {"request_id": "round-2"}},
+    )
+
+    assert result["status"] == "UNRESOLVED"
+    assert result["rounds_used"] == 8
+    assert result["tool_calls_used"] == 8
+
+
+def test_explicit_insufficient_recursion_limit_returns_structured_failure():
+    from services.investigation_graph.graph import build_investigation_graph
+
+    gateway = FakeGateway([call_tool_action()] * 8)
+    version = active_readonly_version()
+    graph = build_investigation_graph(
+        gateway=gateway,
+        registry=FakeRegistry(version),
+        executor=FakeExecutor(),
+    )
+
+    try:
+        result = graph.invoke(
+            {
+                "question": "Why?",
+                "context": {"missing_claim": "degradation_category"},
+                "missing_claim": "degradation_category",
+                "max_rounds": 8,
+                "max_tool_calls": 8,
+            },
+            config={"configurable": {"request_id": "round-2"}, "recursion_limit": 1},
+        )
+    except Exception as exc:
+        pytest.fail(f"insufficient recursion_limit must be structured: {exc}")
+
+    assert result["status"] == "UNRESOLVED"
+    assert result["error_code"] == "RECURSION_LIMIT_TOO_LOW"
+    assert gateway.calls == []
+
+
+@pytest.mark.parametrize("registry_type", [BareResultRegistry, NoneVersionRegistry])
+def test_atomic_dispatch_requires_version_and_raw_result_tuple(registry_type):
+    gateway = FakeGateway([call_tool_action(), final_action("should not run")])
+    version = active_readonly_version()
+    executor = FakeExecutor()
+
+    result = run_graph(
+        gateway,
+        registry=registry_type(version),
+        executor=executor,
+    )
+
+    assert result["status"] == "UNRESOLVED"
+    assert result["error_code"] == "ATOMIC_RESULT_INVALID"
+    assert result["evidence"] == []
+
+
+def test_supplied_messages_keep_protocol_context_and_whole_packet_byte_cap():
+    from services.investigation_graph.graph import build_investigation_graph
+    from services.investigation_graph.state import MAX_CONTEXT_BYTES
+
+    gateway = FakeGateway([final_action("bounded")])
+    graph = build_investigation_graph(gateway=gateway)
+    raw_log = "raw-log-" + ("x" * 8000)
+    context = {
+        f"metric_{index}": {"deep": {"value": "x" * 500}}
+        for index in range(50)
+    }
+
+    result = graph.invoke(
+        {
+            "question": "Why?",
+            "context": context,
+            "messages": [{"role": "assistant", "content": raw_log}],
+        }
+    )
+
+    request_messages = gateway.calls[0].messages
+    serialized = json.dumps(request_messages, sort_keys=True, ensure_ascii=True).encode()
+    assert len(serialized) <= MAX_CONTEXT_BYTES
+    assert request_messages[0]["role"] == "system"
+    assert "read-only" in request_messages[0]["content"].lower()
+    assert len(request_messages) == 2
+    body = json.loads(request_messages[-1]["content"])
+    assert isinstance(body["context"], dict)
+    assert raw_log not in repr(request_messages)
+    assert result["status"] == "RESOLVED"
+
+
+def test_budget_precheck_closes_selected_history_without_dispatch():
+    from services.investigation_graph.nodes import execute_readonly_tool
+
+    version = active_readonly_version()
+    executor = FakeExecutor()
+    registry = FakeRegistry(version)
+    state = {
+        "question": "Why?",
+        "context": {"missing_claim": "degradation_category"},
+        "missing_claim": "degradation_category",
+        "max_rounds": 3,
+        "max_tool_calls": 1,
+        "rounds_used": 1,
+        "tool_calls_used": 1,
+        "evidence": [],
+        "facts": [],
+        "next_steps": [],
+        "selected_capability": {
+            "capability_id": version.capability.capability_id,
+            "arguments": {"asset_id": "llm-0"},
+            "reason": "confirm scheduler pressure",
+            "claim": "degradation_category",
+        },
+        "tool_history": [
+            {
+                "capability_id": version.capability.capability_id,
+                "arguments": {"asset_id": "llm-0"},
+                "reason": "confirm scheduler pressure",
+                "status": "SELECTED",
+                "outcome": "PENDING",
+            }
+        ],
+    }
+
+    result = execute_readonly_tool(state, registry=registry, executor=executor)
+
+    assert result["status"] == "UNRESOLVED"
+    assert result["error_code"] == "BUDGET_EXHAUSTED"
+    assert result["tool_history"][0]["status"] == "REJECTED"
+    assert result["tool_history"][0]["outcome"] == "BUDGET_EXHAUSTED"
+    assert result["tool_history"][0]["error_code"] == "BUDGET_EXHAUSTED"
+    assert executor.calls == []
+
+
+def test_direct_invalid_action_is_round_trip_validated_to_structured_failure():
+    from services.model_gateway.base import FinalAction
+
+    result = run_graph(FakeGateway([FinalAction(summary="", confidence=0.9)]))
+
+    assert result["status"] == "FAILED"
+    assert result["error_code"] == "STRUCTURED_OUTPUT_INVALID"
+    assert all(key in result for key in ("summary", "conclusion", "facts", "next_steps"))
