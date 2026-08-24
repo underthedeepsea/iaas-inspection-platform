@@ -21,7 +21,7 @@ _NUMERIC_VERSION = re.compile(r"\A\d+\.\d+\.\d+\Z")
 
 def health(request):
     if request.method != "GET":
-        return api_error("VALIDATION_ERROR", "health only accepts GET", status=405)
+        return api_error("METHOD_NOT_ALLOWED", "health only accepts GET", status=405)
     database = _database_health()
     ollama = _external_health("ollama")
     airflow = _external_health("airflow")
@@ -39,7 +39,7 @@ def health(request):
 
 def product_info(request):
     if request.method != "GET":
-        return api_error("VALIDATION_ERROR", "product-info only accepts GET", status=405)
+        return api_error("METHOD_NOT_ALLOWED", "product-info only accepts GET", status=405)
     return JsonResponse(
         {
             "product_name": "IaaS 智能巡检",

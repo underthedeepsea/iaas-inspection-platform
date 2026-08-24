@@ -13,6 +13,7 @@ from django.db import transaction
 from django.db.models import Max
 from django.utils import timezone
 
+from apps.audits.services import record_event
 from apps.capabilities.models import CapabilityVersion
 from apps.investigations.models import (
     Conversation,
@@ -45,6 +46,7 @@ FINAL_FIELDS = (
 MAX_FINAL_ITEMS = 4
 MAX_FINAL_ITEM_TEXT = 128
 MAX_FINAL_MAPPING_BYTES = 256
+MAX_PUBLIC_MESSAGES = 100
 
 
 class ConversationError(Exception):
@@ -132,7 +134,8 @@ def serialize_conversation(conversation: Conversation) -> dict[str, Any]:
 
 def list_messages(user: Any, conversation_id: Any) -> list[dict[str, Any]]:
     conversation = get_conversation(user, conversation_id)
-    return [_serialize_message(message) for message in conversation.conversationmessage_set.order_by("created_at", "pk")]
+    messages = conversation.conversationmessage_set.order_by("created_at", "pk")[:MAX_PUBLIC_MESSAGES]
+    return [_serialize_message(message) for message in messages]
 
 
 def close_conversation(user: Any, conversation_id: Any) -> Conversation:
@@ -548,6 +551,14 @@ def _persist_turn(
             ]
         )
         _append_events(investigation, events)
+        record_event(
+            actor=conversation.user,
+            environment=conversation.environment,
+            event_type="conversation.turn.created",
+            object_type="Investigation",
+            object_id=investigation.pk,
+            payload={},
+        )
 
 
 def _append_events(investigation: Investigation, events: list[tuple[str, str, Mapping[str, Any]]]) -> None:
@@ -802,8 +813,6 @@ def _serialize_message(message: ConversationMessage) -> dict[str, Any]:
         "role": message.role,
         "content": message.content,
         "structured_content": structured,
-        "model_provider": message.model_provider,
-        "model_name": message.model_name,
         "prompt_version": message.prompt_version,
         "input_tokens": message.input_tokens,
         "output_tokens": message.output_tokens,

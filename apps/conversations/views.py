@@ -2,25 +2,38 @@
 
 from __future__ import annotations
 
-import json
-from collections.abc import Mapping
 from typing import Any
 
+from django.db import transaction
 from django.http import JsonResponse, StreamingHttpResponse
+
+from apps.api.http import APIRequestError, api_error, parse_json_object
+from apps.audits.services import record_event
 
 from . import services
 
 
 def collection(request):
-    if request.method != "POST":
-        return _error("method_not_allowed", "conversations only accepts POST", 405)
     auth_error = _authenticate(request)
     if auth_error:
         return auth_error
+    if request.method != "POST":
+        return _error("METHOD_NOT_ALLOWED", "conversations only accepts POST", 405)
     try:
-        conversation = services.create_conversation(request.user, _body(request))
+        with transaction.atomic():
+            conversation = services.create_conversation(request.user, _body(request))
+            record_event(
+                actor=request.user,
+                environment=conversation.environment,
+                event_type="conversation.created",
+                object_type="Conversation",
+                object_id=conversation.pk,
+                payload={"context_type": conversation.context_type},
+            )
     except services.ConversationError as error:
         return _error(error.code, error.message, error.status)
+    except Exception:
+        return _error("INTERNAL_ERROR", "the conversation could not be created", 500)
     return JsonResponse(services.serialize_conversation(conversation), status=201)
 
 
@@ -28,19 +41,13 @@ def detail(request, conversation_id):
     auth_error = _authenticate(request)
     if auth_error:
         return auth_error
-    if request.method == "GET":
-        try:
-            conversation = services.get_conversation(request.user, conversation_id)
-        except services.ConversationError as error:
-            return _error(error.code, error.message, error.status)
-        return JsonResponse(services.serialize_conversation(conversation))
-    if request.method == "POST":
-        try:
-            conversation = services.close_conversation(request.user, conversation_id)
-        except services.ConversationError as error:
-            return _error(error.code, error.message, error.status)
-        return JsonResponse(services.serialize_conversation(conversation))
-    return _error("method_not_allowed", "unsupported conversation method", 405)
+    if request.method != "GET":
+        return _error("METHOD_NOT_ALLOWED", "conversation detail only accepts GET", 405)
+    try:
+        conversation = services.get_conversation(request.user, conversation_id)
+    except services.ConversationError as error:
+        return _error(error.code, error.message, error.status)
+    return JsonResponse(services.serialize_conversation(conversation))
 
 
 def messages(request, conversation_id):
@@ -99,24 +106,58 @@ def events(request, conversation_id, turn_id):
 
 
 def close(request, conversation_id):
-    return detail(request, conversation_id)
+    auth_error = _authenticate(request)
+    if auth_error:
+        return auth_error
+    if request.method != "POST":
+        return _error("METHOD_NOT_ALLOWED", "close only accepts POST", 405)
+    try:
+        # Keep the domain mutation and its public audit row in one outer
+        # transaction.  ``close_conversation`` uses a nested savepoint,
+        # so this view owns the commit boundary without duplicating the
+        # service's lifecycle logic.
+        with transaction.atomic():
+            before = services.get_conversation(request.user, conversation_id, lock=True)
+            conversation = services.close_conversation(request.user, conversation_id)
+            if before.status != services.Conversation.Status.CLOSED:
+                record_event(
+                    actor=request.user,
+                    environment=conversation.environment,
+                    event_type="conversation.closed",
+                    object_type="Conversation",
+                    object_id=conversation.pk,
+                    payload={"from_status": before.status, "to_status": conversation.status},
+                )
+    except services.ConversationError as error:
+        return _error(error.code, error.message, error.status)
+    except Exception:
+        return _error("INTERNAL_ERROR", "the conversation could not be closed", 500)
+    return JsonResponse(services.serialize_conversation(conversation))
 
 
 def _authenticate(request):
     if not getattr(getattr(request, "user", None), "is_authenticated", False):
-        return _error("authentication_required", "authentication is required", 401)
+        return _error("AUTH_REQUIRED", "authentication is required", 401)
     return None
 
 
 def _body(request) -> dict[str, Any]:
     try:
-        value = json.loads(request.body.decode("utf-8")) if request.body else {}
-    except (UnicodeDecodeError, json.JSONDecodeError):
+        value = parse_json_object(request)
+    except APIRequestError:
         raise services.ConversationError("invalid_json", "request body must be valid JSON") from None
-    if not isinstance(value, Mapping):
-        raise services.ConversationError("invalid_json", "request body must be a JSON object")
     return dict(value)
 
 
 def _error(code: str, message: str, status: int):
-    return JsonResponse({"error": {"code": code, "message": message}}, status=status)
+    # Preserve the SSE cursor's established private code while all public
+    # conversation errors use the shared stable envelope.
+    mapped = {
+        "authentication_required": "AUTH_REQUIRED",
+        "invalid_json": "VALIDATION_ERROR",
+        "invalid_field": "VALIDATION_ERROR",
+        "not_found": "NOT_FOUND",
+        "conversation_closed": "INVALID_RISK_TRANSITION",
+        "unsupported_context_type": "VALIDATION_ERROR",
+    }.get(code, code if code == "invalid_last_event_id" else str(code).upper())
+    return api_error(mapped, message, status=status)

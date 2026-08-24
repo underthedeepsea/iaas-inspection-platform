@@ -7,6 +7,7 @@ from django.contrib.auth import get_user_model
 from django.test import Client
 
 from apps.core.models import Environment
+from apps.audits.models import AuditEvent
 from apps.inspections.models import InspectionItem, Severity
 from apps.capabilities.models import Capability, CapabilityVersion
 from apps.investigations.models import Conversation, ConversationMessage, Investigation, InvestigationEvent, ToolCall
@@ -91,6 +92,99 @@ def test_create_risk_conversation_derives_environment_and_requires_authenticatio
 
 
 @pytest.mark.django_db(transaction=True)
+def test_conversation_create_emits_one_same_transaction_audit_event():
+    risk = _risk()
+    user = _user()
+    client = Client()
+    client.force_login(user)
+
+    response = _post(
+        client,
+        "/api/v1/conversations/",
+        {"context_type": "RISK", "context_id": str(risk.pk), "title": "Risk analysis"},
+    )
+
+    assert response.status_code == 201
+    conversation_id = response.json()["conversation_id"]
+    assert AuditEvent.objects.filter(
+        object_type="Conversation",
+        object_id=conversation_id,
+        event_type="conversation.created",
+        user=user,
+    ).count() == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_conversation_create_rolls_back_when_audit_write_fails(monkeypatch):
+    risk = _risk()
+    user = _user()
+    client = Client()
+    client.raise_request_exception = False
+    client.force_login(user)
+    monkeypatch.setattr(
+        "apps.conversations.views.record_event",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("audit unavailable")),
+    )
+
+    response = _post(
+        client,
+        "/api/v1/conversations/",
+        {"context_type": "RISK", "context_id": str(risk.pk), "title": "Risk analysis"},
+    )
+
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "INTERNAL_ERROR"
+    assert not Conversation.objects.filter(user=user, risk=risk).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_conversation_close_rolls_back_when_audit_write_fails(monkeypatch):
+    risk = _risk()
+    user = _user()
+    client = Client()
+    client.force_login(user)
+    conversation_id = _post(
+        client,
+        "/api/v1/conversations/",
+        {"context_type": "RISK", "context_id": str(risk.pk), "title": "Risk analysis"},
+    ).json()["conversation_id"]
+    monkeypatch.setattr(
+        "apps.conversations.views.record_event",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("audit unavailable")),
+    )
+    client.raise_request_exception = False
+
+    response = client.post(f"/api/v1/conversations/{conversation_id}/close/")
+
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "INTERNAL_ERROR"
+    assert Conversation.objects.get(pk=conversation_id).status == Conversation.Status.ACTIVE
+
+
+@pytest.mark.django_db(transaction=True)
+def test_turn_rejects_non_json_constants_with_the_shared_error_envelope():
+    risk = _risk()
+    user = _user()
+    client = Client()
+    client.force_login(user)
+    conversation_id = _post(
+        client,
+        "/api/v1/conversations/",
+        {"context_type": "RISK", "context_id": str(risk.pk), "title": "Risk analysis"},
+    ).json()["conversation_id"]
+
+    response = client.post(
+        f"/api/v1/conversations/{conversation_id}/turns/",
+        data=b'{"message":"Investigate","ignored":NaN}',
+        content_type="application/json",
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+    assert set(response.json()["error"]) == {"code", "message", "details", "trace_id"}
+
+
+@pytest.mark.django_db(transaction=True)
 def test_turn_persists_user_investigation_assistant_terminal_event_and_is_retry_safe():
     risk = _risk()
     user = _user()
@@ -136,6 +230,12 @@ def test_turn_persists_user_investigation_assistant_terminal_event_and_is_retry_
     assert assistant.content == "Scheduler pressure confirmed"
     investigation = Investigation.objects.get(pk=first.json()["investigation_id"])
     assert investigation.status == Investigation.Status.RESOLVED
+    assert AuditEvent.objects.filter(
+        object_type="Investigation",
+        object_id=str(investigation.pk),
+        event_type="conversation.turn.created",
+        user=user,
+    ).count() == 1
     events = list(InvestigationEvent.objects.filter(investigation=investigation).order_by("sequence"))
     assert [event.sequence for event in events] == list(range(1, len(events) + 1))
     assert events[-1].event_type == "turn.completed"
@@ -208,11 +308,41 @@ def test_conversation_reads_are_owner_isolated_and_messages_survive_refresh():
     refreshed = owner_client.get(f"/api/v1/conversations/{conversation_id}/messages/")
     assert refreshed.status_code == 200
     assert [item["role"] for item in refreshed.json()["messages"]] == ["USER", "ASSISTANT"]
+    assert "model_provider" not in refreshed.json()["messages"][1]
+    assert "model_name" not in refreshed.json()["messages"][1]
 
     stranger_client = Client()
     stranger_client.force_login(stranger)
     assert stranger_client.get(f"/api/v1/conversations/{conversation_id}/").status_code == 404
     assert stranger_client.get(f"/api/v1/conversations/{conversation_id}/messages/").status_code == 404
+
+
+@pytest.mark.django_db(transaction=True)
+def test_conversation_messages_are_bounded_at_the_public_boundary():
+    risk = _risk()
+    user = _user()
+    client = Client()
+    client.force_login(user)
+    conversation_id = _post(
+        client,
+        "/api/v1/conversations/",
+        {"context_type": "RISK", "context_id": str(risk.pk), "title": "Risk analysis"},
+    ).json()["conversation_id"]
+    ConversationMessage.objects.bulk_create(
+        [
+            ConversationMessage(
+                conversation_id=conversation_id,
+                role=ConversationMessage.Role.USER,
+                content=f"message-{index}",
+            )
+            for index in range(101)
+        ]
+    )
+
+    response = client.get(f"/api/v1/conversations/{conversation_id}/messages/")
+
+    assert response.status_code == 200
+    assert len(response.json()["messages"]) == 100
 
 
 @pytest.mark.django_db(transaction=True)
