@@ -166,18 +166,20 @@ def create_codeization_task(
     )
     with transaction.atomic():
         locked_experience = Experience.objects.select_for_update().get(pk=experience.pk)
+        locked_item = InspectionItem.objects.select_for_update().get(pk=inspection_item.pk)
         if locked_experience.status != Experience.Status.CONFIRMED:
             raise ExperienceError("experience must be confirmed before codeization")
         claim = canonical_claim(target_claim or locked_experience.target_claim)
         if locked_experience.target_claim != claim:
             raise ExperienceError("task target_claim must match the confirmed experience")
-        _validate_item_context(locked_experience, inspection_item)
+        _validate_item_context(locked_experience, locked_item)
+        _require_item_claim(locked_item, claim)
         specification = {} if specification is None else specification
         if not isinstance(specification, dict):
             raise ExperienceError("specification must be an object")
         existing = CodeizationTask.objects.filter(
             experience=locked_experience,
-            inspection_item=inspection_item,
+            inspection_item=locked_item,
             target_capability_id=target_capability_id,
             target_claim=claim,
         ).first()
@@ -292,6 +294,21 @@ def _validate_item_context(experience, inspection_item):
     scope_item = (experience.applicable_scope or {}).get("inspection_item_id")
     if scope_item and str(inspection_item.pk) != str(scope_item):
         raise ExperienceError("inspection item does not belong to the experience context")
+
+
+def _require_item_claim(inspection_item, claim):
+    if canonical_claim(claim) not in _normalized_required_claims(inspection_item):
+        raise ExperienceError("target claim is not required by inspection item")
+
+
+def _normalized_required_claims(inspection_item, *, allow_empty=False):
+    required_claims = inspection_item.required_claims
+    if not isinstance(required_claims, list) or (not required_claims and not allow_empty):
+        raise ExperienceError("inspection item required_claims must be a non-empty list")
+    try:
+        return list(dict.fromkeys(canonical_claim(required) for required in required_claims))
+    except ExperienceError:
+        raise ExperienceError("inspection item required_claims contains an invalid claim") from None
 
 
 def _experience_environment(experience):

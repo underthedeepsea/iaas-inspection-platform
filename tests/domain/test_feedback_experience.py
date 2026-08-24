@@ -171,6 +171,7 @@ def test_experience_confirmation_is_separate_from_codeization_task_creation():
     assert experience.target_claim == "network.packet_loss.cause_category"
     assert task.status == CodeizationTask.Status.CODE_PENDING
     assert task.target_claim == experience.target_claim
+    assert task.capability_version_id is None
 
 
 @pytest.mark.django_db
@@ -323,6 +324,213 @@ def _confirmed_task(ctx, *, capability=None, capability_id=None, claim=None):
         implementation_type=CodeizationTask.ImplementationType.RULE,
     )
     return experience, capability, version, task, claim
+
+
+def _confirmed_experience(ctx, *, claim="network.packet_loss.cause_category"):
+    from apps.feedback.services import create_feedback
+    from apps.experiences.services import confirm_experience
+
+    create_feedback(**feedback_args(ctx))
+    experience = Experience.objects.get()
+    confirm_experience(
+        ctx["user"],
+        experience,
+        human_summary="Packet path pressure is reproducible.",
+        target_claim=claim,
+    )
+    return Experience.objects.get(pk=experience.pk), claim
+
+
+def _candidate_version(capability, claim, *, version):
+    return CapabilityVersion.objects.create(
+        capability=capability,
+        version=version,
+        implementation_type=CapabilityVersion.ImplementationType.RULE,
+        resolves=[claim],
+        manifest={"security": {"read_only": True}},
+    )
+
+
+@pytest.mark.django_db
+def test_shadow_persists_exact_task_version_and_rejects_v2_without_side_effects():
+    from apps.experiences.codeization import activate_codeization_task, move_to_shadow
+
+    ctx = context()
+    _experience, capability, version_v1, task, claim = _confirmed_task(ctx)
+    version_v2 = _candidate_version(capability, claim, version="0.9.1")
+    assert task.capability_version_id is None
+
+    move_to_shadow(ctx["user"], task, version_v1)
+    task.refresh_from_db()
+    assert task.capability_version_id == version_v1.pk
+    shadow_audits = AuditEvent.objects.filter(
+        object_type="CodeizationTask",
+        object_id=task.pk,
+        event_type="codeization_task.shadow",
+    )
+    assert shadow_audits.get().payload["capability_version_id"] == str(version_v1.pk)
+    binding_count = InspectionCapabilityBinding.objects.filter(
+        inspection_item=ctx["item"],
+        role=InspectionCapabilityBinding.Role.RESOLVER,
+        claim=claim,
+    ).count()
+    audit_count = AuditEvent.objects.count()
+
+    with pytest.raises(ValueError):
+        move_to_shadow(ctx["user"], task, version_v2)
+    with pytest.raises(ValueError):
+        activate_codeization_task(ctx["user"], task, version_v2)
+
+    task.refresh_from_db()
+    version_v1.refresh_from_db()
+    version_v2.refresh_from_db()
+    assert task.capability_version_id == version_v1.pk
+    assert version_v1.status == CapabilityVersion.Status.SHADOW
+    assert version_v2.status == CapabilityVersion.Status.CANDIDATE
+    assert not InspectionCapabilityBinding.objects.filter(
+        inspection_item=ctx["item"],
+        capability_version=version_v2,
+        role=InspectionCapabilityBinding.Role.RESOLVER,
+        claim=claim,
+    ).exists()
+    assert InspectionCapabilityBinding.objects.filter(
+        inspection_item=ctx["item"],
+        role=InspectionCapabilityBinding.Role.RESOLVER,
+        claim=claim,
+    ).count() == binding_count
+    assert AuditEvent.objects.count() == audit_count
+
+
+@pytest.mark.django_db(transaction=True)
+def test_concurrent_shadow_versions_bind_one_persisted_version():
+    from apps.experiences.codeization import move_to_shadow
+
+    ctx = context()
+    _experience, capability, version_v1, task, claim = _confirmed_task(ctx)
+    version_v2 = _candidate_version(capability, claim, version="0.9.1")
+    successes = []
+    errors = []
+
+    def run(version_id):
+        close_old_connections()
+        try:
+            move_to_shadow(ctx["user"], task.pk, version_id)
+            successes.append(version_id)
+        except BaseException as exc:
+            errors.append(exc)
+        finally:
+            close_old_connections()
+
+    threads = [
+        threading.Thread(target=run, args=(version_v1.pk,)),
+        threading.Thread(target=run, args=(version_v2.pk,)),
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=10)
+
+    assert len(successes) == 1
+    assert len(errors) == 1
+    task.refresh_from_db()
+    version_v1.refresh_from_db()
+    version_v2.refresh_from_db()
+    winner = successes[0]
+    assert task.capability_version_id == winner
+    assert [version_v1.status, version_v2.status].count(CapabilityVersion.Status.SHADOW) == 1
+    assert InspectionCapabilityBinding.objects.filter(
+        inspection_item=ctx["item"],
+        role=InspectionCapabilityBinding.Role.RESOLVER,
+        claim=claim,
+        enabled=True,
+    ).count() == 1
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "required_claims",
+    [
+        [],
+        "network.packet_loss.cause_category",
+        {},
+        [None],
+        ["not-the-confirmed-claim"],
+    ],
+)
+def test_create_task_rejects_empty_or_invalid_required_claims(required_claims):
+    from apps.experiences.services import create_codeization_task
+
+    ctx = context()
+    ctx["item"].required_claims = required_claims
+    ctx["item"].save(update_fields=["required_claims"])
+    experience, claim = _confirmed_experience(ctx)
+
+    with pytest.raises(ValueError):
+        create_codeization_task(
+            ctx["user"],
+            experience,
+            inspection_item=ctx["item"],
+            target_capability_id=f"network.packet.invalid-required.{uuid.uuid4().hex}",
+            task_type=CodeizationTask.TaskType.RULE,
+            implementation_type=CodeizationTask.ImplementationType.RULE,
+            target_claim=claim,
+        )
+    assert CodeizationTask.objects.count() == 0
+    assert Experience.objects.get(pk=experience.pk).status == Experience.Status.CONFIRMED
+
+
+@pytest.mark.django_db
+def test_activate_rechecks_required_claim_after_shadow_and_rolls_back():
+    from apps.experiences.codeization import activate_codeization_task, move_to_shadow
+
+    ctx = context()
+    _experience, capability, version, task, claim = _confirmed_task(ctx)
+    move_to_shadow(ctx["user"], task, version)
+    ctx["item"].required_claims = ["network.packet_loss.asset_scope"]
+    ctx["item"].save(update_fields=["required_claims"])
+    task.shadow_cases = 3
+    task.precision = Decimal("0.8")
+    task.critical_false_positive = 0
+    task.save(update_fields=["shadow_cases", "precision", "critical_false_positive"])
+
+    with pytest.raises(ValueError):
+        activate_codeization_task(ctx["user"], task, version)
+
+    task.refresh_from_db()
+    version.refresh_from_db()
+    capability.refresh_from_db()
+    assert task.status == CodeizationTask.Status.SHADOW
+    assert task.capability_version_id == version.pk
+    assert version.status == CapabilityVersion.Status.SHADOW
+    assert capability.current_version_id is None
+    assert InspectionCapabilityBinding.objects.filter(
+        inspection_item=ctx["item"],
+        capability_version=version,
+        role=InspectionCapabilityBinding.Role.RESOLVER,
+        claim=claim,
+        enabled=True,
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_activation_uses_canonical_required_claims_for_aggregate_status():
+    from apps.experiences.codeization import activate_codeization_task, move_to_shadow
+
+    ctx = context()
+    ctx["item"].required_claims = [" Network.Packet_Loss.Cause_Category "]
+    ctx["item"].save(update_fields=["required_claims"])
+    _experience, _capability, version, task, _claim = _confirmed_task(ctx)
+    move_to_shadow(ctx["user"], task, version)
+    task.shadow_cases = 3
+    task.precision = Decimal("0.8")
+    task.critical_false_positive = 0
+    task.save(update_fields=["shadow_cases", "precision", "critical_false_positive"])
+
+    activate_codeization_task(ctx["user"], task, version)
+
+    item = InspectionItem.objects.get(pk=ctx["item"].pk)
+    assert item.code_status == InspectionItem.CodeStatus.CODE_ACTIVE
+    assert item.code_coverage_percent == 100
 
 
 @pytest.mark.django_db

@@ -13,7 +13,15 @@ from apps.capabilities.models import Capability, CapabilityVersion, InspectionCa
 from apps.inspections.models import InspectionItem
 from apps.learning.models import CodeizationTask, Experience
 
-from .services import ExperienceError, _experience_environment, _model, _require_actor, canonical_claim
+from .services import (
+    ExperienceError,
+    _experience_environment,
+    _model,
+    _normalized_required_claims,
+    _require_actor,
+    _require_item_claim,
+    canonical_claim,
+)
 
 
 _VERSION_RE = re.compile(r"\A\d+\.\d+\.\d+\Z")
@@ -54,6 +62,7 @@ def move_to_shadow(
         if item.enabled is not True:
             raise ExperienceError("inspection item is disabled")
         capability, version_row = _locked_capability_version(task, capability_version)
+        _require_task_version(task, version_row)
         if task.status == CodeizationTask.Status.SHADOW:
             if version_row.status != CapabilityVersion.Status.SHADOW:
                 raise ExperienceError("shadow task must have a shadow capability version")
@@ -63,6 +72,8 @@ def move_to_shadow(
             raise ExperienceError("only CODE_PENDING tasks can enter SHADOW")
         if experience.status != Experience.Status.CODE_PENDING:
             raise ExperienceError("experience must be CODE_PENDING before SHADOW")
+        task.capability_version = version_row
+        task.save(update_fields=["capability_version", "updated_at"])
         version_row.status = CapabilityVersion.Status.SHADOW
         version_row.save(update_fields=["status"])
         _ensure_binding(item, version_row, task.target_claim, enabled=True)
@@ -89,6 +100,7 @@ def move_to_shadow(
                 "to_status": task.status,
                 "target_claim": task.target_claim,
                 "target_capability_id": task.target_capability_id,
+                "capability_version_id": str(version_row.pk),
                 "version": version_row.version,
             },
         )
@@ -101,6 +113,7 @@ def move_to_shadow(
             payload={
                 "from_status": CapabilityVersion.Status.CANDIDATE,
                 "to_status": version_row.status,
+                "capability_version_id": str(version_row.pk),
                 "version": version_row.version,
             },
         )
@@ -139,6 +152,8 @@ def activate_codeization_task(
         if item.enabled is not True:
             raise ExperienceError("inspection item is disabled")
         capability, version_row = _locked_capability_version(task, capability_version)
+        _require_task_version(task, version_row)
+        _require_item_claim(item, task.target_claim)
         _validate_version_identity(task, capability, version_row)
         _validate_read_only(capability, version_row)
         if task.status == CodeizationTask.Status.CODE_ACTIVE:
@@ -195,7 +210,7 @@ def activate_codeization_task(
         resolved = list(dict.fromkeys([*(item.resolved_claims or []), task.target_claim]))
         item.resolved_claims = resolved
         item.code_status = aggregate_code_status(item, resolved_claims=resolved)
-        required = list(dict.fromkeys(item.required_claims or []))
+        required = _normalized_required_claims(item)
         covered = len(set(required) & set(resolved))
         item.code_coverage_percent = 100 if not required else covered * 100 / len(required)
         item.execution_mode = (
@@ -229,6 +244,7 @@ def activate_codeization_task(
                 "to_status": task.status,
                 "target_claim": task.target_claim,
                 "target_capability_id": task.target_capability_id,
+                "capability_version_id": str(version_row.pk),
                 "version": version_row.version,
             },
         )
@@ -241,6 +257,7 @@ def activate_codeization_task(
             payload={
                 "from_status": CapabilityVersion.Status.SHADOW,
                 "to_status": version_row.status,
+                "capability_version_id": str(version_row.pk),
                 "version": version_row.version,
             },
         )
@@ -362,10 +379,17 @@ def _locked_capability_version(task, supplied):
     return capability, version_row
 
 
+def _require_task_version(task, version):
+    if task.capability_version_id is not None and task.capability_version_id != version.pk:
+        raise ExperienceError("task is bound to another capability version")
+    if task.status != CodeizationTask.Status.CODE_PENDING and task.capability_version_id != version.pk:
+        raise ExperienceError("task capability version identity is required")
+
+
 def aggregate_code_status(item, *, resolved_claims=None):
     """Derive aggregate item code state from required and resolved claims."""
 
-    required = list(dict.fromkeys(item.required_claims or []))
+    required = _normalized_required_claims(item, allow_empty=True)
     resolved = set(resolved_claims if resolved_claims is not None else item.resolved_claims or [])
     covered = resolved.intersection(required)
     if not required or len(covered) == len(required):

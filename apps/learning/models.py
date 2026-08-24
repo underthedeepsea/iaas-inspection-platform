@@ -89,6 +89,13 @@ class CodeizationTask(EditableModel):
     experience = models.ForeignKey(Experience, on_delete=models.CASCADE)
     inspection_item = models.ForeignKey("inspections.InspectionItem", on_delete=models.CASCADE)
     target_capability_id = models.CharField(max_length=192, db_index=True)
+    capability_version = models.ForeignKey(
+        "capabilities.CapabilityVersion",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="codeization_tasks",
+    )
     task_type = models.CharField(max_length=32, choices=TaskType.choices, db_index=True)
     status = models.CharField(max_length=32, choices=Status.choices, default=Status.CODE_PENDING, db_index=True)
     title = models.CharField(max_length=255)

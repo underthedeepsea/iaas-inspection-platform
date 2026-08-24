@@ -17,6 +17,7 @@ _SAFE_PAYLOAD_KEYS = frozenset(
         "target_claim",
         "target_capability_id",
         "capability_id",
+        "capability_version_id",
         "version",
         "implementation_type",
         "task_type",
