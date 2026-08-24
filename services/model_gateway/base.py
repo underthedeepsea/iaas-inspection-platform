@@ -8,11 +8,13 @@ protocol, while callers only depend on :class:`ModelGateway`.
 from __future__ import annotations
 
 import json
+import math
 import os
 from abc import ABC, abstractmethod
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import urlparse
 
 
 class ModelGatewayError(RuntimeError):
@@ -198,12 +200,6 @@ def parse_action(payload: Any) -> Action:
     raise _invalid("action must be FINAL or CALL_TOOL")
 
 
-# Names used by early consumers and useful to integrations that prefer an
-# explicit parser name.  They intentionally point to the same strict parser.
-parse_structured_action = parse_action
-parse_json_action = parse_action
-
-
 @dataclass(frozen=True)
 class ModelResponse:
     """Provider-neutral result returned to the investigation graph."""
@@ -213,7 +209,9 @@ class ModelResponse:
     provider: str
     usage: Mapping[str, int] = field(default_factory=dict)
     metadata: Mapping[str, Any] = field(default_factory=dict)
-    raw: Mapping[str, Any] | None = None
+
+    def __post_init__(self):
+        object.__setattr__(self, "metadata", _safe_metadata(self.metadata))
 
     @property
     def content(self) -> dict[str, Any] | None:
@@ -221,7 +219,7 @@ class ModelResponse:
 
     @property
     def safe_metadata(self) -> dict[str, Any]:
-        return _sanitize_metadata(self.metadata)
+        return dict(self.metadata)
 
     @property
     def token_source(self) -> str:
@@ -261,25 +259,44 @@ def configured_value(name: str, default: Any = None) -> Any:
 
 
 def configured_timeout() -> float:
-    raw = configured_value("LLM_TIMEOUT_SECONDS", 120)
+    raw = configured_value("LLM_TIMEOUT_SECONDS")
+    if raw is None or (isinstance(raw, str) and not raw.strip()):
+        raise ModelGatewayConfigurationError("LLM timeout configuration is invalid")
     try:
         timeout = float(raw)
     except (TypeError, ValueError):
         raise ModelGatewayConfigurationError("LLM timeout configuration is invalid") from None
-    if timeout <= 0:
+    if not math.isfinite(timeout) or timeout <= 0:
         raise ModelGatewayConfigurationError("LLM timeout configuration is invalid")
     return timeout
 
 
-def normalize_base_url(value: Any, *, default: str | None = None) -> str:
-    base_url = value if value is not None else default
+def normalize_base_url(value: Any) -> str:
+    base_url = value
     if not isinstance(base_url, str) or not base_url.strip():
         raise ModelGatewayConfigurationError("model base URL configuration is invalid")
-    return base_url.strip().rstrip("/")
+    base_url = base_url.strip().rstrip("/")
+    try:
+        parsed = urlparse(base_url)
+        port = parsed.port
+    except ValueError:
+        raise ModelGatewayConfigurationError("model base URL configuration is invalid") from None
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or port is None and parsed.netloc.endswith(":")
+        or port is not None and not 1 <= port <= 65535
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise ModelGatewayConfigurationError("model base URL configuration is invalid")
+    return base_url
 
 
-def configured_model(name: str, *, default: str | None = None) -> str:
-    model = configured_value(name, default)
+def configured_model(name: str) -> str:
+    model = configured_value(name)
     if not isinstance(model, str) or not model.strip():
         raise ModelGatewayConfigurationError("model name configuration is invalid")
     return model.strip()
@@ -323,35 +340,27 @@ def _nonnegative_int(value: Any) -> int:
     return max(number, 0)
 
 
-_SENSITIVE_METADATA_KEYS = {
-    "api_key",
-    "authorization",
-    "base_url",
-    "credential",
-    "password",
-    "secret",
-    "token",
-    "url",
+_SAFE_METADATA_KEYS = {
+    "token_source",
+    "prompt_tokens",
+    "completion_tokens",
+    "total_tokens",
 }
+_SAFE_TOKEN_SOURCES = {"provider", "estimated", "unavailable"}
 
 
-def _sanitize_metadata(value: Mapping[str, Any]) -> dict[str, Any]:
+def _safe_metadata(value: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Keep only non-sensitive accounting metadata in the public response."""
+
+    if not isinstance(value, Mapping):
+        return {}
     safe: dict[str, Any] = {}
-    for key, item in value.items():
-        normalized_key = str(key).lower()
-        if normalized_key in _SENSITIVE_METADATA_KEYS or any(
-            marker in normalized_key for marker in ("api_key", "password", "secret", "credential")
-        ):
-            continue
-        if isinstance(item, Mapping):
-            safe[key] = _sanitize_metadata(item)
-        elif isinstance(item, (list, tuple)):
-            safe[key] = [
-                _sanitize_metadata(entry) if isinstance(entry, Mapping) else entry
-                for entry in item
-            ]
-        else:
-            safe[key] = item
+    source = value.get("token_source")
+    if source in _SAFE_TOKEN_SOURCES:
+        safe["token_source"] = source
+    for key in _SAFE_METADATA_KEYS - {"token_source"}:
+        if key in value:
+            safe[key] = _nonnegative_int(value[key])
     return safe
 
 

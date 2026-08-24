@@ -14,6 +14,7 @@ import httpx
 
 from .base import (
     LLMUnavailableError,
+    ModelGatewayConfigurationError,
     ModelGateway,
     ModelRequest,
     ModelResponse,
@@ -43,7 +44,12 @@ class OpenAICompatibleProvider(ModelGateway):
         configured_model_name = configured_value("OPENAI_COMPATIBLE_MODEL")
         if configured_model_name is None:
             configured_model_name = configured_value("OPENAI_MODEL")
-        self.model = configured_model("OPENAI_COMPATIBLE_MODEL", default=configured_model_name)
+        if configured_model_name is None:
+            self.model = configured_model("OPENAI_COMPATIBLE_MODEL")
+        elif not isinstance(configured_model_name, str) or not configured_model_name.strip():
+            raise ModelGatewayConfigurationError("model name configuration is invalid")
+        else:
+            self.model = configured_model_name.strip()
         self.api_key = str(configured_value("OPENAI_API_KEY", ""))
         self.timeout = configured_timeout()
 
@@ -71,7 +77,6 @@ class OpenAICompatibleProvider(ModelGateway):
             provider=self.provider_name,
             usage=usage,
             metadata={"token_source": token_source},
-            raw=body,
         )
 
     def health_check(self) -> bool:

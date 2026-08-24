@@ -54,3 +54,25 @@ DONE — Model Gateway contract, strict structured-action validation, Ollama HTT
 - `services/model_gateway/openai_compatible.py`
 - `services/model_gateway/__init__.py`
 - `tests/services/test_model_gateway.py`
+
+## Fix Round 1 (2026-08-24)
+
+### RED
+
+- Added regression coverage for each missing Ollama setting (`OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `LLM_TIMEOUT_SECONDS`) and invalid URL/model/timeout values. The first run failed because the provider supplied source fallbacks and accepted malformed URLs/`nan` timeout values.
+- Added a public-boundary regression requiring `ModelResponse` to have no `raw` field and metadata to allow only token accounting fields. It initially failed because provider responses exposed the complete raw body and recursive sanitization admitted arbitrary URL/secret-bearing keys.
+- The initial Fix Round 1 run showed 8 failures and 14 existing passes, including the expected `raw` and fallback failures.
+
+### GREEN
+
+- Ollama now requires all three settings from Django/environment configuration, validates finite positive timeout and an HTTP(S) URL without credentials/query/fragment/invalid port, and raises stable `MODEL_GATEWAY_CONFIGURATION_INVALID` before invoking the injected HTTP client.
+- `ModelResponse.raw` was removed from the public contract. Metadata is normalized at construction through a strict allowlist (`token_source`, `prompt_tokens`, `completion_tokens`, `total_tokens`); arbitrary access tokens, API keys, endpoints, URLs, nested values, and credential-bearing URLs are discarded.
+- Focused Task 10 suite: `25 passed in 0.09s`.
+- Full Web suite with local PostgreSQL: `141 passed in 5.63s`.
+- `manage.py check`: `System check identified no issues (0 silenced).`
+- `manage.py makemigrations --check --dry-run`: `No changes detected`.
+- `compileall` and `git diff --check`: passed.
+
+### Fix Round 1 risk
+
+- The documented local `.env.example` values remain the intended runtime configuration; an Ollama provider now fails closed when deployment configuration is absent instead of silently targeting a local daemon. OpenAI-compatible configuration also no longer supplies a timeout/model fallback.

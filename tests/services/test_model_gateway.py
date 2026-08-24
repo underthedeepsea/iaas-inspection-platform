@@ -103,6 +103,7 @@ def test_ollama_invoke_posts_json_chat_request_from_configuration(monkeypatch):
     assert result.model == "qwen3:8b"
     assert result.usage["prompt_tokens"] == 12
     assert result.usage["completion_tokens"] == 6
+    assert not hasattr(result, "raw")
     post.assert_called_once_with(
         "http://ollama.internal:11434/api/chat",
         json={
@@ -118,6 +119,7 @@ def test_ollama_invoke_posts_json_chat_request_from_configuration(monkeypatch):
 def test_ollama_request_cannot_override_configured_model_or_base_url(monkeypatch):
     monkeypatch.setenv("OLLAMA_BASE_URL", "http://ollama.internal:11434")
     monkeypatch.setenv("OLLAMA_MODEL", "qwen3:8b")
+    monkeypatch.setenv("LLM_TIMEOUT_SECONDS", "17")
     response = Mock()
     response.raise_for_status.return_value = None
     response.json.return_value = {
@@ -140,8 +142,62 @@ def test_ollama_request_cannot_override_configured_model_or_base_url(monkeypatch
     assert post.call_args.kwargs["json"]["model"] == "qwen3:8b"
 
 
+@pytest.mark.parametrize("missing", ["OLLAMA_BASE_URL", "OLLAMA_MODEL", "LLM_TIMEOUT_SECONDS"])
+def test_ollama_missing_configuration_fails_closed_before_http(monkeypatch, missing):
+    monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
+    monkeypatch.delenv("OLLAMA_MODEL", raising=False)
+    monkeypatch.delenv("LLM_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://ollama.internal:11434")
+    monkeypatch.setenv("OLLAMA_MODEL", "qwen3:8b")
+    monkeypatch.setenv("LLM_TIMEOUT_SECONDS", "17")
+    monkeypatch.delenv(missing, raising=False)
+    http_client = Mock()
+
+    from services.model_gateway.base import ModelGatewayConfigurationError
+    from services.model_gateway.ollama import OllamaProvider
+
+    with pytest.raises(ModelGatewayConfigurationError) as raised:
+        OllamaProvider(http_client=http_client)
+
+    assert raised.value.code == "MODEL_GATEWAY_CONFIGURATION_INVALID"
+    assert http_client.mock_calls == []
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("OLLAMA_BASE_URL", "not-a-url"),
+        ("OLLAMA_BASE_URL", "http://"),
+        ("OLLAMA_BASE_URL", "http://user:secret@ollama.internal:11434"),
+        ("OLLAMA_BASE_URL", "http://ollama.internal:0"),
+        ("OLLAMA_BASE_URL", "http://ollama.internal?secret=1"),
+        ("OLLAMA_MODEL", "   "),
+        ("LLM_TIMEOUT_SECONDS", "not-a-number"),
+        ("LLM_TIMEOUT_SECONDS", "0"),
+        ("LLM_TIMEOUT_SECONDS", "nan"),
+    ],
+)
+def test_ollama_invalid_configuration_fails_closed_before_http(monkeypatch, name, value):
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://ollama.internal:11434")
+    monkeypatch.setenv("OLLAMA_MODEL", "qwen3:8b")
+    monkeypatch.setenv("LLM_TIMEOUT_SECONDS", "17")
+    monkeypatch.setenv(name, value)
+    http_client = Mock()
+
+    from services.model_gateway.base import ModelGatewayConfigurationError
+    from services.model_gateway.ollama import OllamaProvider
+
+    with pytest.raises(ModelGatewayConfigurationError) as raised:
+        OllamaProvider(http_client=http_client)
+
+    assert raised.value.code == "MODEL_GATEWAY_CONFIGURATION_INVALID"
+    assert http_client.mock_calls == []
+
+
 def test_ollama_health_failure_is_llm_unavailable_without_endpoint_leak(monkeypatch):
-    monkeypatch.setenv("OLLAMA_BASE_URL", "http://user:secret@ollama.internal:11434")
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://ollama.internal:11434")
+    monkeypatch.setenv("OLLAMA_MODEL", "qwen3:8b")
+    monkeypatch.setenv("LLM_TIMEOUT_SECONDS", "17")
     get = Mock(side_effect=httpx.ConnectError("cannot connect to http://user:secret@ollama.internal"))
     monkeypatch.setattr("httpx.get", get)
 
@@ -158,6 +214,8 @@ def test_ollama_health_failure_is_llm_unavailable_without_endpoint_leak(monkeypa
 
 def test_ollama_health_http_failure_is_llm_unavailable(monkeypatch):
     monkeypatch.setenv("OLLAMA_BASE_URL", "http://ollama.internal:11434")
+    monkeypatch.setenv("OLLAMA_MODEL", "qwen3:8b")
+    monkeypatch.setenv("LLM_TIMEOUT_SECONDS", "17")
     response = Mock()
     response.raise_for_status.side_effect = httpx.HTTPStatusError(
         "503", request=Mock(), response=Mock()
@@ -176,6 +234,8 @@ def test_ollama_health_http_failure_is_llm_unavailable(monkeypatch):
 
 def test_ollama_health_success_checks_status_once(monkeypatch):
     monkeypatch.setenv("OLLAMA_BASE_URL", "http://ollama.internal:11434")
+    monkeypatch.setenv("OLLAMA_MODEL", "qwen3:8b")
+    monkeypatch.setenv("LLM_TIMEOUT_SECONDS", "17")
     response = Mock()
     response.raise_for_status.return_value = None
     get = Mock(return_value=response)
@@ -191,6 +251,7 @@ def test_ollama_health_success_checks_status_once(monkeypatch):
 def test_ollama_invalid_provider_json_is_structured_output_invalid(monkeypatch):
     monkeypatch.setenv("OLLAMA_BASE_URL", "http://ollama.internal:11434")
     monkeypatch.setenv("OLLAMA_MODEL", "qwen3:8b")
+    monkeypatch.setenv("LLM_TIMEOUT_SECONDS", "17")
     response = Mock()
     response.raise_for_status.return_value = None
     response.json.return_value = {"message": {"content": "not json"}}
@@ -209,6 +270,7 @@ def test_openai_compatible_provider_uses_configured_chat_endpoint(monkeypatch):
     monkeypatch.setenv("OPENAI_BASE_URL", "https://model.internal/v1/")
     monkeypatch.setenv("OPENAI_MODEL", "company-model")
     monkeypatch.setenv("OPENAI_API_KEY", "secret-key")
+    monkeypatch.setenv("LLM_TIMEOUT_SECONDS", "120")
     response = Mock()
     response.raise_for_status.return_value = None
     response.json.return_value = {
@@ -240,15 +302,42 @@ def test_openai_compatible_provider_uses_configured_chat_endpoint(monkeypatch):
     )
 
 
-def test_provider_error_metadata_does_not_include_credentials():
+def test_model_response_has_no_raw_and_metadata_is_a_strict_safe_allowlist():
     from services.model_gateway.base import ModelResponse
 
     response = ModelResponse(
         action=None,
         model="qwen3:8b",
         provider="ollama",
-        metadata={"base_url": "http://user:secret@ollama.internal:11434"},
+        metadata={
+            "token_source": "provider",
+            "prompt_tokens": 2,
+            "completion_tokens": 3,
+            "total_tokens": 5,
+            "access_token": "access-secret",
+            "x-api-key": "api-secret",
+            "model_url": "https://user:secret@model.internal/v1",
+            "endpoint": "https://model.internal/v1/chat",
+            "nested": {"url": "https://user:secret@internal"},
+            "unrequested": "should be dropped",
+        },
     )
 
-    assert "secret" not in response.safe_metadata
-    assert "base_url" not in response.safe_metadata
+    assert not hasattr(response, "raw")
+    assert response.metadata == {
+        "token_source": "provider",
+        "prompt_tokens": 2,
+        "completion_tokens": 3,
+        "total_tokens": 5,
+    }
+    assert response.safe_metadata == dict(response.metadata)
+    assert all(
+        secret not in repr(response)
+        for secret in (
+            "access-secret",
+            "api-secret",
+            "model.internal",
+            "internal",
+            "should be dropped",
+        )
+    )

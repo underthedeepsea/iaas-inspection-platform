@@ -36,10 +36,8 @@ class OllamaProvider(ModelGateway):
 
     def __init__(self, *, http_client: Any = None, client: Any = None):
         self._http = http_client or client or httpx
-        self.base_url = normalize_base_url(
-            configured_value("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
-        )
-        self.model = configured_model("OLLAMA_MODEL", default="qwen3:8b")
+        self.base_url = normalize_base_url(configured_value("OLLAMA_BASE_URL"))
+        self.model = configured_model("OLLAMA_MODEL")
         self.timeout = configured_timeout()
 
     def invoke(self, request: ModelRequest) -> ModelResponse:
@@ -61,7 +59,6 @@ class OllamaProvider(ModelGateway):
             provider=self.provider_name,
             usage=usage,
             metadata={"token_source": token_source},
-            raw=body,
         )
 
     def health_check(self) -> bool:
