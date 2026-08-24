@@ -48,6 +48,77 @@ def test_resolve_claim_returns_enabled_code_active_resolver():
 
 
 @pytest.mark.django_db
+def test_llm_capability_resolution_uses_active_current_version_only():
+    from services.plugin_runtime.registry import CapabilityRegistry
+
+    capability = Capability.objects.create(
+        capability_id=f"capability.current.{uuid.uuid4().hex}",
+        name="Current version resolver",
+        domain="LLM",
+        read_only=True,
+    )
+    old = CapabilityVersion.objects.create(
+        capability=capability,
+        version="1.0.0",
+        implementation_type="RULE",
+        status=CapabilityVersion.Status.ACTIVE,
+        resolves=["degradation_category"],
+    )
+    current = CapabilityVersion.objects.create(
+        capability=capability,
+        version="2.0.0",
+        implementation_type="RULE",
+        status=CapabilityVersion.Status.ACTIVE,
+        resolves=["degradation_category"],
+    )
+    capability.current_version = current
+    capability.save(update_fields=["current_version"])
+
+    assert CapabilityRegistry().resolve_capability(
+        capability.capability_id,
+        claim="degradation_category",
+    ) == current
+    assert old != current
+
+
+@pytest.mark.django_db
+def test_atomic_llm_dispatch_rechecks_read_only_current_version_before_backend():
+    from services.plugin_runtime.executor import ExecutionOrigin
+    from services.plugin_runtime.errors import ReadOnlyCapabilityError
+    from services.plugin_runtime.registry import CapabilityRegistry
+
+    capability = Capability.objects.create(
+        capability_id=f"capability.atomic.{uuid.uuid4().hex}",
+        name="Atomic resolver",
+        domain="LLM",
+        read_only=False,
+    )
+    version = CapabilityVersion.objects.create(
+        capability=capability,
+        version="1.0.0",
+        implementation_type="RULE",
+        status=CapabilityVersion.Status.ACTIVE,
+        input_schema={"type": "object"},
+        resolves=["degradation_category"],
+    )
+    capability.current_version = version
+    capability.save(update_fields=["current_version"])
+
+    class MustNotRun:
+        def execute(self, *_args, **_kwargs):
+            raise AssertionError("backend must not be dispatched")
+
+    with pytest.raises(ReadOnlyCapabilityError):
+        CapabilityRegistry().execute_readonly(
+            capability.capability_id,
+            claim="degradation_category",
+            payload={},
+            executor=MustNotRun(),
+            origin=ExecutionOrigin.LLM,
+        )
+
+
+@pytest.mark.django_db
 def test_shadow_resolver_is_not_formally_resolved_but_is_available_to_shadow_runner():
     from services.plugin_runtime.registry import CapabilityRegistry
 

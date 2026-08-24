@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -18,8 +19,22 @@ from services.model_gateway.base import (
 )
 from services.plugin_runtime.executor import ExecutionOrigin
 
-from .schemas import Evidence, FinalAnswer, FinalResult, ToolRequest, model_dump
-from .state import DEFAULT_MAX_TOOL_CALLS, MAX_EVIDENCE_ITEMS
+from .schemas import (
+    Evidence,
+    FinalAnswer,
+    FinalResult,
+    ToolCallHistory,
+    ToolRequest,
+    model_dump,
+)
+from .state import (
+    DEFAULT_MAX_TOOL_CALLS,
+    MAX_CONTEXT_BYTES,
+    MAX_EVIDENCE_ITEMS,
+    MAX_EVIDENCE_PAYLOAD_BYTES,
+    MAX_CONFIGURED_BUDGET,
+    MAX_TOOL_HISTORY_ITEMS,
+)
 
 
 @dataclass(frozen=True)
@@ -36,32 +51,46 @@ class InvestigationRuntime:
     executor: Any
 
 
+class _ToolBoundaryError(RuntimeError):
+    def __init__(self, code: str):
+        self.code = code
+        super().__init__(code)
+
+
 def build_context(state: Mapping[str, Any]) -> dict[str, Any]:
     """Compress caller context into the bounded form sent to the gateway."""
 
     result = dict(state)
     result["question"] = _safe_text(state.get("question"))[:4000]
     context = _safe_mapping(state.get("context"))
-    claim = state.get("missing_claim") or context.get("missing_claim") or ""
-    if isinstance(claim, str):
-        claim = _safe_text(claim)[:192]
-    else:
-        claim = ""
+    claim = (
+        state.get("missing_claim")
+        or state.get("claim_gap")
+        or context.get("missing_claim")
+        or context.get("claim_gap")
+        or ""
+    )
+    claim = _canonical_claim(claim)
     if claim:
         context["missing_claim"] = claim
         result["missing_claim"] = claim
+        result["claim_gap"] = claim
+    else:
+        result["missing_claim"] = ""
+        result["claim_gap"] = ""
     max_rounds = _positive_int(state.get("max_rounds"), 3)
     max_tool_calls = _positive_int(state.get("max_tool_calls"), DEFAULT_MAX_TOOL_CALLS)
     context["budgets"] = {
         "max_rounds": max_rounds,
         "max_tool_calls": max_tool_calls,
     }
-    result["context"] = context
+    result["context"] = _bounded_json(context, MAX_CONTEXT_BYTES, protected={"missing_claim", "budgets"})
     result["max_rounds"] = max_rounds
     result["max_tool_calls"] = max_tool_calls
     result["rounds_used"] = min(_nonnegative_int(state.get("rounds_used")), max_rounds)
     result["tool_calls_used"] = min(_nonnegative_int(state.get("tool_calls_used")), max_tool_calls)
     result["evidence"] = _safe_evidence_list(state.get("evidence"))
+    result["tool_history"] = _safe_tool_history(state.get("tool_history"))
     result["facts"] = _string_list(state.get("facts"))
     result["next_steps"] = _string_list(state.get("next_steps"))
     result["messages"] = _safe_messages(state.get("messages"))
@@ -87,10 +116,8 @@ def plan_or_answer(state: Mapping[str, Any], *, gateway: Any) -> dict[str, Any]:
         response = gateway.invoke(ModelRequest(messages=_request_messages(result)))
         action = _response_action(response)
     except Exception as exc:  # providers expose stable error codes; fakes may not
-        code = getattr(exc, "code", "MODEL_GATEWAY_ERROR")
-        if not isinstance(code, str) or not code:
-            code = "MODEL_GATEWAY_ERROR"
-        return _terminal_failure(result, code[:64], "model gateway invocation failed")
+        code = _safe_error_code(getattr(exc, "code", ""), "MODEL_GATEWAY_ERROR")
+        return _terminal_failure(result, code, "model gateway invocation failed")
 
     if isinstance(action, FinalAction):
         safe_action = {
@@ -105,9 +132,19 @@ def plan_or_answer(state: Mapping[str, Any], *, gateway: Any) -> dict[str, Any]:
         # tool request rather than relying on a missing key to delete it.
         result["pending_tool"] = {}
     elif isinstance(action, CallToolAction):
+        capability_id = _canonical_capability_id(action.capability_id)
+        if not capability_id:
+            return _terminal_unresolved(
+                result,
+                "CAPABILITY_REQUEST_INVALID",
+                "requested capability identifier is invalid",
+            )
         safe_tool = {
-            "capability_id": action.capability_id[:192],
-            "arguments": _safe_mapping(action.arguments),
+            "capability_id": capability_id,
+            "arguments": _bounded_json(
+                _safe_mapping(action.arguments),
+                MAX_CONTEXT_BYTES,
+            ),
             "reason": _safe_text(action.reason)[:2000],
         }
         result["action"] = {"action": "CALL_TOOL", "tool": safe_tool}
@@ -129,13 +166,43 @@ def select_tool(state: Mapping[str, Any], *, registry: Any) -> dict[str, Any]:
     except Exception:
         return _terminal_unresolved(result, "CAPABILITY_REQUEST_INVALID", "tool request is invalid")
 
-    claim = result.get("missing_claim") or _safe_mapping(result.get("context")).get("missing_claim")
-    claim = claim if isinstance(claim, str) and claim else None
+    claim = _claim_from_state(result)
+    if not claim:
+        _append_tool_history(
+            result,
+            pending,
+            status="REJECTED",
+            outcome="REJECTED",
+            error_code="MISSING_CLAIM_REQUIRED",
+        )
+        return _terminal_unresolved(result, "MISSING_CLAIM_REQUIRED", "a canonical missing claim is required")
+    capability_id = _canonical_capability_id(request.capability_id)
+    if not capability_id:
+        return _terminal_unresolved(result, "CAPABILITY_REQUEST_INVALID", "requested capability identifier is invalid")
+    request = ToolRequest(
+        capability_id=capability_id,
+        arguments=_bounded_json(_safe_mapping(request.arguments), MAX_CONTEXT_BYTES),
+        reason=_safe_text(request.reason)[:2000],
+    )
     version = _resolve_capability(registry, request.capability_id, claim=claim)
     if version is None:
+        _append_tool_history(
+            result,
+            request.model_dump(),
+            status="REJECTED",
+            outcome="REJECTED",
+            error_code="CAPABILITY_NOT_FOUND",
+        )
         return _terminal_unresolved(result, "CAPABILITY_NOT_FOUND", "requested capability is unavailable")
     reason = _validate_capability(version, request.capability_id, request.arguments, claim=claim)
     if reason is not None:
+        _append_tool_history(
+            result,
+            request.model_dump(),
+            status="REJECTED",
+            outcome="REJECTED",
+            error_code="CAPABILITY_REJECTED",
+        )
         return _terminal_unresolved(result, "CAPABILITY_REJECTED", reason)
 
     result["selected_capability"] = {
@@ -144,6 +211,7 @@ def select_tool(state: Mapping[str, Any], *, registry: Any) -> dict[str, Any]:
         "reason": request.reason[:2000],
         "claim": claim or "",
     }
+    _append_tool_history(result, request.model_dump(), status="SELECTED", outcome="PENDING")
     return result
 
 
@@ -173,29 +241,45 @@ def execute_readonly_tool(
     arguments = selected.get("arguments")
     if not isinstance(capability_id, str) or not isinstance(arguments, Mapping):
         return _terminal_unresolved(result, "CAPABILITY_REQUEST_INVALID", "validated tool request is invalid")
-    claim = selected.get("claim") or result.get("missing_claim") or None
-    version = _resolve_capability(registry, capability_id, claim=claim if isinstance(claim, str) else None)
-    if version is None:
-        return _terminal_unresolved(result, "CAPABILITY_NOT_FOUND", "requested capability is unavailable")
-    reason = _validate_capability(version, capability_id, arguments, claim=claim if isinstance(claim, str) else None)
-    if reason is not None:
-        return _terminal_unresolved(result, "CAPABILITY_REJECTED", reason)
+    capability_id = _canonical_capability_id(capability_id)
+    claim = _canonical_claim(selected.get("claim")) or _claim_from_state(result)
+    if not capability_id:
+        return _terminal_unresolved(result, "CAPABILITY_REQUEST_INVALID", "requested capability identifier is invalid")
+    if not claim:
+        _update_tool_history(result, capability_id, status="REJECTED", outcome="REJECTED", error_code="MISSING_CLAIM_REQUIRED")
+        return _terminal_unresolved(result, "MISSING_CLAIM_REQUIRED", "a canonical missing claim is required")
+    arguments = _bounded_json(_safe_mapping(arguments), MAX_CONTEXT_BYTES)
 
     # Count an attempted dispatch exactly once and never beyond the ceiling.
     result["tool_calls_used"] = tool_calls + 1
     try:
-        raw_result = executor.execute(
-            version,
-            dict(arguments),
+        atomic_execute = getattr(registry, "execute_readonly", None)
+        if not callable(atomic_execute):
+            raise _ToolBoundaryError("ATOMIC_DISPATCH_REQUIRED")
+        execution = atomic_execute(
+            capability_id,
+            claim=claim,
+            payload=dict(arguments),
+            executor=executor,
             origin=ExecutionOrigin.LLM,
         )
+        if isinstance(execution, tuple) and len(execution) == 2:
+            version, raw_result = execution
+        else:
+            version, raw_result = None, execution
+        if version is not None:
+            reason = _validate_capability(version, capability_id, arguments, claim=claim)
+            if reason is not None:
+                raise _ToolBoundaryError("CAPABILITY_REJECTED")
         output_schema = getattr(version, "output_schema", {})
         _validate_schema_instance(raw_result, output_schema, "output")
-        compact = _compact_output(raw_result)
+        compact = _bounded_json(
+            _compact_output(raw_result, allowed_keys=_public_output_keys(output_schema)),
+            MAX_EVIDENCE_PAYLOAD_BYTES,
+        )
     except Exception as exc:
-        code = getattr(exc, "code", "TOOL_EXECUTION_FAILED")
-        if not isinstance(code, str) or not code:
-            code = "TOOL_EXECUTION_FAILED"
+        code = _safe_error_code(getattr(exc, "code", ""), "TOOL_EXECUTION_FAILED")
+        _update_tool_history(result, capability_id, status="FAILED", outcome="FAILED", error_code=code[:64])
         return _terminal_unresolved(result, code[:64], "read-only capability execution failed")
 
     evidence_item = Evidence(
@@ -207,6 +291,13 @@ def execute_readonly_tool(
     )
     evidence.append(model_dump(evidence_item))
     result["evidence"] = evidence[:MAX_EVIDENCE_ITEMS]
+    _update_tool_history(
+        result,
+        capability_id,
+        status="SUCCEEDED",
+        outcome="SUCCEEDED",
+        evidence_key=evidence_item.evidence_key,
+    )
     facts = _string_list(result.get("facts"))
     if evidence_item.summary not in facts:
         facts.append(evidence_item.summary)
@@ -245,6 +336,7 @@ def final_answer(state: Mapping[str, Any]) -> dict[str, Any]:
             confidence = _confidence(result.get("confidence"), 0.0)
     facts = _string_list(result.get("facts"))
     next_steps = _string_list(result.get("next_steps"))
+    tool_history = _safe_tool_history(result.get("tool_history"))
     if status != "RESOLVED" and not next_steps:
         next_steps = ["Collect the missing evidence and retry the investigation."]
     final = FinalResult(
@@ -255,6 +347,7 @@ def final_answer(state: Mapping[str, Any]) -> dict[str, Any]:
         next_steps=next_steps,
         confidence=confidence,
         evidence=[Evidence.model_validate(item) for item in _safe_evidence_list(result.get("evidence"))],
+        tool_history=[ToolCallHistory.model_validate(item) for item in tool_history],
         rounds_used=_nonnegative_int(result.get("rounds_used")),
         tool_calls_used=_nonnegative_int(result.get("tool_calls_used")),
     )
@@ -268,6 +361,7 @@ def final_answer(state: Mapping[str, Any]) -> dict[str, Any]:
             "next_steps": dumped["next_steps"],
             "confidence": dumped["confidence"],
             "evidence": dumped["evidence"],
+            "tool_history": dumped["tool_history"],
             "rounds_used": dumped["rounds_used"],
             "tool_calls_used": dumped["tool_calls_used"],
             "final": dumped,
@@ -295,23 +389,27 @@ def route_after_tool(state: Mapping[str, Any]) -> str:
 
 
 def _resolve_capability(registry: Any, capability_id: str, *, claim: str | None):
+    canonical_claim = _canonical_claim(claim)
+    if not canonical_claim or _canonical_capability_id(capability_id) != capability_id:
+        return None
     resolver = getattr(registry, "resolve_capability", None)
     if resolver is None:
         resolver = getattr(registry, "resolve", None)
     if resolver is None:
         return None
     try:
-        if claim is not None:
-            try:
-                return resolver(capability_id, claim=claim)
-            except TypeError:
-                return resolver(capability_id)
-        return resolver(capability_id)
+        # A resolver that cannot accept the canonical claim is not safe for
+        # this path.  Never fall back to a broad capability lookup with
+        # ``claim=None``.
+        return resolver(capability_id, claim=canonical_claim)
     except Exception:
         return None
 
 
 def _validate_capability(version: Any, capability_id: str, arguments: Mapping[str, Any], *, claim: str | None) -> str | None:
+    canonical_claim = _canonical_claim(claim)
+    if not canonical_claim or canonical_claim != claim:
+        return "a canonical missing claim is required"
     capability = getattr(version, "capability", version)
     actual_id = getattr(capability, "capability_id", None) or getattr(version, "capability_id", None)
     if actual_id != capability_id:
@@ -322,8 +420,14 @@ def _validate_capability(version: Any, capability_id: str, arguments: Mapping[st
         return "capability and version must be ACTIVE"
     if getattr(capability, "read_only", getattr(version, "read_only", None)) is not True:
         return "LLM execution requires a read-only capability"
+    current_version = getattr(capability, "current_version", None)
+    if current_version is not None:
+        current_id = getattr(current_version, "pk", None) or getattr(current_version, "id", None)
+        version_id = getattr(version, "pk", None) or getattr(version, "id", None)
+        if current_id is not None and version_id is not None and current_id != version_id:
+            return "capability version is not current"
     resolves = getattr(version, "resolves", None)
-    if claim and (not isinstance(resolves, Sequence) or isinstance(resolves, (str, bytes)) or claim not in resolves):
+    if not isinstance(resolves, Sequence) or isinstance(resolves, (str, bytes)) or canonical_claim not in resolves:
         return "capability does not resolve the requested claim"
     input_schema = getattr(version, "input_schema", None)
     if not isinstance(input_schema, Mapping):
@@ -389,9 +493,9 @@ def _request_messages(state: Mapping[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
-def _compact_output(value: Any) -> dict[str, Any]:
+def _compact_output(value: Any, *, allowed_keys: set[str] | None = None) -> dict[str, Any]:
     if isinstance(value, Mapping):
-        compact = _safe_mapping(value, depth=0)
+        compact = _safe_mapping(value, depth=0, allowed_keys=allowed_keys)
     else:
         safe = _safe_value(value, depth=0)
         if safe is _DROP:
@@ -400,15 +504,22 @@ def _compact_output(value: Any) -> dict[str, Any]:
     return compact
 
 
-def _safe_mapping(value: Any, *, depth: int = 0) -> dict[str, Any]:
+def _safe_mapping(
+    value: Any,
+    *,
+    depth: int = 0,
+    allowed_keys: set[str] | None = None,
+) -> dict[str, Any]:
     if not isinstance(value, Mapping):
         return {}
     output: dict[str, Any] = {}
-    for index, (key, item) in enumerate(value.items()):
+    for index, (key, item) in enumerate(sorted(value.items(), key=lambda pair: str(pair[0]))):
         if index >= 32:
             break
         key_text = str(key)[:192]
-        if _sensitive_key(key_text):
+        if not _public_key(key_text) or _sensitive_key(key_text):
+            continue
+        if allowed_keys is not None and key_text not in allowed_keys:
             continue
         safe = _safe_value(item, depth=depth + 1)
         if safe is not _DROP:
@@ -454,7 +565,10 @@ def _safe_evidence_list(value: Any) -> list[dict[str, Any]]:
                 cleaned = {
                     "evidence_key": _safe_text(item.get("evidence_key"))[:192],
                     "summary": _safe_text(item.get("summary"))[:4000],
-                    "payload": _safe_mapping(item.get("payload")),
+                    "payload": _bounded_json(
+                        _safe_mapping(item.get("payload")),
+                        MAX_EVIDENCE_PAYLOAD_BYTES,
+                    ),
                     "source": _safe_text(item.get("source"))[:128],
                     "capability_id": _safe_text(item.get("capability_id"))[:192],
                     "confidence": item.get("confidence", 1.0),
@@ -466,6 +580,111 @@ def _safe_evidence_list(value: Any) -> list[dict[str, Any]]:
     return output
 
 
+def _safe_tool_history(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    output = []
+    for item in value[:MAX_TOOL_HISTORY_ITEMS]:
+        if not isinstance(item, Mapping):
+            continue
+        capability_id = _canonical_capability_id(item.get("capability_id"))
+        if not capability_id:
+            continue
+        try:
+            history = ToolCallHistory(
+                capability_id=capability_id,
+                arguments=_bounded_json(
+                    _safe_mapping(item.get("arguments")),
+                    MAX_CONTEXT_BYTES,
+                ),
+                reason=_safe_text(item.get("reason"))[:2000],
+                status=_safe_history_label(item.get("status")),
+                outcome=_safe_history_label(item.get("outcome")),
+                error_code=_safe_error_code(item.get("error_code"), ""),
+                evidence_key=_safe_text(item.get("evidence_key"))[:192],
+            )
+            output.append(model_dump(history))
+        except Exception:
+            continue
+    return output
+
+
+def _bounded_json(value: Any, limit: int, *, protected: set[str] | None = None):
+    """Return deterministic JSON-compatible data within a byte ceiling."""
+
+    protected = protected or set()
+    candidate = value
+    if _serialized_bytes(candidate) <= limit:
+        return candidate
+    if isinstance(candidate, Mapping):
+        candidate = dict(candidate)
+        for key in sorted(candidate, key=str, reverse=True):
+            if str(key) in protected:
+                continue
+            candidate.pop(key, None)
+            if _serialized_bytes(candidate) <= limit:
+                return _mark_truncated(candidate, limit, protected)
+        # Protected values are bounded by their own scalar limits; if a caller
+        # still supplies an oversized value, retain only a stable marker.
+        return {"_truncated": True} if _serialized_bytes({"_truncated": True}) <= limit else {}
+    if isinstance(candidate, list):
+        candidate = list(candidate)
+        while candidate and _serialized_bytes(candidate) > limit:
+            candidate.pop()
+        return _mark_truncated(candidate, limit, protected)
+    if isinstance(candidate, str):
+        encoded = candidate.encode("utf-8")
+        candidate = encoded[: max(limit - 32, 0)].decode("utf-8", errors="ignore")
+        return candidate if _serialized_bytes(candidate) <= limit else ""
+    return {"_truncated": True} if _serialized_bytes({"_truncated": True}) <= limit else {}
+
+
+def _mark_truncated(value: Any, limit: int, protected: set[str]):
+    if isinstance(value, dict):
+        value = dict(value)
+        value["_truncated"] = True
+        while _serialized_bytes(value) > limit:
+            removable = [
+                key
+                for key in sorted(value, key=str, reverse=True)
+                if str(key) not in protected and key != "_truncated"
+            ]
+            if not removable:
+                return {"_truncated": True} if _serialized_bytes({"_truncated": True}) <= limit else {}
+            value.pop(removable[0], None)
+        return value
+    return value
+
+
+def _serialized_bytes(value: Any) -> int:
+    try:
+        return len(
+            json.dumps(
+                value,
+                ensure_ascii=True,
+                sort_keys=True,
+                allow_nan=False,
+            ).encode("utf-8")
+        )
+    except (TypeError, ValueError):
+        return 10**9
+
+
+def _public_output_keys(schema: Any) -> set[str] | None:
+    """Use declared output properties as a positive public-field allowlist."""
+
+    if not isinstance(schema, Mapping):
+        return None
+    properties = schema.get("properties")
+    if not isinstance(properties, Mapping) or not properties:
+        return None
+    return {
+        str(key)[:192]
+        for key in properties
+        if _public_key(str(key)[:192]) and not _sensitive_key(str(key)[:192])
+    }
+
+
 def _summarize(payload: Mapping[str, Any]) -> str:
     if not payload:
         return "Tool returned no public fields"
@@ -475,14 +694,192 @@ def _summarize(payload: Mapping[str, Any]) -> str:
         return "Tool returned no serialisable public fields"
 
 
+_PUBLIC_KEY_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,191}")
+_CAPABILITY_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,191}")
+_CLAIM_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,191}")
+_SENSITIVE_TEXT_RE = re.compile(
+    r"(?i)(?:api[\W_]*key|access[\W_]*key|id[\W_]*token|pass(?:word|wd)|"
+    r"secret(?:[\W_]*key)?|authorization)(?:[\W_]|$)"
+)
+
+_SENSITIVE_KEYS = {
+    "accesskey",
+    "apikey",
+    "authtoken",
+    "authorization",
+    "bearer",
+    "clientsecret",
+    "connectionstring",
+    "cookie",
+    "credential",
+    "credentials",
+    "databaseurl",
+    "dbpassword",
+    "dsn",
+    "endpoint",
+    "env",
+    "environment",
+    "idtoken",
+    "password",
+    "passwd",
+    "passphrase",
+    "pwd",
+    "privatekey",
+    "raw",
+    "rawpayload",
+    "secret",
+    "secretkey",
+    "sessiontoken",
+    "token",
+    "url",
+    "uri",
+}
+_SAFE_HISTORY_LABELS = {
+    "FAILED",
+    "PENDING",
+    "REJECTED",
+    "RUNNING",
+    "SELECTED",
+    "SUCCEEDED",
+    "TIMEOUT",
+    "UNKNOWN",
+}
+
+
+def _public_key(key: str) -> bool:
+    return bool(_PUBLIC_KEY_RE.fullmatch(key))
+
+
+def _canonical_key(key: str) -> str:
+    return "".join(character for character in str(key).lower() if character.isalnum())
+
+
 def _sensitive_key(key: str) -> bool:
-    lowered = key.lower()
-    return any(token in lowered for token in ("password", "secret", "credential", "access_token", "api_key", "authorization", "provider_url", "endpoint", "raw_", "raw")) or lowered in {"url", "uri", "token"}
+    canonical = _canonical_key(key)
+    return (
+        canonical in _SENSITIVE_KEYS
+        or canonical.startswith(
+            (
+                "raw",
+                "authorization",
+                "privatekey",
+                "clientsecret",
+                "credential",
+                "apikey",
+                "accesskey",
+                "idtoken",
+                "password",
+                "passwd",
+                "passphrase",
+                "pwd",
+                "secret",
+                "token",
+            )
+        )
+        or canonical.endswith(("apikey", "accesskey", "credential", "password", "passwd", "passphrase", "secret", "token", "url", "uri"))
+    )
+
+
+def _canonical_capability_id(value: Any) -> str:
+    if not isinstance(value, str):
+        return ""
+    candidate = value.strip()
+    if not _CAPABILITY_ID_RE.fullmatch(candidate) or _sensitive_key(candidate):
+        return ""
+    return candidate
+
+
+def _canonical_claim(value: Any) -> str:
+    if not isinstance(value, str):
+        return ""
+    candidate = value.strip()
+    if not _CLAIM_RE.fullmatch(candidate) or _sensitive_key(candidate):
+        return ""
+    return candidate
+
+
+def _claim_from_state(state: Mapping[str, Any]) -> str:
+    context = _safe_mapping(state.get("context"))
+    return _canonical_claim(
+        state.get("missing_claim")
+        or state.get("claim_gap")
+        or context.get("missing_claim")
+        or context.get("claim_gap")
+    )
 
 
 def _looks_sensitive(value: str) -> bool:
     lowered = value.lower()
-    return lowered.startswith(("http://", "https://")) or "://" in lowered or "password=" in lowered or "token=" in lowered
+    return (
+        lowered.startswith(("http://", "https://"))
+        or "://" in lowered
+        or "password=" in lowered
+        or "token=" in lowered
+        or bool(_SENSITIVE_TEXT_RE.search(value))
+    )
+
+
+def _append_tool_history(
+    state: dict[str, Any],
+    request: Mapping[str, Any] | None,
+    *,
+    status: str,
+    outcome: str,
+    error_code: str = "",
+    evidence_key: str = "",
+) -> None:
+    if not isinstance(request, Mapping):
+        return
+    capability_id = _canonical_capability_id(request.get("capability_id"))
+    if not capability_id:
+        return
+    history = _safe_tool_history(state.get("tool_history"))
+    try:
+        item = ToolCallHistory(
+            capability_id=capability_id,
+            arguments=_bounded_json(_safe_mapping(request.get("arguments")), MAX_CONTEXT_BYTES),
+            reason=_safe_text(request.get("reason"))[:2000],
+            status=_safe_history_label(status),
+            outcome=_safe_history_label(outcome),
+            error_code=_safe_error_code(error_code, ""),
+            evidence_key=evidence_key[:192],
+        )
+        history.append(model_dump(item))
+    except Exception:
+        return
+    state["tool_history"] = history[-MAX_TOOL_HISTORY_ITEMS:]
+
+
+def _update_tool_history(
+    state: dict[str, Any],
+    capability_id: str,
+    *,
+    status: str,
+    outcome: str,
+    error_code: str = "",
+    evidence_key: str = "",
+) -> None:
+    history = _safe_tool_history(state.get("tool_history"))
+    for index in range(len(history) - 1, -1, -1):
+        if history[index].get("capability_id") == capability_id and history[index].get("status") in {"SELECTED", "PENDING"}:
+            history[index].update(
+                {
+                    "status": _safe_history_label(status),
+                    "outcome": _safe_history_label(outcome),
+                    "error_code": _safe_error_code(error_code, ""),
+                    "evidence_key": evidence_key[:192],
+                }
+            )
+            state["tool_history"] = history[-MAX_TOOL_HISTORY_ITEMS:]
+            return
+    _append_tool_history(
+        state,
+        {"capability_id": capability_id, "arguments": {}, "reason": ""},
+        status=status,
+        outcome=outcome,
+        error_code=error_code,
+        evidence_key=evidence_key,
+    )
 
 
 def _terminal_unresolved(state: Mapping[str, Any], code: str, message: str) -> dict[str, Any]:
@@ -553,6 +950,20 @@ def _safe_text(value: Any) -> str:
     return "[redacted]" if _looks_sensitive(text) else text
 
 
+def _safe_error_code(value: Any, fallback: str) -> str:
+    if not isinstance(value, str):
+        return fallback
+    candidate = value.strip()
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}", candidate):
+        return fallback
+    return fallback if _sensitive_key(candidate) else candidate
+
+
+def _safe_history_label(value: Any) -> str:
+    candidate = _safe_text(value).upper()
+    return candidate if candidate in _SAFE_HISTORY_LABELS else "UNKNOWN"
+
+
 def _string_list(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
@@ -589,7 +1000,7 @@ def _positive_int(value: Any, fallback: int) -> int:
         number = int(value)
     except (TypeError, ValueError):
         return fallback
-    return number if number > 0 else fallback
+    return min(number, MAX_CONFIGURED_BUDGET) if number > 0 else fallback
 
 
 def _nonnegative_int(value: Any) -> int:

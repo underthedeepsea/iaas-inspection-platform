@@ -92,6 +92,85 @@ git diff --check
   `final`, tool-call metadata, and Evidence through its own Conversation/SSE
   orchestration rather than extending this task.
 
+## Fix Round 1 — reviewer hardening
+
+### RED / GREEN
+
+- Added regression coverage first for normalized sensitive keys, invalid
+  capability identifiers, missing Claim Gap, byte caps, 8/8 budgets, safe
+  Tool Call handoff, and registry-backed atomic dispatch.
+- The first focused Fix run was intentionally RED: 19 tests ran with 6
+  failures (the new security/contract assertions).
+- After the smallest implementation changes, the focused suite is GREEN:
+  19 passed.
+
+### Security and boundedness decisions
+
+- State-bound capability IDs, claims, argument keys, evidence keys, and tool
+  history use ASCII identifier contracts plus case/punctuation-normalized
+  sensitive-key rejection. This covers apiKey, api-key, accessKey, id_token,
+  passwd, authorization/secret/token variants, and URL/raw fields. Declared
+  output-schema properties act as a positive public-field allowlist when
+  available.
+- A CALL_TOOL cannot reach Registry resolution or execution without one
+  canonical, non-empty missing_claim. Resolver adapters never fall back to a
+  broad claim=None lookup.
+- Context and Evidence payloads use deterministic JSON byte ceilings
+  (MAX_CONTEXT_BYTES=4096, MAX_EVIDENCE_PAYLOAD_BYTES=4096) with stable,
+  valid truncation.
+- Factory and invocation budgets are bounded before graph execution. The
+  wrapper derives a safe LangGraph recursion limit, preserves an explicit
+  caller recursion_limit, and terminates 8-round/8-tool runs structurally.
+- State and final include bounded Tool Call history containing only
+  capability ID, sanitized arguments/reason, status/outcome, error code, and
+  evidence key; raw result/error text is never copied.
+- CapabilityRegistry.resolve_capability() selects only the active
+  Capability.current_version; execute_readonly() locks and rechecks the
+  capability/current version, ACTIVE/read-only/claim/schema gates, and then
+  dispatches under one transaction to close the authorization/dispatch TOCTOU
+  window.
+
+### Fix Round 1 verification
+
+~~~text
+DJANGO_SETTINGS_MODULE=config.settings.dev PYTHONPATH=. \
+  .venv-web/bin/pytest -q tests/services/test_investigation_graph.py
+19 passed
+
+DJANGO_SETTINGS_MODULE=config.settings.dev PYTHONPATH=. \
+  .venv-web/bin/pytest -q tests/services/test_investigation_graph.py \
+  tests/services/test_model_gateway.py tests/services/test_plugin_security.py
+88 passed
+
+DJANGO_SETTINGS_MODULE=config.settings.dev PYTHONPATH=. \
+  .venv-web/bin/pytest -q tests/services/test_capability_registry.py
+7 passed
+
+DJANGO_SETTINGS_MODULE=config.settings.dev PYTHONPATH=. \
+  .venv-web/bin/pytest -q
+179 passed
+
+DJANGO_SETTINGS_MODULE=config.settings.dev PYTHONPATH=. \
+  .venv-web/bin/python manage.py check
+System check identified no issues (0 silenced).
+
+DJANGO_SETTINGS_MODULE=config.settings.dev PYTHONPATH=. \
+  .venv-web/bin/python manage.py makemigrations --check --dry-run
+No changes detected
+
+python3 -m compileall -q services \
+  tests/services/test_investigation_graph.py tests/services/test_capability_registry.py
+git diff --check
+~~~
+
+### Remaining risks
+
+- The graph remains intentionally in-memory; Task 12 owns persistence and
+  conversation/SSE orchestration.
+- The default production path uses CapabilityRegistry.execute_readonly() for
+  atomic authorization and dispatch. Injected registries must expose the same
+  atomic operation; otherwise the graph fails closed with no backend dispatch.
+
 ## Files
 
 - `services/investigation_graph/state.py`

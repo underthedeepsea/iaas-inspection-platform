@@ -18,7 +18,10 @@ from .nodes import (
     route_after_tool,
     select_tool,
 )
-from .state import InvestigationState, initial_state
+from .state import MAX_CONFIGURED_BUDGET, InvestigationState, initial_state
+
+
+MAX_RECURSION_LIMIT = 256
 
 
 def build_investigation_graph(
@@ -100,10 +103,30 @@ class _ConfiguredGraph:
 
     def __init__(self, compiled: Any, *, max_rounds: int, max_tool_calls: int):
         self._compiled = compiled
-        self.max_rounds = max_rounds if isinstance(max_rounds, int) and max_rounds > 0 else 3
-        self.max_tool_calls = max_tool_calls if isinstance(max_tool_calls, int) and max_tool_calls > 0 else 5
+        self.max_rounds = (
+            min(max_rounds, MAX_CONFIGURED_BUDGET)
+            if isinstance(max_rounds, int) and max_rounds > 0
+            else 3
+        )
+        self.max_tool_calls = (
+            min(max_tool_calls, MAX_CONFIGURED_BUDGET)
+            if isinstance(max_tool_calls, int) and max_tool_calls > 0
+            else 5
+        )
+        self.recursion_limit = min(
+            MAX_RECURSION_LIMIT,
+            max(16, 3 * max(self.max_rounds, self.max_tool_calls) + 8),
+        )
 
     def invoke(self, values: Mapping[str, Any] | None = None, config: Any = None, **kwargs: Any):
+        state, config = self._prepare(values, config)
+        return self._compiled.invoke(state, config=config, **kwargs)
+
+    def stream(self, values: Mapping[str, Any] | None = None, config: Any = None, **kwargs: Any):
+        state, config = self._prepare(values, config)
+        yield from self._compiled.stream(state, config=config, **kwargs)
+
+    def _prepare(self, values: Mapping[str, Any] | None, config: Any):
         state = initial_state(dict(values or {}))
         # Explicit input values are authoritative; factory defaults fill only
         # omitted limits and are bounded before any node increments counters.
@@ -111,9 +134,16 @@ class _ConfiguredGraph:
             state["max_rounds"] = self.max_rounds
         if not isinstance(values, Mapping) or "max_tool_calls" not in values:
             state["max_tool_calls"] = self.max_tool_calls
+        effective_limit = min(
+            MAX_RECURSION_LIMIT,
+            max(16, 3 * max(state["max_rounds"], state["max_tool_calls"]) + 8),
+        )
         if config is None:
-            return self._compiled.invoke(state, **kwargs)
-        return self._compiled.invoke(state, config=config, **kwargs)
+            config = {"recursion_limit": effective_limit}
+        elif "recursion_limit" not in config:
+            config = dict(config)
+            config["recursion_limit"] = self.recursion_limit
+        return state, config
 
     def __getattr__(self, name: str):
         return getattr(self._compiled, name)
@@ -126,6 +156,11 @@ class _LazyCapabilityRegistry:
         from services.plugin_runtime.registry import CapabilityRegistry
 
         return CapabilityRegistry().resolve_capability(capability_id, claim=claim)
+
+    def execute_readonly(self, capability_id: str, **kwargs: Any):
+        from services.plugin_runtime.registry import CapabilityRegistry
+
+        return CapabilityRegistry().execute_readonly(capability_id, **kwargs)
 
 
 class _LazyPluginExecutor:

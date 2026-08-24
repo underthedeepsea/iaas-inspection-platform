@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -25,6 +26,28 @@ class FakeRegistry:
         if self.version is not None and capability_id == self.version.capability.capability_id:
             return self.version
         return None
+
+    def execute_readonly(self, capability_id, *, claim, payload, executor, origin):
+        from services.plugin_runtime.errors import PluginExecutionError
+
+        if self.version is None or capability_id != self.version.capability.capability_id:
+            raise PluginExecutionError("capability unavailable")
+        return self.version, executor.execute(self.version, payload, origin=origin)
+
+
+class AtomicRegistry(FakeRegistry):
+    def __init__(self, version=None, *, fail=False):
+        super().__init__(version)
+        self.atomic_calls = []
+        self.fail = fail
+
+    def execute_readonly(self, capability_id, *, claim, payload, executor, origin):
+        self.atomic_calls.append((capability_id, claim, payload, origin))
+        if self.fail:
+            from services.plugin_runtime.errors import ReadOnlyCapabilityError
+
+            raise ReadOnlyCapabilityError("capability changed")
+        return self.version, executor.execute(self.version, payload, origin=origin)
 
 
 class FakeExecutor:
@@ -103,6 +126,18 @@ def run_graph(gateway, *, registry=None, executor=None, **values):
             "missing_claim": "degradation_category",
         }
     )
+
+
+def run_graph_without_claim(gateway, *, registry=None, executor=None, **values):
+    from services.investigation_graph.graph import build_investigation_graph
+
+    graph = build_investigation_graph(
+        gateway=gateway,
+        registry=registry or FakeRegistry(),
+        executor=executor or FakeExecutor(),
+        **values,
+    )
+    return graph.invoke({"question": "Why is TTFT increasing?", "context": {}})
 
 
 def test_direct_final_has_zero_tool_calls_and_stable_final_shape():
@@ -310,3 +345,137 @@ def test_gateway_failure_still_returns_the_stable_terminal_shape():
     assert result["error_code"] == "LLM_UNAVAILABLE"
     assert all(key in result for key in ("summary", "conclusion", "facts", "next_steps"))
     assert "secret provider url" not in repr(result)
+
+
+def test_sensitive_key_variants_are_removed_from_evidence_payload():
+    gateway = FakeGateway([call_tool_action(), final_action("sanitised")])
+    version = active_readonly_version()
+    version.output_schema = {
+        "type": "object",
+        "properties": {"scheduler_queue_ratio": {"type": "number"}},
+    }
+    executor = FakeExecutor(
+        {
+            "scheduler_queue_ratio": 2.15,
+            "apiKey": "secret-1",
+            "api-key": "secret-2",
+            "accessKey": "secret-3",
+            "id_token": "secret-4",
+            "passwd": "secret-5",
+            "authorizationHeader": "secret-6",
+            "secretValue": "secret-7",
+            "unlisted_public_field": "drop-me",
+        }
+    )
+
+    result = run_graph(gateway, registry=FakeRegistry(version), executor=executor)
+
+    assert result["evidence"][0]["payload"] == {"scheduler_queue_ratio": 2.15}
+    assert all(
+        secret not in repr(result)
+        for secret in ("secret-1", "secret-2", "secret-3", "secret-4", "secret-5", "secret-6", "secret-7", "drop-me")
+    )
+
+
+def test_model_capability_id_is_validated_before_entering_state_or_registry():
+    gateway = FakeGateway(
+        [call_tool_action("https://user:secret@provider.invalid/tool")]
+    )
+    registry = FakeRegistry()
+
+    result = run_graph(gateway, registry=registry)
+
+    assert registry.calls == []
+    assert result["status"] == "UNRESOLVED"
+    assert "secret" not in repr(result)
+    assert "provider.invalid" not in repr(result)
+
+
+def test_call_tool_without_a_canonical_missing_claim_is_rejected_before_resolution():
+    gateway = FakeGateway([call_tool_action()])
+    registry = FakeRegistry(active_readonly_version())
+
+    result = run_graph_without_claim(gateway, registry=registry)
+
+    assert registry.calls == []
+    assert result["status"] == "UNRESOLVED"
+    assert result["error_code"] == "MISSING_CLAIM_REQUIRED"
+
+
+def test_context_and_evidence_payloads_have_deterministic_serialized_byte_caps():
+    huge = {
+        f"metric_{index}": {"deep": {"level": {"value": "x" * 800}}}
+        for index in range(80)
+    }
+    gateway = FakeGateway([call_tool_action(), final_action("bounded")])
+    version = active_readonly_version()
+    version.output_schema = {}
+    executor = FakeExecutor(huge)
+
+    from services.investigation_graph.state import MAX_CONTEXT_BYTES, MAX_EVIDENCE_PAYLOAD_BYTES
+    from services.investigation_graph.graph import build_investigation_graph
+
+    graph = build_investigation_graph(
+        gateway=gateway,
+        registry=FakeRegistry(version),
+        executor=executor,
+    )
+    result = graph.invoke(
+        {
+            "question": "Why?",
+            "context": huge,
+            "missing_claim": "degradation_category",
+        }
+    )
+
+    request_context = json.loads(gateway.calls[0].messages[-1]["content"])["context"]
+    assert len(json.dumps(request_context, sort_keys=True, ensure_ascii=True).encode()) <= MAX_CONTEXT_BYTES
+    payload = result["evidence"][0]["payload"]
+    assert len(json.dumps(payload, sort_keys=True, ensure_ascii=True).encode()) <= MAX_EVIDENCE_PAYLOAD_BYTES
+    assert json.loads(json.dumps(payload, sort_keys=True)) == payload
+
+
+def test_eight_round_eight_tool_budget_terminates_without_recursion_error():
+    gateway = FakeGateway([call_tool_action()] * 8)
+    version = active_readonly_version()
+    executor = FakeExecutor()
+
+    result = run_graph(
+        gateway,
+        registry=FakeRegistry(version),
+        executor=executor,
+        max_rounds=8,
+        max_tool_calls=8,
+    )
+
+    assert result["status"] == "UNRESOLVED"
+    assert result["rounds_used"] == 8
+    assert result["tool_calls_used"] == 8
+
+
+def test_tool_history_is_safe_and_available_in_final_handoff():
+    gateway = FakeGateway([call_tool_action(), final_action("confirmed")])
+    version = active_readonly_version()
+    executor = FakeExecutor({"scheduler_queue_ratio": 2.15, "provider_url": "https://secret.invalid"})
+
+    result = run_graph(gateway, registry=FakeRegistry(version), executor=executor)
+
+    assert result["tool_history"][0]["capability_id"] == "llm.scheduler.pressure"
+    assert result["tool_history"][0]["status"] == "SUCCEEDED"
+    assert result["tool_history"][0]["evidence_key"]
+    assert result["final"]["tool_history"] == result["tool_history"]
+    assert "secret.invalid" not in repr(result)
+    assert "provider_url" not in repr(result)
+
+
+def test_atomic_registry_rechecks_authorization_before_dispatch():
+    gateway = FakeGateway([call_tool_action()])
+    version = active_readonly_version()
+    registry = AtomicRegistry(version, fail=True)
+    executor = FakeExecutor()
+
+    result = run_graph(gateway, registry=registry, executor=executor)
+
+    assert registry.atomic_calls
+    assert executor.calls == []
+    assert result["status"] == "UNRESOLVED"
