@@ -210,24 +210,37 @@ def select_tool(state: Mapping[str, Any], *, registry: Any) -> dict[str, Any]:
             error_code="CAPABILITY_NOT_FOUND",
         )
         return _terminal_unresolved(result, "CAPABILITY_NOT_FOUND", "requested capability is unavailable")
+    capability_version_id = _capability_version_id(version)
+    validated_request = request.model_dump()
+    validated_request["capability_version_id"] = capability_version_id
     reason = _validate_capability(version, request.capability_id, request.arguments, claim=claim)
     if reason is not None:
         _append_tool_history(
             result,
-            request.model_dump(),
+            validated_request,
             status="REJECTED",
             outcome="REJECTED",
             error_code="CAPABILITY_REJECTED",
         )
         return _terminal_unresolved(result, "CAPABILITY_REJECTED", reason)
+    if not capability_version_id:
+        _append_tool_history(
+            result,
+            validated_request,
+            status="REJECTED",
+            outcome="REJECTED",
+            error_code="CAPABILITY_VERSION_INVALID",
+        )
+        return _terminal_unresolved(result, "CAPABILITY_VERSION_INVALID", "capability version is unavailable")
 
     result["selected_capability"] = {
         "capability_id": request.capability_id,
         "arguments": _safe_mapping(request.arguments),
         "reason": request.reason[:2000],
         "claim": claim or "",
+        "capability_version_id": capability_version_id,
     }
-    _append_tool_history(result, request.model_dump(), status="SELECTED", outcome="PENDING")
+    _append_tool_history(result, validated_request, status="SELECTED", outcome="PENDING")
     return result
 
 
@@ -265,6 +278,17 @@ def execute_readonly_tool(
         _update_tool_history(result, capability_id, status="REJECTED", outcome="REJECTED", error_code="MISSING_CLAIM_REQUIRED")
         return _terminal_unresolved(result, "MISSING_CLAIM_REQUIRED", "a canonical missing claim is required")
     arguments = _bounded_json(_safe_mapping(arguments), MAX_CONTEXT_BYTES)
+    selected_version_id = _capability_version_id(selected.get("capability_version_id"))
+    if not selected_version_id:
+        _update_tool_history(
+            result,
+            capability_id,
+            status="FAILED",
+            outcome="FAILED",
+            error_code="CAPABILITY_VERSION_INVALID",
+            capability_version_id="",
+        )
+        return _terminal_unresolved(result, "CAPABILITY_VERSION_INVALID", "capability version is unavailable")
 
     # Count an attempted dispatch exactly once and never beyond the ceiling.
     result["tool_calls_used"] = tool_calls + 1
@@ -284,6 +308,9 @@ def execute_readonly_tool(
         version, raw_result = execution
         if version is None:
             raise _ToolBoundaryError("ATOMIC_RESULT_INVALID")
+        actual_version_id = _capability_version_id(version)
+        if not actual_version_id or actual_version_id != selected_version_id:
+            raise _ToolBoundaryError("CAPABILITY_VERSION_INVALID")
         reason = _validate_capability(version, capability_id, arguments, claim=claim)
         if reason is not None:
             raise _ToolBoundaryError("CAPABILITY_REJECTED")
@@ -295,7 +322,14 @@ def execute_readonly_tool(
         )
     except Exception as exc:
         code = _safe_error_code(getattr(exc, "code", ""), "TOOL_EXECUTION_FAILED")
-        _update_tool_history(result, capability_id, status="FAILED", outcome="FAILED", error_code=code[:64])
+        _update_tool_history(
+            result,
+            capability_id,
+            status="FAILED",
+            outcome="FAILED",
+            error_code=code[:64],
+            capability_version_id=selected_version_id,
+        )
         return _terminal_unresolved(result, code[:64], "read-only capability execution failed")
 
     evidence_item = Evidence(
@@ -313,6 +347,7 @@ def execute_readonly_tool(
         status="SUCCEEDED",
         outcome="SUCCEEDED",
         evidence_key=evidence_item.evidence_key,
+        capability_version_id=actual_version_id,
     )
     facts = _string_list(result.get("facts"))
     if evidence_item.summary not in facts:
@@ -651,6 +686,7 @@ def _safe_tool_history(value: Any) -> list[dict[str, Any]]:
         try:
             history = ToolCallHistory(
                 capability_id=capability_id,
+                capability_version_id=_safe_version_id(item.get("capability_version_id")),
                 arguments=_bounded_json(
                     _safe_mapping(item.get("arguments")),
                     MAX_CONTEXT_BYTES,
@@ -848,6 +884,22 @@ def _canonical_capability_id(value: Any) -> str:
     return candidate
 
 
+def _capability_version_id(value: Any) -> str:
+    """Return the exact registry version identity, never a candidate lookup."""
+
+    if value is None:
+        return ""
+    identifier = getattr(value, "pk", None) or getattr(value, "id", None)
+    if identifier is None and isinstance(value, (str, int)):
+        identifier = value
+    text = str(identifier).strip() if identifier is not None else ""
+    return text[:64] if text and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}", text) else ""
+
+
+def _safe_version_id(value: Any) -> str:
+    return _capability_version_id(value)
+
+
 def _canonical_claim(value: Any) -> str:
     if not isinstance(value, str):
         return ""
@@ -886,6 +938,7 @@ def _append_tool_history(
     outcome: str,
     error_code: str = "",
     evidence_key: str = "",
+    capability_version_id: str | None = None,
 ) -> None:
     if not isinstance(request, Mapping):
         return
@@ -896,6 +949,9 @@ def _append_tool_history(
     try:
         item = ToolCallHistory(
             capability_id=capability_id,
+            capability_version_id=_safe_version_id(
+                request.get("capability_version_id") if capability_version_id is None else capability_version_id
+            ),
             arguments=_bounded_json(_safe_mapping(request.get("arguments")), MAX_CONTEXT_BYTES),
             reason=_safe_text(request.get("reason"))[:2000],
             status=_safe_history_label(status),
@@ -917,6 +973,7 @@ def _update_tool_history(
     outcome: str,
     error_code: str = "",
     evidence_key: str = "",
+    capability_version_id: str | None = None,
 ) -> None:
     history = _safe_tool_history(state.get("tool_history"))
     for index in range(len(history) - 1, -1, -1):
@@ -929,6 +986,8 @@ def _update_tool_history(
                     "evidence_key": evidence_key[:192],
                 }
             )
+            if capability_version_id is not None:
+                history[index]["capability_version_id"] = _safe_version_id(capability_version_id)
             state["tool_history"] = history[-MAX_TOOL_HISTORY_ITEMS:]
             return
     _append_tool_history(
@@ -938,6 +997,7 @@ def _update_tool_history(
         outcome=outcome,
         error_code=error_code,
         evidence_key=evidence_key,
+        capability_version_id=capability_version_id,
     )
 
 

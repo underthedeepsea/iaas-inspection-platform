@@ -46,6 +46,9 @@ class ToolCallHistory(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     capability_id: str = Field(min_length=1, max_length=192)
+    # Empty is allowed for pre-resolution rejection paths; Task 12 must fail
+    # closed instead of guessing a version for those entries.
+    capability_version_id: str = Field(default="", max_length=64)
     arguments: dict[str, Any]
     reason: str = Field(default="", max_length=2000)
     status: str = Field(min_length=1, max_length=32)

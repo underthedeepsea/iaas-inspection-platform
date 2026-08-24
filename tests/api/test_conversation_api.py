@@ -8,7 +8,8 @@ from django.test import Client
 
 from apps.core.models import Environment
 from apps.inspections.models import InspectionItem, Severity
-from apps.investigations.models import Conversation, ConversationMessage, Investigation, InvestigationEvent
+from apps.capabilities.models import Capability, CapabilityVersion
+from apps.investigations.models import Conversation, ConversationMessage, Investigation, InvestigationEvent, ToolCall
 from apps.risks.models import Risk
 
 
@@ -212,3 +213,184 @@ def test_conversation_reads_are_owner_isolated_and_messages_survive_refresh():
     stranger_client.force_login(stranger)
     assert stranger_client.get(f"/api/v1/conversations/{conversation_id}/").status_code == 404
     assert stranger_client.get(f"/api/v1/conversations/{conversation_id}/messages/").status_code == 404
+
+
+@pytest.mark.django_db(transaction=True)
+def test_assistant_final_projection_keeps_every_required_field_when_result_is_large():
+    risk = _risk()
+    user = _user()
+    client = Client()
+    client.force_login(user)
+    conversation_id = _post(
+        client,
+        "/api/v1/conversations/",
+        {"context_type": "RISK", "context_id": str(risk.pk), "title": "Risk analysis"},
+    ).json()["conversation_id"]
+    huge = [f"item-{index}-" + ("x" * 500) for index in range(200)]
+    result = {
+        "status": "RESOLVED",
+        "summary": "summary",
+        "conclusion": "conclusion",
+        "confidence": 0.86,
+        "facts": huge,
+        "hypotheses": huge,
+        "evidence": huge,
+        "next_steps": huge,
+        "unresolved_questions": huge,
+        "tool_history": [],
+        "rounds_used": 1,
+        "tool_calls_used": 0,
+    }
+    with patch("apps.conversations.services.run_graph", return_value=result):
+        response = _post(
+            client,
+            f"/api/v1/conversations/{conversation_id}/turns/",
+            {"message": "Investigate", "idempotency_key": "large-final"},
+        )
+
+    assert response.status_code == 202
+    required = {
+        "summary",
+        "current_conclusion",
+        "confidence",
+        "confirmed_facts",
+        "hypotheses",
+        "new_evidence",
+        "recommended_next_steps",
+        "unresolved_questions",
+    }
+    assistant = ConversationMessage.objects.get(
+        conversation_id=conversation_id,
+        role=ConversationMessage.Role.ASSISTANT,
+    )
+    assert required <= assistant.structured_content.keys()
+    assert len(assistant.structured_content["confirmed_facts"]) <= 64
+    assert len(assistant.structured_content["hypotheses"]) <= 64
+    event = InvestigationEvent.objects.get(
+        investigation_id=response.json()["investigation_id"],
+        event_type="assistant.final",
+    )
+    assert required <= event.payload.keys()
+    assert "result" not in event.payload
+
+
+def _capability_version_fixture(*, capability_id="llm.scheduler.pressure"):
+    capability = Capability.objects.create(
+        capability_id=capability_id,
+        name="Scheduler pressure",
+        domain="TEST",
+        status=Capability.Status.ACTIVE,
+        read_only=True,
+    )
+    referenced = CapabilityVersion.objects.create(
+        capability=capability,
+        version="1.0.0",
+        implementation_type=CapabilityVersion.ImplementationType.RULE,
+        status=CapabilityVersion.Status.ACTIVE,
+        resolves=["degradation_category"],
+        input_schema={"type": "object"},
+        output_schema={"type": "object"},
+    )
+    capability.current_version = referenced
+    capability.save(update_fields=["current_version", "updated_at"])
+    candidate = CapabilityVersion.objects.create(
+        capability=capability,
+        version="2.0.0",
+        implementation_type=CapabilityVersion.ImplementationType.RULE,
+        status=CapabilityVersion.Status.CANDIDATE,
+        resolves=["degradation_category"],
+        input_schema={"type": "object"},
+        output_schema={"type": "object"},
+    )
+    return capability, referenced, candidate
+
+
+@pytest.mark.django_db(transaction=True)
+def test_tool_call_persists_only_the_graph_validated_capability_version_id():
+    risk = _risk()
+    user = _user()
+    client = Client()
+    client.force_login(user)
+    conversation_id = _post(
+        client,
+        "/api/v1/conversations/",
+        {"context_type": "RISK", "context_id": str(risk.pk), "title": "Risk analysis"},
+    ).json()["conversation_id"]
+    capability, referenced, candidate = _capability_version_fixture()
+    result = {
+        "status": "RESOLVED",
+        "summary": "done",
+        "conclusion": "done",
+        "facts": [],
+        "next_steps": [],
+        "confidence": 1,
+        "evidence": [],
+        "tool_history": [
+            {
+                "capability_id": capability.capability_id,
+                "capability_version_id": str(referenced.pk),
+                "arguments": {"asset_id": "llm-0"},
+                "reason": "verify",
+                "status": "SUCCEEDED",
+                "outcome": "SUCCEEDED",
+                "error_code": "",
+                "evidence_key": "",
+            }
+        ],
+        "rounds_used": 1,
+        "tool_calls_used": 1,
+    }
+    with patch("apps.conversations.services.run_graph", return_value=result):
+        response = _post(
+            client,
+            f"/api/v1/conversations/{conversation_id}/turns/",
+            {"message": "Investigate", "idempotency_key": "version-id"},
+        )
+
+    assert response.status_code == 202
+    call = ToolCall.objects.get(investigation_id=response.json()["investigation_id"])
+    assert call.capability_version_id == referenced.pk
+    assert call.capability_version_id != candidate.pk
+
+
+@pytest.mark.django_db(transaction=True)
+def test_tool_call_persistence_fails_closed_when_graph_has_no_capability_version_id():
+    risk = _risk()
+    user = _user()
+    client = Client()
+    client.force_login(user)
+    conversation_id = _post(
+        client,
+        "/api/v1/conversations/",
+        {"context_type": "RISK", "context_id": str(risk.pk), "title": "Risk analysis"},
+    ).json()["conversation_id"]
+    capability, _, _ = _capability_version_fixture()
+    result = {
+        "status": "RESOLVED",
+        "summary": "done",
+        "conclusion": "done",
+        "facts": [],
+        "next_steps": [],
+        "confidence": 1,
+        "evidence": [],
+        "tool_history": [
+            {
+                "capability_id": capability.capability_id,
+                "arguments": {},
+                "reason": "verify",
+                "status": "SUCCEEDED",
+                "outcome": "SUCCEEDED",
+            }
+        ],
+        "rounds_used": 1,
+        "tool_calls_used": 1,
+    }
+    with patch("apps.conversations.services.run_graph", return_value=result):
+        response = _post(
+            client,
+            f"/api/v1/conversations/{conversation_id}/turns/",
+            {"message": "Investigate", "idempotency_key": "missing-version-id"},
+        )
+
+    assert response.status_code == 202
+    assert not ToolCall.objects.filter(investigation_id=response.json()["investigation_id"]).exists()

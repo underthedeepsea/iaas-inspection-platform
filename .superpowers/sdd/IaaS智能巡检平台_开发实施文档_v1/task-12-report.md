@@ -1,4 +1,4 @@
-# Task 12 report: Conversation + SSE recovery
+# Task 12 report: Conversation + SSE recovery (Fix Round 1)
 
 ## Scope
 
@@ -8,6 +8,12 @@ ConversationMessage, Investigation, InvestigationEvent, ToolCall, and Risk
 Evidence models. No queue, worker, thread, Channels layer, or new dependency
 was added. Risk-bound conversations always derive `environment` from the
 persisted Risk; a client `environment_id` is ignored.
+
+Fix Round 1 closes three reviewer findings: idempotent concurrent turns now
+claim a durable Investigation lease before graph execution; Task 11 carries
+the exact capability version returned by atomic validation/execution; and the
+assistant final/message projection is the bounded eight-field section 47
+contract.
 
 ## RED / GREEN evidence
 
@@ -34,13 +40,35 @@ DJANGO_SETTINGS_MODULE=config.settings.dev \
 13 passed in 7.20s
 ```
 
+Fix Round 1 RED/GREEN evidence:
+
+- the new graph regression first failed because terminal tool history had no
+  `capability_version_id`;
+- the large-final, exact-version, missing-version, and TransactionTestCase
+  concurrency regressions were added before their production fixes;
+- after the fixes, the focused API/SSE/concurrency suite is green:
+
+```text
+DJANGO_SETTINGS_MODULE=config.settings.dev \
+  /Users/lars.li/Documents/AI-inspect/.venv-web/bin/python -m pytest -q \
+  tests/api/test_conversation_api.py tests/api/test_sse_resume.py \
+  tests/api/test_conversation_concurrency.py
+..................                                                       [100%]
+18 passed
+```
+
 ## Implementation
 
 - `apps/conversations/services.py`: owner-scoped conversation CRUD, Risk
   environment derivation, turn input/Investigation persistence before graph
   execution, injected graph runner, safe terminal projection, Evidence and
-  optional ToolCall persistence, assistant message creation, event sequencing,
-  and retry-safe terminal writes.
+  exact-version ToolCall persistence, assistant message creation, event
+  sequencing, durable RUNNING claim/recovery, and retry-safe terminal writes.
+- `apps/investigations/models.py` plus migration `0004_investigation_claim`:
+  persisted claim token and heartbeat fields for short-lived graph ownership.
+- `services/investigation_graph/schemas.py` and `nodes.py`: atomic
+  `capability_version_id` propagation through selected, succeeded, failed,
+  rejected, and budget terminal tool history states.
 - `apps/conversations/sse.py`: canonical non-negative `Last-Event-ID` parser
   and ordered PostgreSQL event replay of only `sequence > Last-Event-ID`.
 - `apps/conversations/views.py` and `urls.py`: authenticated JSON endpoints and
@@ -49,7 +77,11 @@ DJANGO_SETTINGS_MODULE=config.settings.dev \
 - `config/settings/dev.py`: session and authentication middleware required for
   standard Django authenticated requests.
 - `tests/api/test_conversation_api.py`: Risk binding, owner isolation, turn
-  persistence, terminal graph error, refresh, and optional-key retry tests.
+  persistence, terminal graph error, refresh, optional-key retry, exact
+  capability-version, and large-final projection tests.
+- `tests/api/test_conversation_concurrency.py`: PostgreSQL
+  TransactionTestCase coverage for one graph leader, fast follower, and stale
+  claim recovery.
 - `tests/api/test_sse_resume.py`: ordering, strict cursor parsing, replay, and
   cross-owner isolation tests.
 
@@ -57,6 +89,11 @@ DJANGO_SETTINGS_MODULE=config.settings.dev \
 
 - The graph is invoked after the input transaction commits; final writes occur
   in a separate short transaction.
+- A fresh `(conversation, idempotency_key)` claim returns the same 202 turn to
+  followers without invoking or waiting for graph/tool work. A conservative
+  stale threshold permits recovery after a crashed owner; terminal persistence
+  also checks the claim token so an old owner cannot overwrite a recovered
+  turn.
 - Investigation rows are locked before calculating the next event sequence;
   the existing `(investigation, sequence)` unique constraint remains the final
   guard.
@@ -66,6 +103,14 @@ DJANGO_SETTINGS_MODULE=config.settings.dev \
 - Final text, tool history, Evidence payloads, counters, model metadata, and
   SSE payloads are allowlisted/bounded and redact URLs, credentials, raw
   payloads, and sensitive key names. Exception text is never persisted.
+- `assistant.final` events and assistant `structured_content` use the direct
+  section 47 projection (`summary`, `current_conclusion`, `confidence`,
+  `confirmed_facts`, `hypotheses`, `new_evidence`,
+  `recommended_next_steps`, `unresolved_questions`). Each field clips
+  independently, so required top-level keys survive large valid results.
+- ToolCall rows resolve only the graph-provided `capability_version_id`, then
+  require matching capability identity, ACTIVE/read-only/current-version
+  ownership; missing, malformed, stale, or candidate IDs are skipped closed.
 - `idempotency_key`, `turn_key`, or the `Idempotency-Key` header maps to a
   deterministic Investigation UUID. A completed terminal event returns the
   original turn without creating another user or assistant message.
@@ -78,7 +123,7 @@ DJANGO_SETTINGS_MODULE=config.settings.dev \
 ```text
 DJANGO_SETTINGS_MODULE=config.settings.dev \
   /Users/lars.li/Documents/AI-inspect/.venv-web/bin/python -m pytest -q
-201 passed in 11.67s
+206 passed in 14.18s
 
 DJANGO_SETTINGS_MODULE=config.settings.dev \
   /Users/lars.li/Documents/AI-inspect/.venv-web/bin/python manage.py check
@@ -93,8 +138,9 @@ No changes detected
 git diff --check
 ```
 
-No migration was required: the existing schema already contains the required
-foreign keys, JSON fields, timestamps, and event sequence uniqueness.
+The existing schema already contained the required foreign keys, JSON fields,
+timestamps, and event sequence uniqueness. Fix Round 1 adds only the two claim
+columns in migration `apps/investigations/migrations/0004_investigation_claim.py`.
 
 ## Concerns
 
@@ -105,7 +151,7 @@ foreign keys, JSON fields, timestamps, and event sequence uniqueness.
 - Without an idempotency key/header, two intentionally identical messages are
   treated as separate turns. Clients that need retry identity should send the
   documented optional key.
-- ToolCall persistence is best-effort because its existing required
-  `CapabilityVersion` foreign key cannot represent an injected test capability
-  that is not registered; sanitized tool history remains in the assistant,
-  final event, and Evidence-backed records.
+- A graph history entry without a valid current capability version intentionally
+  produces no ToolCall row; its sanitized terminal history remains in the
+  terminal event. This is fail-closed behavior for unregistered or candidate
+  capabilities, rather than guessing a latest version.

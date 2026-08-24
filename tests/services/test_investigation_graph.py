@@ -104,6 +104,7 @@ def active_readonly_version(*, capability_id="llm.scheduler.pressure", claim="de
         read_only=True,
     )
     return SimpleNamespace(
+        id="00000000-0000-0000-0000-000000000012",
         capability=capability,
         status="ACTIVE",
         resolves=[claim],
@@ -473,6 +474,7 @@ def test_tool_history_is_safe_and_available_in_final_handoff():
 
     assert result["tool_history"][0]["capability_id"] == "llm.scheduler.pressure"
     assert result["tool_history"][0]["status"] == "SUCCEEDED"
+    assert result["tool_history"][0]["capability_version_id"] == str(version.id)
     assert result["tool_history"][0]["evidence_key"]
     assert result["final"]["tool_history"] == result["tool_history"]
     assert "secret.invalid" not in repr(result)
@@ -490,6 +492,7 @@ def test_atomic_registry_rechecks_authorization_before_dispatch():
     assert registry.atomic_calls
     assert executor.calls == []
     assert result["status"] == "UNRESOLVED"
+    assert result["tool_history"][0]["capability_version_id"] == str(version.id)
 
 
 def test_input_budgets_derive_recursion_limit_when_config_is_nonempty():

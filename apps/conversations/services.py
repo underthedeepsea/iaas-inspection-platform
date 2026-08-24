@@ -7,12 +7,14 @@ import math
 import re
 import uuid
 from collections.abc import Mapping
+from datetime import timedelta
 from typing import Any
 
 from django.db import transaction
 from django.db.models import Max
 from django.utils import timezone
 
+from apps.capabilities.models import Capability, CapabilityVersion
 from apps.investigations.models import (
     Conversation,
     ConversationMessage,
@@ -31,6 +33,20 @@ MAX_RESULT_TEXT = 4000
 MAX_RESULT_ITEMS = 64
 MAX_RESULT_DEPTH = 4
 PROMPT_VERSION = "1.0.0"
+CLAIM_STALE_SECONDS = 3600
+FINAL_FIELDS = (
+    "summary",
+    "current_conclusion",
+    "confidence",
+    "confirmed_facts",
+    "hypotheses",
+    "new_evidence",
+    "recommended_next_steps",
+    "unresolved_questions",
+)
+MAX_FINAL_ITEMS = 4
+MAX_FINAL_ITEM_TEXT = 128
+MAX_FINAL_MAPPING_BYTES = 256
 
 
 class ConversationError(Exception):
@@ -162,14 +178,15 @@ def create_turn(
         conversation = get_conversation(user, conversation_id, lock=True)
         if conversation.status != Conversation.Status.ACTIVE:
             raise ConversationError("conversation_closed", "conversation is closed", 409)
-        investigation, user_message, existing_terminal = _start_turn(
+        investigation, user_message, turn_state = _start_turn(
             conversation,
             message.strip(),
             idempotency_key=idempotency_key,
         )
 
-    if existing_terminal:
+    if turn_state != "leader":
         return _turn_response(conversation, investigation)
+    claim_token = investigation.claim_token
 
     graph_input = _graph_input(conversation, investigation, user_message, allow_tools=allow_tools)
     try:
@@ -199,7 +216,7 @@ def create_turn(
 
     final = sanitize_result(raw_result)
     metadata = _model_metadata(gateway, raw_result)
-    _persist_turn(conversation.pk, investigation.pk, user_message.pk, final, metadata)
+    _persist_turn(conversation.pk, investigation.pk, user_message.pk, final, metadata, claim_token=claim_token)
     return _turn_response(conversation, investigation)
 
 
@@ -254,15 +271,15 @@ def sanitize_result(value: Any) -> dict[str, Any]:
     status = status.value if hasattr(status, "value") else status
     if status not in {"RESOLVED", "UNRESOLVED", "FAILED"}:
         status = "FAILED"
-    summary = _safe_text(final_source.get("summary")) or "Investigation did not reach a final answer"
-    conclusion = _safe_text(final_source.get("conclusion")) or summary
-    facts = _safe_text_list(final_source.get("facts"))
-    next_steps = _safe_text_list(final_source.get("next_steps"))
+    summary = _safe_text(final_source.get("summary"))[:MAX_RESULT_TEXT] or "Investigation did not reach a final answer"
+    conclusion = _safe_text(final_source.get("conclusion"))[:MAX_RESULT_TEXT] or summary
+    facts = _safe_text_list(final_source.get("facts", value.get("facts")))
+    next_steps = _safe_text_list(final_source.get("next_steps", value.get("next_steps")))
     if status != "RESOLVED" and not next_steps:
         next_steps = ["Collect the missing evidence and retry the investigation."]
     confidence = _safe_float(final_source.get("confidence"), 0)
-    evidence = _safe_evidence(final_source.get("evidence"))
-    tool_history = _safe_tool_history(final_source.get("tool_history"))
+    evidence = _safe_evidence(final_source.get("evidence", value.get("evidence")))
+    tool_history = _safe_tool_history(final_source.get("tool_history", value.get("tool_history")))
     result = {
         "status": status,
         "summary": summary,
@@ -278,6 +295,16 @@ def sanitize_result(value: Any) -> dict[str, Any]:
     code = value.get("error_code", final_source.get("error_code", ""))
     if isinstance(code, str) and _safe_key(code):
         result["error_code"] = code[:64]
+    result["final"] = _final_projection(
+        summary=summary,
+        conclusion=final_source.get("current_conclusion", conclusion),
+        confidence=confidence,
+        confirmed_facts=final_source.get("confirmed_facts", facts),
+        hypotheses=final_source.get("hypotheses", value.get("hypotheses", [])),
+        new_evidence=final_source.get("new_evidence", evidence),
+        recommended_next_steps=final_source.get("recommended_next_steps", next_steps),
+        unresolved_questions=final_source.get("unresolved_questions", value.get("unresolved_questions", [])),
+    )
     return result
 
 
@@ -301,7 +328,7 @@ def _start_turn(
     message: str,
     *,
     idempotency_key: str | None,
-) -> tuple[Investigation, ConversationMessage, bool]:
+) -> tuple[Investigation, ConversationMessage, str]:
     investigation = None
     deterministic_id = None
     if idempotency_key:
@@ -329,7 +356,37 @@ def _start_turn(
                     content=message,
                     structured_content={},
                 )
-            return investigation, user_message, terminal
+            if conversation.investigation_id != investigation.pk:
+                conversation.investigation = investigation
+                conversation.save(update_fields=["investigation", "updated_at"])
+            if terminal or investigation.status in {
+                Investigation.Status.RESOLVED,
+                Investigation.Status.UNRESOLVED,
+                Investigation.Status.FAILED,
+                Investigation.Status.CANCELLED,
+            }:
+                return investigation, user_message, "terminal"
+            if not _claim_is_stale(investigation):
+                return investigation, user_message, "follower"
+            # A stale lease is recoverable only while no terminal event exists.
+            # The row is protected by the conversation lock held by create_turn.
+            now = timezone.now()
+            investigation.status = Investigation.Status.RUNNING
+            investigation.claim_token = uuid.uuid4()
+            investigation.claim_heartbeat_at = now
+            investigation.started_at = investigation.started_at or now
+            investigation.finished_at = None
+            investigation.save(
+                update_fields=[
+                    "status",
+                    "claim_token",
+                    "claim_heartbeat_at",
+                    "started_at",
+                    "finished_at",
+                    "updated_at",
+                ]
+            )
+            return investigation, user_message, "leader"
 
     user_message = ConversationMessage.objects.create(
         conversation=conversation,
@@ -347,6 +404,10 @@ def _start_turn(
         "model_name": str(configured_value("OLLAMA_MODEL", "configured"))[:128],
         "max_rounds": _configured_limit("LLM_MAX_ROUNDS", 3),
         "max_tool_calls": _configured_limit("LLM_MAX_TOOL_CALLS", 5),
+        "status": Investigation.Status.RUNNING,
+        "claim_token": uuid.uuid4(),
+        "claim_heartbeat_at": timezone.now(),
+        "started_at": timezone.now(),
     }
     if deterministic_id is not None:
         investigation = Investigation.objects.create(id=deterministic_id, **investigation_kwargs)
@@ -362,7 +423,9 @@ def _start_turn(
             )
         ],
     )
-    return investigation, user_message, False
+    conversation.investigation = investigation
+    conversation.save(update_fields=["investigation", "updated_at"])
+    return investigation, user_message, "leader"
 
 
 def _persist_turn(
@@ -371,6 +434,8 @@ def _persist_turn(
     user_message_id: uuid.UUID,
     result: Mapping[str, Any],
     metadata: Mapping[str, Any],
+    *,
+    claim_token: uuid.UUID | None = None,
 ) -> None:
     with transaction.atomic():
         investigation = Investigation.objects.select_for_update().get(pk=investigation_id)
@@ -380,6 +445,10 @@ def _persist_turn(
             event_type__in=("turn.completed", "turn.error"),
         ).exists()
         if terminal_exists:
+            return
+        if claim_token is not None and investigation.claim_token != claim_token:
+            # A stale recovery may have replaced this lease.  The old graph
+            # result must not overwrite the newer leader's terminal state.
             return
 
         status = result["status"]
@@ -394,6 +463,8 @@ def _persist_turn(
         investigation.confidence = result["confidence"]
         investigation.started_at = investigation.started_at or timezone.now()
         investigation.finished_at = timezone.now()
+        investigation.claim_token = None
+        investigation.claim_heartbeat_at = None
         if metadata.get("provider"):
             investigation.model_provider = str(metadata["provider"])[:32]
         if metadata.get("model"):
@@ -407,6 +478,8 @@ def _persist_turn(
                 "confidence",
                 "started_at",
                 "finished_at",
+                "claim_token",
+                "claim_heartbeat_at",
                 "model_provider",
                 "model_name",
                 "updated_at",
@@ -415,17 +488,13 @@ def _persist_turn(
 
         evidence_rows = _persist_evidence(conversation, investigation, result["evidence"])
         user_message = ConversationMessage.objects.get(pk=user_message_id)
-        assistant = _existing_assistant(conversation, investigation.pk)
+        assistant = _existing_assistant(conversation, user_message.pk)
         if assistant is None:
             assistant = ConversationMessage.objects.create(
                 conversation=conversation,
                 role=ConversationMessage.Role.ASSISTANT,
                 content=result["summary"],
-                structured_content={
-                    "investigation_id": str(investigation.pk),
-                    **dict(result),
-                    "evidence_ids": [str(row.pk) for row in evidence_rows],
-                },
+                structured_content=dict(result["final"]),
                 model_provider=metadata.get("provider"),
                 model_name=metadata.get("model"),
                 prompt_version=PROMPT_VERSION,
@@ -455,8 +524,10 @@ def _persist_turn(
                         "conversation_id": str(conversation.pk),
                         "tool_index": index,
                         "capability_id": history.get("capability_id", ""),
+                        "arguments": _safe_json(history.get("arguments"), 512),
                         "status": history.get("status", "UNKNOWN"),
                         "outcome": outcome or "UNKNOWN",
+                        "capability_version_id": history.get("capability_version_id", ""),
                         "evidence_key": history.get("evidence_key", ""),
                     },
                 )
@@ -479,7 +550,7 @@ def _persist_turn(
                 (
                     "assistant.final",
                     InvestigationEvent.Status.COMPLETED,
-                    {"conversation_id": str(conversation.pk), "message_id": str(assistant.pk), "result": dict(result)},
+                    dict(result["final"]),
                 ),
                 (
                     "turn.completed" if status != "FAILED" else "turn.error",
@@ -491,6 +562,7 @@ def _persist_turn(
                         "error_code": result.get("error_code", "") if status == "FAILED" else "",
                         "rounds_used": result["rounds_used"],
                         "tool_calls_used": result["tool_calls_used"],
+                        "tool_history": _safe_event_tool_history(result["tool_history"]),
                     },
                 ),
             ]
@@ -544,27 +616,35 @@ def _persist_tool_calls(
     items: list[Mapping[str, Any]],
     evidence_rows: list[Evidence],
 ) -> None:
-    """Best-effort reuse of ToolCall when its required capability FK exists."""
+    """Persist only the version identity validated and returned by the graph."""
 
-    try:
-        from apps.capabilities.models import CapabilityVersion
-    except ImportError:
-        return
     for index, item in enumerate(items):
         capability_id = item.get("capability_id")
-        version = (
-            CapabilityVersion.objects.select_related("capability")
-            .filter(capability__capability_id=capability_id)
-            .order_by("-created_at")
-            .first()
-        )
-        if version is None:
+        version_id = _uuid_or_none(item.get("capability_version_id"))
+        if not isinstance(capability_id, str) or not _safe_key(capability_id) or version_id is None:
+            continue
+        try:
+            version = CapabilityVersion.objects.select_related("capability").get(pk=version_id)
+        except (CapabilityVersion.DoesNotExist, TypeError, ValueError):
+            # A missing, malformed, retired, or otherwise untrusted version is
+            # never replaced with a latest/candidate lookup.
+            continue
+        capability = version.capability
+        if (
+            capability.capability_id != capability_id
+            or capability.status != Capability.Status.ACTIVE
+            or capability.read_only is not True
+            or version.status != CapabilityVersion.Status.ACTIVE
+            or capability.current_version_id != version.pk
+        ):
             continue
         outcome = item.get("outcome")
         status = {
             "SUCCEEDED": ToolCall.Status.SUCCEEDED,
             "FAILED": ToolCall.Status.FAILED,
             "REJECTED": ToolCall.Status.REJECTED,
+            "BUDGET_EXHAUSTED": ToolCall.Status.REJECTED,
+            "TIMEOUT": ToolCall.Status.TIMEOUT,
         }.get(outcome, ToolCall.Status.PENDING)
         evidence = next((row for row in evidence_rows if row.evidence_key == item.get("evidence_key")), None)
         ToolCall.objects.get_or_create(
@@ -581,7 +661,9 @@ def _persist_tool_calls(
                 "result_payload": evidence.payload if evidence else {},
                 "error_code": item.get("error_code") or None,
                 "evidence": evidence,
-                "finished_at": timezone.now() if status in {ToolCall.Status.SUCCEEDED, ToolCall.Status.FAILED, ToolCall.Status.REJECTED} else None,
+                "finished_at": timezone.now()
+                if status in {ToolCall.Status.SUCCEEDED, ToolCall.Status.FAILED, ToolCall.Status.REJECTED, ToolCall.Status.TIMEOUT}
+                else None,
             },
         )
 
@@ -634,11 +716,32 @@ def _existing_user_message(conversation: Conversation, investigation: Investigat
     return None
 
 
-def _existing_assistant(conversation: Conversation, investigation_id: uuid.UUID) -> ConversationMessage | None:
+def _existing_assistant(conversation: Conversation, user_message_id: uuid.UUID) -> ConversationMessage | None:
     for message in ConversationMessage.objects.filter(conversation=conversation, role=ConversationMessage.Role.ASSISTANT).order_by("-created_at", "-pk"):
-        if isinstance(message.structured_content, Mapping) and message.structured_content.get("investigation_id") == str(investigation_id):
+        if message.parent_message_id == user_message_id:
             return message
     return None
+
+
+def _claim_is_stale(investigation: Investigation, *, now: Any | None = None) -> bool:
+    """Use a conservative durable lease so ordinary long graphs are not stolen."""
+
+    if investigation.status != Investigation.Status.RUNNING:
+        return True
+    heartbeat = investigation.claim_heartbeat_at
+    if heartbeat is None or investigation.claim_token is None:
+        return True
+    try:
+        configured = float(configured_value("CONVERSATION_CLAIM_STALE_SECONDS", CLAIM_STALE_SECONDS))
+    except (TypeError, ValueError):
+        configured = CLAIM_STALE_SECONDS
+    if not math.isfinite(configured):
+        configured = CLAIM_STALE_SECONDS
+    # A ten-minute floor is intentional: graph/tool calls are synchronous and
+    # cannot heartbeat while provider work is in flight.
+    stale_seconds = max(configured, 600.0)
+    now = now or timezone.now()
+    return heartbeat <= now - timedelta(seconds=stale_seconds)
 
 
 def _turn_response(conversation: Conversation, investigation: Investigation) -> dict[str, Any]:
@@ -715,12 +818,28 @@ def _missing_claim(risk: Risk | None) -> str | None:
 
 
 def _serialize_message(message: ConversationMessage) -> dict[str, Any]:
+    structured = (
+        _final_projection(
+            summary=message.structured_content.get("summary"),
+            conclusion=message.structured_content.get("current_conclusion"),
+            confidence=message.structured_content.get("confidence"),
+            confirmed_facts=message.structured_content.get("confirmed_facts"),
+            hypotheses=message.structured_content.get("hypotheses"),
+            new_evidence=message.structured_content.get("new_evidence"),
+            recommended_next_steps=message.structured_content.get("recommended_next_steps"),
+            unresolved_questions=message.structured_content.get("unresolved_questions"),
+        )
+        if message.role == ConversationMessage.Role.ASSISTANT
+        and isinstance(message.structured_content, Mapping)
+        and all(key in message.structured_content for key in FINAL_FIELDS)
+        else _safe_json(message.structured_content, MAX_EVENT_PAYLOAD)
+    )
     return {
         "message_id": str(message.pk),
         "id": str(message.pk),
         "role": message.role,
         "content": message.content,
-        "structured_content": _safe_json(message.structured_content, MAX_EVENT_PAYLOAD),
+        "structured_content": structured,
         "model_provider": message.model_provider,
         "model_name": message.model_name,
         "prompt_version": message.prompt_version,
@@ -767,6 +886,7 @@ def _safe_tool_history(value: Any) -> list[dict[str, Any]]:
         result.append(
             {
                 "capability_id": item["capability_id"][:192],
+                "capability_version_id": str(item.get("capability_version_id") or "")[:64],
                 "arguments": _safe_json(item.get("arguments"), 4096),
                 "reason": _safe_text(item.get("reason"))[:2000],
                 "status": _safe_label(item.get("status")),
@@ -776,6 +896,71 @@ def _safe_tool_history(value: Any) -> list[dict[str, Any]]:
             }
         )
     return result
+
+
+def _safe_event_tool_history(value: Any) -> list[dict[str, Any]]:
+    """Keep terminal event history bounded without dropping its identity fields."""
+
+    output = []
+    for item in _safe_tool_history(value)[:MAX_FINAL_ITEMS]:
+        output.append(
+            {
+                "capability_id": item["capability_id"],
+                "capability_version_id": item["capability_version_id"],
+                "arguments": _safe_json(item["arguments"], 512),
+                "reason": item["reason"][:256],
+                "status": item["status"],
+                "outcome": item["outcome"],
+                "error_code": item["error_code"],
+                "evidence_key": item["evidence_key"],
+            }
+        )
+    return output
+
+
+def _final_projection(
+    *,
+    summary: Any,
+    conclusion: Any,
+    confidence: Any,
+    confirmed_facts: Any,
+    hypotheses: Any,
+    new_evidence: Any,
+    recommended_next_steps: Any,
+    unresolved_questions: Any,
+) -> dict[str, Any]:
+    """Build the section 47 projection with independent field budgets.
+
+    Required keys are created explicitly and are never removed by the generic
+    sorted-key byte clipper used for arbitrary event payloads.
+    """
+
+    return {
+        "summary": _safe_text(summary)[:256],
+        "current_conclusion": _safe_text(conclusion)[:256],
+        "confidence": _safe_float(confidence, 0),
+        "confirmed_facts": _safe_final_items(confirmed_facts),
+        "hypotheses": _safe_final_items(hypotheses),
+        "new_evidence": _safe_final_items(new_evidence),
+        "recommended_next_steps": _safe_final_items(recommended_next_steps),
+        "unresolved_questions": _safe_final_items(unresolved_questions),
+    }
+
+
+def _safe_final_items(value: Any) -> list[Any]:
+    if not isinstance(value, list):
+        return []
+    output: list[Any] = []
+    for item in value[:MAX_FINAL_ITEMS]:
+        if isinstance(item, str):
+            text = _safe_text(item)
+            if text:
+                output.append(text[:MAX_FINAL_ITEM_TEXT])
+        elif isinstance(item, Mapping):
+            safe = _safe_json(item, MAX_FINAL_MAPPING_BYTES)
+            if isinstance(safe, Mapping) and safe:
+                output.append(safe)
+    return output
 
 
 def _safe_json(value: Any, limit: int, depth: int = 0) -> Any:
@@ -876,7 +1061,7 @@ def _configured_limit(name: str, default: int) -> int:
 
 
 def _failed_result() -> dict[str, Any]:
-    return {
+    result = {
         "status": "FAILED",
         "summary": "Investigation failed before a safe result was produced",
         "conclusion": "Investigation failed before a safe result was produced",
@@ -889,6 +1074,17 @@ def _failed_result() -> dict[str, Any]:
         "tool_calls_used": 0,
         "error_code": "GRAPH_RESULT_INVALID",
     }
+    result["final"] = _final_projection(
+        summary=result["summary"],
+        conclusion=result["conclusion"],
+        confidence=0,
+        confirmed_facts=[],
+        hypotheses=[],
+        new_evidence=[],
+        recommended_next_steps=result["next_steps"],
+        unresolved_questions=[],
+    )
+    return result
 
 
 def _uuid(value: Any, field: str) -> uuid.UUID:
@@ -896,6 +1092,13 @@ def _uuid(value: Any, field: str) -> uuid.UUID:
         return uuid.UUID(str(value))
     except (TypeError, ValueError, AttributeError):
         raise ConversationError("invalid_field", f"{field} must be a UUID") from None
+
+
+def _uuid_or_none(value: Any) -> uuid.UUID | None:
+    try:
+        return uuid.UUID(str(value))
+    except (TypeError, ValueError, AttributeError):
+        return None
 
 
 def _turn_uuid(value: Any) -> uuid.UUID:
