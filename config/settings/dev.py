@@ -12,6 +12,7 @@ INSTALLED_APPS = [
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.postgres",
+    "django.contrib.staticfiles",
     *INSTALLED_APPS,
     "apps.core",
     "apps.assets",
