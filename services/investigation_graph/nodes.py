@@ -302,6 +302,7 @@ def execute_readonly_tool(
             payload=dict(arguments),
             executor=executor,
             origin=ExecutionOrigin.LLM,
+            expected_capability_version_id=selected_version_id,
         )
         if not isinstance(execution, tuple) or len(execution) != 2:
             raise _ToolBoundaryError("ATOMIC_RESULT_INVALID")

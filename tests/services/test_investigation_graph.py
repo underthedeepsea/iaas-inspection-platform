@@ -21,6 +21,7 @@ class FakeRegistry:
     def __init__(self, version=None):
         self.version = version
         self.calls = []
+        self.expected_versions = []
 
     def resolve_capability(self, capability_id, *, claim=None):
         self.calls.append((capability_id, claim))
@@ -28,9 +29,19 @@ class FakeRegistry:
             return self.version
         return None
 
-    def execute_readonly(self, capability_id, *, claim, payload, executor, origin):
+    def execute_readonly(
+        self,
+        capability_id,
+        *,
+        claim,
+        payload,
+        executor,
+        origin,
+        expected_capability_version_id=None,
+    ):
         from services.plugin_runtime.errors import PluginExecutionError
 
+        self.expected_versions.append(expected_capability_version_id)
         if self.version is None or capability_id != self.version.capability.capability_id:
             raise PluginExecutionError("capability unavailable")
         return self.version, executor.execute(self.version, payload, origin=origin)
@@ -42,8 +53,17 @@ class AtomicRegistry(FakeRegistry):
         self.atomic_calls = []
         self.fail = fail
 
-    def execute_readonly(self, capability_id, *, claim, payload, executor, origin):
-        self.atomic_calls.append((capability_id, claim, payload, origin))
+    def execute_readonly(
+        self,
+        capability_id,
+        *,
+        claim,
+        payload,
+        executor,
+        origin,
+        expected_capability_version_id=None,
+    ):
+        self.atomic_calls.append((capability_id, claim, payload, origin, expected_capability_version_id))
         if self.fail:
             from services.plugin_runtime.errors import ReadOnlyCapabilityError
 
@@ -52,13 +72,52 @@ class AtomicRegistry(FakeRegistry):
 
 
 class BareResultRegistry(FakeRegistry):
-    def execute_readonly(self, capability_id, *, claim, payload, executor, origin):
+    def execute_readonly(
+        self,
+        capability_id,
+        *,
+        claim,
+        payload,
+        executor,
+        origin,
+        expected_capability_version_id=None,
+    ):
         return {"scheduler_queue_ratio": 2.15}
 
 
 class NoneVersionRegistry(FakeRegistry):
-    def execute_readonly(self, capability_id, *, claim, payload, executor, origin):
+    def execute_readonly(
+        self,
+        capability_id,
+        *,
+        claim,
+        payload,
+        executor,
+        origin,
+        expected_capability_version_id=None,
+    ):
         return None, {"scheduler_queue_ratio": 2.15}
+
+
+class SwitchingRegistry(FakeRegistry):
+    def __init__(self, version):
+        super().__init__(version)
+        self.expected_version = None
+
+    def execute_readonly(
+        self,
+        capability_id,
+        *,
+        claim,
+        payload,
+        executor,
+        origin,
+        expected_capability_version_id=None,
+    ):
+        from services.plugin_runtime.errors import PluginExecutionError
+
+        self.expected_version = expected_capability_version_id
+        raise PluginExecutionError("capability version changed")
 
 
 class FakeExecutor:
@@ -490,9 +549,24 @@ def test_atomic_registry_rechecks_authorization_before_dispatch():
     result = run_graph(gateway, registry=registry, executor=executor)
 
     assert registry.atomic_calls
+    assert registry.atomic_calls[0][-1] == str(version.id)
     assert executor.calls == []
     assert result["status"] == "UNRESOLVED"
     assert result["tool_history"][0]["capability_version_id"] == str(version.id)
+
+
+def test_current_version_switch_after_selection_fails_before_executor_dispatch():
+    gateway = FakeGateway([call_tool_action()])
+    version = active_readonly_version()
+    registry = SwitchingRegistry(version)
+    executor = FakeExecutor()
+
+    result = run_graph(gateway, registry=registry, executor=executor)
+
+    assert registry.expected_version == str(version.id)
+    assert executor.calls == []
+    assert result["status"] == "UNRESOLVED"
+    assert result["error_code"] == "TOOL_EXECUTION_FAILED"
 
 
 def test_input_budgets_derive_recursion_limit_when_config_is_nonempty():

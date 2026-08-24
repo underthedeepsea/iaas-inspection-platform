@@ -1,4 +1,5 @@
 import re
+import uuid
 
 from django.db import transaction
 from jsonschema import SchemaError, ValidationError, validate
@@ -76,6 +77,7 @@ class CapabilityRegistry:
         payload,
         executor,
         origin,
+        expected_capability_version_id=None,
     ):
         """Re-authorize and dispatch while capability/version rows are locked."""
 
@@ -85,6 +87,12 @@ class CapabilityRegistry:
         claim = _safe_identifier(claim)
         if not capability_id or not claim:
             raise PluginExecutionError("a claim is required for capability execution")
+        expected_version_id = None
+        if expected_capability_version_id is not None:
+            try:
+                expected_version_id = uuid.UUID(str(expected_capability_version_id))
+            except (TypeError, ValueError, AttributeError):
+                raise PluginExecutionError("capability version identity is invalid") from None
         with transaction.atomic():
             capability = (
                 Capability.objects.select_for_update()
@@ -107,10 +115,13 @@ class CapabilityRegistry:
             if (
                 version is None
                 or version.capability_id != capability.id
+                or capability.current_version_id != version.pk
                 or version.status != CapabilityVersion.Status.ACTIVE
                 or claim not in (version.resolves or [])
             ):
                 raise PluginExecutionError("current capability version is not eligible")
+            if expected_version_id is not None and version.pk != expected_version_id:
+                raise PluginExecutionError("capability version changed")
             try:
                 validate(payload, version.input_schema)
             except (ValidationError, SchemaError, TypeError) as exc:

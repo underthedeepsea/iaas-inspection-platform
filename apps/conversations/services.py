@@ -7,14 +7,13 @@ import math
 import re
 import uuid
 from collections.abc import Mapping
-from datetime import timedelta
 from typing import Any
 
 from django.db import transaction
 from django.db.models import Max
 from django.utils import timezone
 
-from apps.capabilities.models import Capability, CapabilityVersion
+from apps.capabilities.models import CapabilityVersion
 from apps.investigations.models import (
     Conversation,
     ConversationMessage,
@@ -33,7 +32,6 @@ MAX_RESULT_TEXT = 4000
 MAX_RESULT_ITEMS = 64
 MAX_RESULT_DEPTH = 4
 PROMPT_VERSION = "1.0.0"
-CLAIM_STALE_SECONDS = 3600
 FINAL_FIELDS = (
     "summary",
     "current_conclusion",
@@ -366,27 +364,9 @@ def _start_turn(
                 Investigation.Status.CANCELLED,
             }:
                 return investigation, user_message, "terminal"
-            if not _claim_is_stale(investigation):
-                return investigation, user_message, "follower"
-            # A stale lease is recoverable only while no terminal event exists.
-            # The row is protected by the conversation lock held by create_turn.
-            now = timezone.now()
-            investigation.status = Investigation.Status.RUNNING
-            investigation.claim_token = uuid.uuid4()
-            investigation.claim_heartbeat_at = now
-            investigation.started_at = investigation.started_at or now
-            investigation.finished_at = None
-            investigation.save(
-                update_fields=[
-                    "status",
-                    "claim_token",
-                    "claim_heartbeat_at",
-                    "started_at",
-                    "finished_at",
-                    "updated_at",
-                ]
-            )
-            return investigation, user_message, "leader"
+            # A non-terminal claim is owned by the process that created it.
+            # Ordinary retries cannot infer process death from a static clock.
+            return investigation, user_message, "follower"
 
     user_message = ConversationMessage.objects.create(
         conversation=conversation,
@@ -447,8 +427,8 @@ def _persist_turn(
         if terminal_exists:
             return
         if claim_token is not None and investigation.claim_token != claim_token:
-            # A stale recovery may have replaced this lease.  The old graph
-            # result must not overwrite the newer leader's terminal state.
+            # Explicit operational recovery may have replaced this lease. The
+            # old graph result must not overwrite the newer leader's state.
             return
 
         status = result["status"]
@@ -618,10 +598,19 @@ def _persist_tool_calls(
 ) -> None:
     """Persist only the version identity validated and returned by the graph."""
 
+    if assistant.conversation_id != conversation.pk:
+        return
     for index, item in enumerate(items):
         capability_id = item.get("capability_id")
         version_id = _uuid_or_none(item.get("capability_version_id"))
-        if not isinstance(capability_id, str) or not _safe_key(capability_id) or version_id is None:
+        arguments = item.get("arguments")
+        safe_arguments = _safe_json(arguments, 4096)
+        if (
+            not isinstance(capability_id, str)
+            or not _safe_key(capability_id)
+            or not isinstance(safe_arguments, Mapping)
+            or version_id is None
+        ):
             continue
         try:
             version = CapabilityVersion.objects.select_related("capability").get(pk=version_id)
@@ -630,15 +619,9 @@ def _persist_tool_calls(
             # never replaced with a latest/candidate lookup.
             continue
         capability = version.capability
-        if (
-            capability.capability_id != capability_id
-            or capability.status != Capability.Status.ACTIVE
-            or capability.read_only is not True
-            or version.status != CapabilityVersion.Status.ACTIVE
-            or capability.current_version_id != version.pk
-        ):
+        if capability.capability_id != capability_id:
             continue
-        outcome = item.get("outcome")
+        outcome = _safe_label(item.get("outcome"))
         status = {
             "SUCCEEDED": ToolCall.Status.SUCCEEDED,
             "FAILED": ToolCall.Status.FAILED,
@@ -655,11 +638,11 @@ def _persist_tool_calls(
                 "assistant_message": assistant,
                 "capability_version": version,
                 "tool_name": capability_id[:192],
-                "input_args": item.get("arguments", {}),
+                "input_args": dict(safe_arguments),
                 "status": status,
                 "result_summary": _safe_text(evidence.summary) if evidence else "",
                 "result_payload": evidence.payload if evidence else {},
-                "error_code": item.get("error_code") or None,
+                "error_code": _safe_error_code(item.get("error_code")) or None,
                 "evidence": evidence,
                 "finished_at": timezone.now()
                 if status in {ToolCall.Status.SUCCEEDED, ToolCall.Status.FAILED, ToolCall.Status.REJECTED, ToolCall.Status.TIMEOUT}
@@ -721,27 +704,6 @@ def _existing_assistant(conversation: Conversation, user_message_id: uuid.UUID) 
         if message.parent_message_id == user_message_id:
             return message
     return None
-
-
-def _claim_is_stale(investigation: Investigation, *, now: Any | None = None) -> bool:
-    """Use a conservative durable lease so ordinary long graphs are not stolen."""
-
-    if investigation.status != Investigation.Status.RUNNING:
-        return True
-    heartbeat = investigation.claim_heartbeat_at
-    if heartbeat is None or investigation.claim_token is None:
-        return True
-    try:
-        configured = float(configured_value("CONVERSATION_CLAIM_STALE_SECONDS", CLAIM_STALE_SECONDS))
-    except (TypeError, ValueError):
-        configured = CLAIM_STALE_SECONDS
-    if not math.isfinite(configured):
-        configured = CLAIM_STALE_SECONDS
-    # A ten-minute floor is intentional: graph/tool calls are synchronous and
-    # cannot heartbeat while provider work is in flight.
-    stale_seconds = max(configured, 600.0)
-    now = now or timezone.now()
-    return heartbeat <= now - timedelta(seconds=stale_seconds)
 
 
 def _turn_response(conversation: Conversation, investigation: Investigation) -> dict[str, Any]:

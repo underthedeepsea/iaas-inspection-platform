@@ -42,9 +42,9 @@ class Investigation(EditableModel):
     confidence = models.DecimalField(max_digits=5, decimal_places=4, null=True, blank=True, validators=[MinValueValidator(0), MaxValueValidator(1)])
     started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
-    # A short-lived durable lease prevents concurrent idempotent requests from
-    # starting the graph twice.  Recovery is deliberately conservative and
-    # only replaces a lease whose heartbeat is well past the stale threshold.
+    # Durable claim markers prevent concurrent idempotent requests from
+    # starting the graph twice. Ordinary API retries never infer process death;
+    # heartbeat inspection is reserved for explicit operational recovery.
     claim_token = models.UUIDField(null=True, blank=True, editable=False, db_index=True)
     claim_heartbeat_at = models.DateTimeField(null=True, blank=True, db_index=True)
 

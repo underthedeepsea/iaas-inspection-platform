@@ -119,6 +119,58 @@ def test_atomic_llm_dispatch_rechecks_read_only_current_version_before_backend()
 
 
 @pytest.mark.django_db
+def test_atomic_llm_dispatch_rejects_expected_version_after_current_switch_before_backend():
+    from services.plugin_runtime.errors import PluginExecutionError
+    from services.plugin_runtime.executor import ExecutionOrigin
+    from services.plugin_runtime.registry import CapabilityRegistry
+
+    capability = Capability.objects.create(
+        capability_id=f"capability.switch.{uuid.uuid4().hex}",
+        name="Switching resolver",
+        domain="LLM",
+        read_only=True,
+    )
+    old = CapabilityVersion.objects.create(
+        capability=capability,
+        version="1.0.0",
+        implementation_type="RULE",
+        status=CapabilityVersion.Status.ACTIVE,
+        input_schema={"type": "object"},
+        resolves=["degradation_category"],
+    )
+    current = CapabilityVersion.objects.create(
+        capability=capability,
+        version="2.0.0",
+        implementation_type="RULE",
+        status=CapabilityVersion.Status.ACTIVE,
+        input_schema={"type": "object"},
+        resolves=["degradation_category"],
+    )
+    capability.current_version = current
+    capability.save(update_fields=["current_version"])
+
+    class MustNotRun:
+        def __init__(self):
+            self.calls = 0
+
+        def execute(self, *_args, **_kwargs):
+            self.calls += 1
+            raise AssertionError("backend must not be dispatched")
+
+    executor = MustNotRun()
+    with pytest.raises(PluginExecutionError):
+        CapabilityRegistry().execute_readonly(
+            capability.capability_id,
+            claim="degradation_category",
+            payload={},
+            executor=executor,
+            origin=ExecutionOrigin.LLM,
+            expected_capability_version_id=str(old.pk),
+        )
+    assert executor.calls == 0
+
+
+@pytest.mark.django_db
 def test_shadow_resolver_is_not_formally_resolved_but_is_available_to_shadow_runner():
     from services.plugin_runtime.registry import CapabilityRegistry
 

@@ -117,7 +117,7 @@ class ConversationClaimConcurrencyTests(TransactionTestCase):
         assert len(responses) == 2
         assert {response["turn_id"] for response in responses} == {str(investigation.pk)}
 
-    def test_stale_claim_can_be_recovered_but_fresh_claim_is_not_replaced(self):
+    def test_old_nonterminal_claim_is_not_auto_stolen_by_a_retry(self):
         risk = _risk_for_concurrency()
         user = get_user_model().objects.create_user(
             username=f"stale-{uuid.uuid4().hex}",
@@ -148,22 +148,12 @@ class ConversationClaimConcurrencyTests(TransactionTestCase):
         )
         conversation.investigation = investigation
         conversation.save(update_fields=["investigation", "updated_at"])
+        original_claim = investigation.claim_token
         calls = []
 
         def graph_runner(_graph_input):
             calls.append(True)
-            return {
-                "status": "RESOLVED",
-                "summary": "recovered",
-                "conclusion": "recovered",
-                "facts": [],
-                "next_steps": [],
-                "confidence": 1,
-                "evidence": [],
-                "tool_history": [],
-                "rounds_used": 1,
-                "tool_calls_used": 0,
-            }
+            raise AssertionError("old nonterminal claim must not be stolen")
 
         response = create_turn(
             user,
@@ -171,7 +161,8 @@ class ConversationClaimConcurrencyTests(TransactionTestCase):
             {"message": "Investigate", "idempotency_key": key},
             graph_runner=graph_runner,
         )
-        assert len(calls) == 1
+        assert calls == []
         assert response["turn_id"] == str(turn_id)
         investigation.refresh_from_db()
-        assert investigation.status == Investigation.Status.RESOLVED
+        assert investigation.status == Investigation.Status.RUNNING
+        assert investigation.claim_token == original_claim

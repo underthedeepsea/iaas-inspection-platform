@@ -1,4 +1,4 @@
-# Task 12 report: Conversation + SSE recovery (Fix Round 1)
+# Task 12 report: Conversation + SSE recovery (Fix Round 2)
 
 ## Scope
 
@@ -14,6 +14,12 @@ claim a durable Investigation lease before graph execution; Task 11 carries
 the exact capability version returned by atomic validation/execution; and the
 assistant final/message projection is the bounded eight-field section 47
 contract.
+
+Fix Round 2 removes unsafe timeout-based lease takeover. Ordinary retries now
+always follow any non-terminal claim; process-death recovery is intentionally
+left to explicit operational tooling. The exact version identity is also
+passed into the atomic registry transaction and retained for historical
+ToolCall audit even after a later capability switch or retirement.
 
 ## RED / GREEN evidence
 
@@ -57,13 +63,25 @@ DJANGO_SETTINGS_MODULE=config.settings.dev \
 18 passed
 ```
 
+Fix Round 2 RED/GREEN evidence:
+
+- the old-claim regression first observed a second graph invocation after a
+  two-hour static heartbeat gap;
+- expected-version dispatch and current-switch-before-executor regressions
+  first failed because the registry did not accept or enforce the expected
+  version ID;
+- the post-switch historical ToolCall regression first dropped the retired,
+  non-current version at persistence time;
+- after the minimal fixes, the related suites passed 55 tests and the complete
+  suite passed 208 tests.
+
 ## Implementation
 
 - `apps/conversations/services.py`: owner-scoped conversation CRUD, Risk
   environment derivation, turn input/Investigation persistence before graph
   execution, injected graph runner, safe terminal projection, Evidence and
   exact-version ToolCall persistence, assistant message creation, event
-  sequencing, durable RUNNING claim/recovery, and retry-safe terminal writes.
+  sequencing, durable RUNNING claim ownership, and retry-safe terminal writes.
 - `apps/investigations/models.py` plus migration `0004_investigation_claim`:
   persisted claim token and heartbeat fields for short-lived graph ownership.
 - `services/investigation_graph/schemas.py` and `nodes.py`: atomic
@@ -80,8 +98,8 @@ DJANGO_SETTINGS_MODULE=config.settings.dev \
   persistence, terminal graph error, refresh, optional-key retry, exact
   capability-version, and large-final projection tests.
 - `tests/api/test_conversation_concurrency.py`: PostgreSQL
-  TransactionTestCase coverage for one graph leader, fast follower, and stale
-  claim recovery.
+  TransactionTestCase coverage for one graph leader, fast follower, and old
+  claim no-steal behavior.
 - `tests/api/test_sse_resume.py`: ordering, strict cursor parsing, replay, and
   cross-owner isolation tests.
 
@@ -90,10 +108,10 @@ DJANGO_SETTINGS_MODULE=config.settings.dev \
 - The graph is invoked after the input transaction commits; final writes occur
   in a separate short transaction.
 - A fresh `(conversation, idempotency_key)` claim returns the same 202 turn to
-  followers without invoking or waiting for graph/tool work. A conservative
-  stale threshold permits recovery after a crashed owner; terminal persistence
-  also checks the claim token so an old owner cannot overwrite a recovered
-  turn.
+  followers without invoking or waiting for graph/tool work. Ordinary retries
+  never infer process death from a static heartbeat; explicit operational
+  recovery is intentionally out of this request path. Terminal persistence
+  checks the claim token so an owner cannot overwrite a replaced claim.
 - Investigation rows are locked before calculating the next event sequence;
   the existing `(investigation, sequence)` unique constraint remains the final
   guard.
@@ -109,8 +127,9 @@ DJANGO_SETTINGS_MODULE=config.settings.dev \
   `recommended_next_steps`, `unresolved_questions`). Each field clips
   independently, so required top-level keys survive large valid results.
 - ToolCall rows resolve only the graph-provided `capability_version_id`, then
-  require matching capability identity, ACTIVE/read-only/current-version
-  ownership; missing, malformed, stale, or candidate IDs are skipped closed.
+  require a valid UUID, matching capability identity, and safe arguments/status;
+  historical retired or non-current versions remain auditable. Missing,
+  malformed, or unassociated IDs are skipped closed.
 - `idempotency_key`, `turn_key`, or the `Idempotency-Key` header maps to a
   deterministic Investigation UUID. A completed terminal event returns the
   original turn without creating another user or assistant message.
@@ -123,7 +142,7 @@ DJANGO_SETTINGS_MODULE=config.settings.dev \
 ```text
 DJANGO_SETTINGS_MODULE=config.settings.dev \
   /Users/lars.li/Documents/AI-inspect/.venv-web/bin/python -m pytest -q
-206 passed in 14.18s
+208 passed in 14.19s
 
 DJANGO_SETTINGS_MODULE=config.settings.dev \
   /Users/lars.li/Documents/AI-inspect/.venv-web/bin/python manage.py check
@@ -151,7 +170,7 @@ columns in migration `apps/investigations/migrations/0004_investigation_claim.py
 - Without an idempotency key/header, two intentionally identical messages are
   treated as separate turns. Clients that need retry identity should send the
   documented optional key.
-- A graph history entry without a valid current capability version intentionally
-  produces no ToolCall row; its sanitized terminal history remains in the
-  terminal event. This is fail-closed behavior for unregistered or candidate
-  capabilities, rather than guessing a latest version.
+- A graph history entry without a valid UUID or matching capability identity
+  intentionally produces no ToolCall row; its sanitized terminal history
+  remains in the terminal event. Persistence does not re-resolve latest or
+  current versions, preserving the exact version used for historical audit.

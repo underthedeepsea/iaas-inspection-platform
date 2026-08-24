@@ -317,6 +317,12 @@ def test_tool_call_persists_only_the_graph_validated_capability_version_id():
         {"context_type": "RISK", "context_id": str(risk.pk), "title": "Risk analysis"},
     ).json()["conversation_id"]
     capability, referenced, candidate = _capability_version_fixture()
+    referenced.status = CapabilityVersion.Status.RETIRED
+    referenced.save(update_fields=["status"])
+    candidate.status = CapabilityVersion.Status.ACTIVE
+    candidate.save(update_fields=["status"])
+    capability.current_version = candidate
+    capability.save(update_fields=["current_version", "updated_at"])
     result = {
         "status": "RESOLVED",
         "summary": "done",
