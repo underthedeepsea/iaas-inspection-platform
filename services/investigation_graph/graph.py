@@ -9,6 +9,7 @@ from langgraph.graph import END, START, StateGraph
 
 from .nodes import (
     InvestigationRuntime,
+    _budget_stop,
     build_context,
     execute_readonly_tool,
     final_answer,
@@ -139,6 +140,11 @@ class _ConfiguredGraph:
             state["max_rounds"] = self.max_rounds
         if not isinstance(values, Mapping) or "max_tool_calls" not in values:
             state["max_tool_calls"] = self.max_tool_calls
+        # Normalize caller-controlled state before any early return.  This is
+        # deliberately a pure local step: it never invokes the gateway,
+        # registry, or executor, but keeps low-recursion results as safe as a
+        # normal graph result.
+        state = build_context(state)
         effective_limit = min(
             MAX_RECURSION_LIMIT,
             max(16, 3 * max(state["max_rounds"], state["max_tool_calls"]) + 8),
@@ -155,15 +161,9 @@ class _ConfiguredGraph:
                 or not isinstance(configured_limit, int)
                 or configured_limit < effective_limit
             ):
-                state.update(
-                    {
-                        "status": "UNRESOLVED",
-                        "error_code": "RECURSION_LIMIT_TOO_LOW",
-                        "error_message": "configured recursion limit is below the safe investigation budget",
-                        "summary": "Investigation stopped before execution",
-                        "conclusion": "configured recursion limit is below the safe investigation budget",
-                        "next_steps": ["Increase recursion_limit and retry the investigation."],
-                    }
+                state = _budget_stop(
+                    state,
+                    "configured recursion limit is below the safe investigation budget",
                 )
                 return state, config, True
         return state, config, False

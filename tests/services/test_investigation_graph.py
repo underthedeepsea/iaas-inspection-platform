@@ -1,4 +1,5 @@
 import json
+from copy import deepcopy
 from types import SimpleNamespace
 
 import pytest
@@ -544,7 +545,7 @@ def test_explicit_insufficient_recursion_limit_returns_structured_failure():
         pytest.fail(f"insufficient recursion_limit must be structured: {exc}")
 
     assert result["status"] == "UNRESOLVED"
-    assert result["error_code"] == "RECURSION_LIMIT_TOO_LOW"
+    assert result["error_code"] == "BUDGET_EXHAUSTED"
     assert gateway.calls == []
 
 
@@ -648,4 +649,96 @@ def test_direct_invalid_action_is_round_trip_validated_to_structured_failure():
 
     assert result["status"] == "FAILED"
     assert result["error_code"] == "STRUCTURED_OUTPUT_INVALID"
+
+
+def test_low_recursion_limit_normalizes_initial_state_before_budget_final():
+    from services.investigation_graph.graph import build_investigation_graph
+    from services.investigation_graph.state import MAX_CONTEXT_BYTES, MAX_EVIDENCE_ITEMS
+
+    gateway = FakeGateway([final_action("must not be called")])
+    executor = FakeExecutor({"scheduler_queue_ratio": 2.15})
+    graph = build_investigation_graph(
+        gateway=gateway,
+        registry=FakeRegistry(active_readonly_version()),
+        executor=executor,
+    )
+    values = {
+        "question": "https://question.invalid/raw?apiKey=question-secret",
+        "context": {
+            "missing_claim": "degradation_category",
+            "apiKey": "context-secret",
+            "credential_url": "https://user:password@provider.invalid/api",
+            "raw_payload": {"token": "nested-secret"},
+            "说明": "巡检上下文" * 2000,
+        },
+        "missing_claim": "degradation_category",
+        "messages": [
+            {"role": "user", "content": "raw-log https://log.invalid apiKey=message-secret"},
+        ],
+        "rounds_used": 99,
+        "tool_calls_used": 99,
+        "evidence": [
+            {
+                "evidence_key": f"evidence-{index}",
+                "summary": "safe fact",
+                "payload": {"metric": index},
+                "source": "fake",
+                "capability_id": "llm.scheduler.pressure",
+            }
+            for index in range(99)
+        ],
+    }
+    original = deepcopy(values)
+
+    result = graph.invoke(
+        values,
+        config={"configurable": {"request_id": "round-3"}, "recursion_limit": 1},
+    )
+
+    assert values == original
+    assert gateway.calls == []
+    assert executor.calls == []
+    assert result["status"] == "UNRESOLVED"
+    assert result["error_code"] == "BUDGET_EXHAUSTED"
+    assert result["rounds_used"] == 3
+    assert result["tool_calls_used"] == 5
+    assert len(result["evidence"]) <= MAX_EVIDENCE_ITEMS
+    assert len(json.dumps(result["context"], ensure_ascii=False).encode("utf-8")) <= MAX_CONTEXT_BYTES
+    assert all("content" not in message for message in result["messages"])
+    assert all(secret not in repr(result) for secret in ("question-secret", "context-secret", "nested-secret", "message-secret"))
+    assert "provider.invalid" not in repr(result)
+    assert set(("summary", "conclusion", "facts", "next_steps")) <= result.keys()
+    assert set(("summary", "conclusion", "facts", "next_steps")) <= result["final"].keys()
+
+
+def test_normal_execution_public_state_keeps_only_bounded_message_roles():
+    from services.investigation_graph.graph import build_investigation_graph
+    from services.investigation_graph.state import MAX_CONTEXT_BYTES
+
+    gateway = FakeGateway([final_action("safe")])
+    graph = build_investigation_graph(gateway=gateway)
+    values = {
+        "question": "Why is TTFT increasing?",
+        "context": {"missing_claim": "degradation_category"},
+        "missing_claim": "degradation_category",
+        "messages": [
+            {"role": "user", "content": "raw conversation https://secret.invalid apiKey=secret"},
+            {"role": "assistant", "content": "模型输出凭证" * 2000},
+        ],
+    }
+    original = deepcopy(values)
+
+    result = graph.invoke(values)
+
+    assert values == original
+    assert result["status"] == "RESOLVED"
+    assert result["messages"] == [{"role": "user"}, {"role": "assistant"}]
+    assert all("content" not in message for message in result["messages"])
+    assert len(json.dumps(result["messages"], ensure_ascii=False).encode("utf-8")) <= MAX_CONTEXT_BYTES
+    assert "secret.invalid" not in repr(result)
+    assert "apiKey=secret" not in repr(result)
+    outbound = gateway.calls[0].messages
+    assert outbound[0]["role"] == "system"
+    assert "read-only" in outbound[0]["content"].lower()
+    assert json.loads(outbound[1]["content"])["history"] == [{"role": "user"}, {"role": "assistant"}]
     assert all(key in result for key in ("summary", "conclusion", "facts", "next_steps"))

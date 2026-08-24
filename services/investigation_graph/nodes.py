@@ -99,11 +99,17 @@ def build_context(state: Mapping[str, Any]) -> dict[str, Any]:
     result["max_tool_calls"] = max_tool_calls
     result["rounds_used"] = min(_nonnegative_int(state.get("rounds_used")), max_rounds)
     result["tool_calls_used"] = min(_nonnegative_int(state.get("tool_calls_used")), max_tool_calls)
-    result["evidence"] = _safe_evidence_list(state.get("evidence"))
-    result["tool_history"] = _safe_tool_history(state.get("tool_history"))
-    result["facts"] = _string_list(state.get("facts"))
-    result["next_steps"] = _string_list(state.get("next_steps"))
-    result["messages"] = _safe_messages(state.get("messages"))
+    result["evidence"] = _bounded_json(
+        _safe_evidence_list(state.get("evidence")),
+        MAX_CONTEXT_BYTES,
+    )
+    result["tool_history"] = _bounded_json(
+        _safe_tool_history(state.get("tool_history")),
+        MAX_CONTEXT_BYTES,
+    )
+    result["facts"] = _bounded_json(_string_list(state.get("facts")), MAX_CONTEXT_BYTES)
+    result["next_steps"] = _bounded_json(_string_list(state.get("next_steps")), MAX_CONTEXT_BYTES)
+    result["messages"] = _bounded_json(_safe_messages(state.get("messages")), MAX_CONTEXT_BYTES)
     return result
 
 
@@ -1053,9 +1059,11 @@ def _safe_messages(value: Any) -> list[dict[str, Any]]:
         if not isinstance(item, Mapping):
             continue
         role = _safe_text(item.get("role"))[:32]
-        content = _safe_text(item.get("content"))[:4000]
-        if role and content:
-            output.append({"role": role, "content": content})
+        if role:
+            # Conversation content is owned by Task 12.  Preserve only the
+            # smallest safe role metadata in graph state; outbound prompts
+            # are rebuilt from the fixed protocol envelope and compact state.
+            output.append({"role": role})
     return output
 
 

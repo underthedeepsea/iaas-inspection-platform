@@ -188,8 +188,8 @@ git diff --check
 
 - A non-empty caller config without recursion_limit receives the current
   invocation's effective budget-derived limit, not the factory default.
-  Explicit limits below that safe minimum fail closed as a stable
-  UNRESOLVED/RECURSION_LIMIT_TOO_LOW result; no LangGraph recursion exception
+  Explicit limits below that safe minimum fail closed as a normalized,
+  stable UNRESOLVED/BUDGET_EXHAUSTED result; no LangGraph recursion exception
   escapes and no gateway/tool call starts.
 - Atomic registry execution must return exactly (version, raw_result), with
   non-null version. The graph always re-runs capability/claim/schema checks
@@ -228,6 +228,64 @@ System check identified no issues (0 silenced).
 
 DJANGO_SETTINGS_MODULE=config.settings.dev PYTHONPATH=. \
   .venv-web/bin/python manage.py makemigrations --check --dry-run
+No changes detected
+
+python3 -m compileall -q services \
+  tests/services/test_investigation_graph.py tests/services/test_capability_registry.py
+git diff --check
+~~~
+
+## Fix Round 3 — reviewer hardening
+
+### RED / GREEN
+
+- Added low-recursion normalization and normal-return message-state
+  regressions before production changes. The focused run was RED with 3
+  expected failures: low-limit state leaked unnormalized fields and the
+  public message state retained content.
+- The GREEN focused graph suite is `28 passed`.
+
+### Contract decisions
+
+- `_ConfiguredGraph._prepare()` now runs the local `build_context()` safety
+  normalization before checking an explicit recursion limit. A rejected low
+  limit therefore receives the same redaction, deterministic byte bounds,
+  counter clamps, and safe evidence/history state as a normal invocation,
+  then terminates as stable `UNRESOLVED/BUDGET_EXHAUSTED` final output.
+- This early normalization is pure and dependency-free: it does not invoke
+  the gateway, registry, executor, or any external provider.
+- Public graph `messages` retain only bounded role metadata; no content,
+  transcript, URL, credential, or raw log is kept in returned state. Model
+  outbound messages continue to use the fixed protocol/read-only system
+  message and compact context/history envelope.
+- Input mappings and nested caller values are not mutated. UTF-8 byte-length
+  assertions cover normalized context and public message metadata.
+
+### Fix Round 3 verification
+
+~~~text
+DJANGO_SETTINGS_MODULE=config.settings.dev PYTHONPATH=. \
+  /Users/lars.li/Documents/AI-inspect/.venv-web/bin/pytest -q \
+  tests/services/test_investigation_graph.py
+28 passed
+
+DJANGO_SETTINGS_MODULE=config.settings.dev PYTHONPATH=. \
+  /Users/lars.li/Documents/AI-inspect/.venv-web/bin/pytest -q \
+  tests/services/test_investigation_graph.py \
+  tests/services/test_model_gateway.py tests/services/test_plugin_security.py
+97 passed
+
+DJANGO_SETTINGS_MODULE=config.settings.dev PYTHONPATH=. \
+  /Users/lars.li/Documents/AI-inspect/.venv-web/bin/pytest -q
+188 passed
+
+DJANGO_SETTINGS_MODULE=config.settings.dev PYTHONPATH=. \
+  /Users/lars.li/Documents/AI-inspect/.venv-web/bin/python manage.py check
+System check identified no issues (0 silenced).
+
+DJANGO_SETTINGS_MODULE=config.settings.dev PYTHONPATH=. \
+  /Users/lars.li/Documents/AI-inspect/.venv-web/bin/python manage.py \
+  makemigrations --check --dry-run
 No changes detected
 
 python3 -m compileall -q services \
