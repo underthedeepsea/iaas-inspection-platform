@@ -10,6 +10,7 @@ ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
 INSTALLED_APPS = [
     "django.contrib.auth",
     "django.contrib.contenttypes",
+    "django.contrib.sessions",
     "django.contrib.postgres",
     *INSTALLED_APPS,
     "apps.core",
@@ -20,6 +21,11 @@ INSTALLED_APPS = [
     "apps.investigations",
     "apps.learning",
     "apps.audits",
+]
+
+MIDDLEWARE = [
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
 ]
 
 DATABASE_URL = os.getenv(
