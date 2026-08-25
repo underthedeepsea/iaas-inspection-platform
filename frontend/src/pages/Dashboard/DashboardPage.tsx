@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { getApiError } from '../../api/http'
 import { getResourceTypes, resourceKeys } from '../../api/resources'
 import { useUiStore } from '../../stores/uiStore'
+import { InspectionTriggerButton } from '../../features/inspection-trigger/InspectionTriggerButton'
 import { HealthTrendChart } from '../../features/resource-health/HealthTrendChart'
 import { ResourceHealthCard } from '../../features/resource-health/ResourceHealthCard'
 import { ResourceKPI } from '../../features/resource-health/ResourceKPI'
@@ -74,7 +75,11 @@ export function DashboardPage({
           <h1 style={{ marginBottom: 6 }}>总览</h1>
           <p style={{ color: '#6b7280', margin: 0 }}>按资源对象查看平台巡检健康度与变化趋势。</p>
         </div>
-        <button onClick={onOpenInspection} type="button">⚡ 立即巡检</button>
+        {onOpenInspection ? (
+          <button onClick={onOpenInspection} type="button">⚡ 立即巡检</button>
+        ) : (
+          <InspectionTriggerButton environmentId={environmentId} resourceTypes={resources} />
+        )}
       </header>
       <div style={{ background: '#ffffff', border: '1px solid #e5e7eb', borderRadius: 14, display: 'grid', gap: 20, gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', marginBottom: 24, padding: 20 }}>
         <ResourceKPI label="平均健康度" value={averageHealth} detail="资源类型平均值" />
@@ -99,4 +104,3 @@ export function DashboardPage({
     </section>
   )
 }
-
