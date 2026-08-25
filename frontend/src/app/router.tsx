@@ -2,6 +2,9 @@ import { BrowserRouter, Route, Routes } from 'react-router-dom'
 
 import { DashboardPage } from '../pages/Dashboard/DashboardPage'
 import { MainLayout } from '../layouts/MainLayout/MainLayout'
+import { ResourcesPage } from '../pages/Resources/ResourcesPage'
+import { ResourceDetailPage } from '../pages/ResourceDetail/ResourceDetailPage'
+import { ResourceRunDetailPage } from '../pages/ResourceRunDetail/ResourceRunDetailPage'
 
 function Placeholder({ label }: { label: string }) {
   return <section aria-label={label}>{label}</section>
@@ -13,10 +16,10 @@ export function AppRouter() {
       <MainLayout>
         <Routes>
           <Route element={<DashboardPage />} path="/" />
-          <Route element={<Placeholder label="资源巡检" />} path="/resources" />
-          <Route element={<Placeholder label="资源详情" />} path="/resources/:resourceType" />
+          <Route element={<ResourcesPage />} path="/resources" />
+          <Route element={<ResourceDetailPage />} path="/resources/:resourceType" />
           <Route
-            element={<Placeholder label="资源巡检详情" />}
+            element={<ResourceRunDetailPage />}
             path="/resources/:resourceType/runs/:runId"
           />
           <Route element={<Placeholder label="风险中心" />} path="/risks" />
