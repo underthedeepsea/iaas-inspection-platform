@@ -10,6 +10,7 @@ urlpatterns = [
     path("product-info", views.product_info, name="api-product-info"),
     path("product-info/", views.product_info, name="api-product-info-slash"),
     path("", include("apps.operations_api.urls")),
+    path("", include("apps.inspections.urls")),
     re_path(r"^capabilities(?:/|$)", include("apps.capability_api.urls")),
     re_path(r"^conversations(?:/|$)", include("apps.conversations.urls")),
     re_path(r"^investigations(?:/|$)", include("apps.investigations.public_urls")),
