@@ -1,14 +1,19 @@
 import { useEffect, useRef } from 'react'
-import * as echarts from 'echarts'
+import { use, init } from 'echarts/core'
+import { LineChart } from 'echarts/charts'
+import { GridComponent, TooltipComponent } from 'echarts/components'
+import { SVGRenderer } from 'echarts/renderers'
 
 import type { ResourceSummary } from '../../api/resources'
+
+use([LineChart, GridComponent, TooltipComponent, SVGRenderer])
 
 export function HealthTrendChart({ trend }: { trend: ResourceSummary[] }) {
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!containerRef.current || trend.length === 0) return
-    const chart = echarts.init(containerRef.current, undefined, { renderer: 'svg' })
+    const chart = init(containerRef.current, undefined, { renderer: 'svg' })
     chart.setOption({
       animation: false,
       grid: { top: 12, right: 12, bottom: 24, left: 42 },
@@ -51,4 +56,3 @@ export function HealthTrendChart({ trend }: { trend: ResourceSummary[] }) {
   if (trend.length === 0) return <div>暂无趋势数据</div>
   return <div aria-label="健康趋势图" ref={containerRef} style={{ height: 220, width: '100%' }} />
 }
-

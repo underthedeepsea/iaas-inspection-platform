@@ -26,7 +26,12 @@ export function AIAnalysisPanel({
   initialInvestigationId?: string
   resourceCode: string
 }) {
-  const [investigationId, setInvestigationId] = useState(initialInvestigationId)
+  const storageKey = `iaas-investigation:${contextType}:${resourceCode}:${inspectionRunId ?? 'trend'}`
+  const [investigationId, setInvestigationId] = useState(() => {
+    if (initialInvestigationId) return initialInvestigationId
+    if (typeof window === 'undefined') return undefined
+    return window.localStorage.getItem(storageKey) ?? undefined
+  })
   const [investigation, setInvestigation] = useState<Investigation | null>(null)
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState('')
@@ -50,7 +55,9 @@ export function AIAnalysisPanel({
         environmentId,
         inspectionRunId,
       })
-      setInvestigationId(created.investigation_id || created.id)
+      const createdId = created.investigation_id || created.id
+      setInvestigationId(createdId)
+      window.localStorage.setItem(storageKey, createdId)
     } catch {
       setError('AI 分析启动失败，请稍后重试')
     } finally {
@@ -84,4 +91,3 @@ export function AIAnalysisPanel({
     </section>
   )
 }
-
