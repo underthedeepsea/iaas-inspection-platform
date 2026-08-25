@@ -5,6 +5,7 @@ import { getResourceHistory, getResourceOverview, resourceKeys } from '../../api
 import { useUiStore } from '../../stores/uiStore'
 import { resourceSlugToCode } from '../../features/resource-health/resourceRoutes'
 import { InspectionHistoryTable } from '../../features/inspection-history/InspectionHistoryTable'
+import { AIAnalysisPanel } from '../../features/ai-analysis/AIAnalysisPanel'
 
 const tabs = [
   ['overview', '概览'],
@@ -60,7 +61,7 @@ export function ResourceDetailPage({ environmentId: providedEnvironmentId }: { e
       ) : activeTab === 'risks' ? (
         <section><h2>当前风险</h2><p>{overviewQuery.data?.latest?.risk_count ?? 0} 项资源风险</p></section>
       ) : (
-        <section><h2>AI 分析</h2><p>从最近一次资源巡检进入 AI 分析。</p></section>
+        <AIAnalysisPanel contextType="RESOURCE_TYPE" environmentId={environmentId} resourceCode={code} />
       )}
     </section>
   )
@@ -80,4 +81,3 @@ function OverviewPanel({ overview }: { overview?: Awaited<ReturnType<typeof getR
     </section>
   )
 }
-

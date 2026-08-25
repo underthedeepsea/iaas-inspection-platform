@@ -5,6 +5,7 @@ import { getResourceRunDetail, resourceKeys } from '../../api/resources'
 import { useUiStore } from '../../stores/uiStore'
 import { resourceSlugToCode } from '../../features/resource-health/resourceRoutes'
 import { InspectionRunSummary } from '../../features/inspection-history/InspectionRunSummary'
+import { AIAnalysisPanel } from '../../features/ai-analysis/AIAnalysisPanel'
 
 export function ResourceRunDetailPage({ environmentId: providedEnvironmentId }: { environmentId?: string | null }) {
   const { resourceType = '', runId = '' } = useParams()
@@ -29,7 +30,9 @@ export function ResourceRunDetailPage({ environmentId: providedEnvironmentId }: 
         <h2>主要风险</h2>
         {detail.major_risks.length ? <ul>{detail.major_risks.map((risk, index) => <li key={String(risk.id ?? index)}>{String(risk.title ?? '未命名风险')}</li>)}</ul> : <p>本轮没有主要风险。</p>}
       </section>
+      <section style={{ marginTop: 28 }}>
+        <AIAnalysisPanel contextType="RESOURCE_RUN" environmentId={environmentId} inspectionRunId={runId} resourceCode={code} />
+      </section>
     </section>
   )
 }
-
