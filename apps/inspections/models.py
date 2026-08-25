@@ -244,6 +244,46 @@ class InspectionItemRun(CreatedModel):
         constraints = [models.UniqueConstraint(fields=["inspection_run", "inspection_item"], name="inspection_item_run_unique")]
 
 
+class ResourceInspectionSummary(CreatedModel):
+    inspection_run = models.ForeignKey(
+        InspectionRun,
+        on_delete=models.CASCADE,
+        related_name="resource_summaries",
+    )
+    resource_type = models.ForeignKey(
+        ResourceType,
+        on_delete=models.CASCADE,
+        related_name="inspection_summaries",
+    )
+    assets_total = models.IntegerField(default=0)
+    assets_covered = models.IntegerField(default=0)
+    inspection_item_count = models.IntegerField(default=0)
+    success_item_count = models.IntegerField(default=0)
+    failed_item_count = models.IntegerField(default=0)
+    finding_count = models.IntegerField(default=0)
+    risk_count = models.IntegerField(default=0)
+    p1_count = models.IntegerField(default=0)
+    p2_count = models.IntegerField(default=0)
+    p3_count = models.IntegerField(default=0)
+    p4_count = models.IntegerField(default=0)
+    ai_dependent_cases = models.IntegerField(default=0)
+    ai_investigation_count = models.IntegerField(default=0)
+    health_score = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    status = models.CharField(max_length=32, default="PENDING", db_index=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    summary = models.JSONField(default=dict)
+
+    class Meta:
+        db_table = "resource_inspection_summaries"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["inspection_run", "resource_type"],
+                name="resource_summary_run_type_unique",
+            )
+        ]
+
+
 class Finding(CreatedModel):
     class Status(models.TextChoices):
         ACTIVE = "ACTIVE", "Active"
