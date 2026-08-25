@@ -216,8 +216,16 @@ class InspectionItemRun(CreatedModel):
         AI_DEFERRED = "AI_DEFERRED", "AI deferred"
         DATA_INVALID = "DATA_INVALID", "Data invalid"
 
-    inspection_run = models.ForeignKey(InspectionRun, on_delete=models.CASCADE)
-    inspection_item = models.ForeignKey(InspectionItem, on_delete=models.CASCADE)
+    inspection_run = models.ForeignKey(
+        InspectionRun,
+        on_delete=models.CASCADE,
+        related_name="item_runs",
+    )
+    inspection_item = models.ForeignKey(
+        InspectionItem,
+        on_delete=models.CASCADE,
+        related_name="item_runs",
+    )
     status = models.CharField(max_length=32, choices=Status.choices, default=Status.PENDING, db_index=True)
     ai_admission_status = models.CharField(max_length=40, choices=AIAdmissionStatus.choices, default=AIAdmissionStatus.NOT_EVALUATED, db_index=True)
     asset_scope = models.JSONField(default=dict)

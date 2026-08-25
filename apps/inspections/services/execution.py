@@ -1,6 +1,7 @@
 """Code-first execution for the Task 4 deterministic mock scenarios."""
 
 from dataclasses import dataclass
+import uuid
 
 from django.db import transaction
 from django.utils import timezone
@@ -79,7 +80,7 @@ def execute_inspection_item(
         )
         admission_status = _admission_status(coverage)
         finished_at = timezone.now()
-        asset_scope = _asset_scope(dataset)
+        asset_scope = _frozen_asset_scope(inspection_run) or _asset_scope(dataset)
         summary = _summary(dataset, scenario_result, coverage)
 
         item_run.status = InspectionItemRun.Status.SUCCEEDED
@@ -113,10 +114,21 @@ def execute_inspection_run(
 ):
     """Execute enabled items in a run, keeping run aggregation deterministic."""
 
+    requested_by_id = not isinstance(inspection_run, InspectionRun)
+    if requested_by_id:
+        inspection_run = InspectionRun.objects.select_related("dataset").get(
+            pk=uuid.UUID(str(inspection_run))
+        )
     dataset = dataset or inspection_run.dataset
     items = inspection_items
     if items is None:
-        items = InspectionItem.objects.filter(enabled=True).order_by("code", "created_at")
+        resolved_scope = (inspection_run.config_snapshot or {}).get("resolved_scope")
+        if isinstance(resolved_scope, dict) and "inspection_item_ids" in resolved_scope:
+            items = InspectionItem.objects.filter(
+                pk__in=resolved_scope.get("inspection_item_ids") or []
+            ).order_by("code", "created_at", "pk")
+        else:
+            items = InspectionItem.objects.filter(enabled=True).order_by("code", "created_at")
     results = [
         execute_inspection_item(
             inspection_run,
@@ -128,7 +140,7 @@ def execute_inspection_run(
     ]
     _update_run_counts(inspection_run)
     inspection_run.refresh_from_db()
-    return results
+    return inspection_run if requested_by_id else results
 
 
 def _run_deterministic_detector(dataset, inspection_item):
@@ -342,6 +354,16 @@ def _asset_scope(dataset):
             .order_by("external_key")
             .values_list("external_key", flat=True)
         )
+    }
+
+
+def _frozen_asset_scope(inspection_run):
+    resolved_scope = (inspection_run.config_snapshot or {}).get("resolved_scope")
+    if not isinstance(resolved_scope, dict) or "asset_ids" not in resolved_scope:
+        return None
+    return {
+        "asset_ids": [str(value) for value in resolved_scope.get("asset_ids") or []],
+        "resource_types": list(resolved_scope.get("resource_types") or []),
     }
 
 
