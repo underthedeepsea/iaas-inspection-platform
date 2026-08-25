@@ -4,6 +4,7 @@ import type { ResourceType } from '../../api/resources'
 import { triggerInspection, type TriggerInspectionResponse } from '../../api/inspections'
 
 import { InspectionScopePreview } from './InspectionScopePreview'
+import { InspectionProgress } from './InspectionProgress'
 import { ResourceTypeSelector } from './ResourceTypeSelector'
 
 export function InspectionDrawer({
@@ -70,10 +71,13 @@ export function InspectionDrawer({
         <button aria-label="关闭巡检抽屉" onClick={onClose} type="button">×</button>
       </header>
       {run ? (
-        <section aria-label="巡检进度模式" style={{ background: '#fff7ed', borderRadius: 12, marginTop: 20, padding: 16 }}>
-          <strong>巡检任务已创建</strong>
-          <p style={{ color: '#4b5563', fontSize: 13 }}>任务 {run.inspection_run_id || run.id} 正在准备执行。</p>
-        </section>
+        <>
+          <section aria-label="巡检进度模式" style={{ background: '#fff7ed', borderRadius: 12, marginTop: 20, padding: 16 }}>
+            <strong>巡检任务已创建</strong>
+            <p style={{ color: '#4b5563', fontSize: 13 }}>任务 {run.inspection_run_id || run.id} 正在准备执行。</p>
+          </section>
+          <InspectionProgress runId={run.inspection_run_id || run.id} />
+        </>
       ) : (
         <>
           <div style={{ marginTop: 20 }}>

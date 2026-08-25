@@ -57,4 +57,3 @@ export async function getInspectionRun(runId: string) {
 export function inspectionRunEventsUrl(runId: string) {
   return `/api/v1/inspection-runs/${encodeURIComponent(runId)}/events`
 }
-
