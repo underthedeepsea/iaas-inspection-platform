@@ -13,6 +13,7 @@ from apps.inspections.models import (
     InspectionItem,
     InspectionItemResourceType,
     InspectionRun,
+    InspectionRunEvent,
     ResourceInspectionSummary,
     ResourceType,
 )
@@ -50,7 +51,16 @@ def test_manual_run_uses_batch_lifecycle_and_publishes_resource_summary(monkeypa
         environment,
         generate_dataset(20260823, "control_plane_anti_affinity", date(2026, 8, 23)),
     )
-    resource_type = ResourceType.objects.get(code="CONTROL_PLANE")
+    resource_type, _ = ResourceType.objects.get_or_create(
+        code="CONTROL_PLANE",
+        defaults={
+            "name": "控制面",
+            "asset_selector": {"asset_types": [Asset.AssetType.POD]},
+            "sort_order": 10,
+        },
+    )
+    resource_type.enabled = True
+    resource_type.save(update_fields=["enabled"])
     InspectionItemResourceType.objects.create(resource_type=resource_type, inspection_item=make_item())
     run = create_manual_inspection_run(
         environment=environment,
@@ -73,6 +83,20 @@ def test_manual_run_uses_batch_lifecycle_and_publishes_resource_summary(monkeypa
 
     run.refresh_from_db()
     assert run.status == InspectionRun.Status.SUCCEEDED
+    assert {
+        event.event_type
+        for event in InspectionRunEvent.objects.filter(inspection_run=run)
+    } >= {
+        "scope.resolved",
+        "assets.discovered",
+        "inspection.item.started",
+        "inspection.item.progress",
+        "inspection.item.completed",
+        "risk.correlation.started",
+        "risk.correlation.completed",
+        "summary.completed",
+        "run.completed",
+    }
     summary = ResourceInspectionSummary.objects.get(inspection_run=run, resource_type=resource_type)
     assert summary.health_score is not None
 

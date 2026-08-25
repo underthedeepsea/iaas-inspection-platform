@@ -16,12 +16,14 @@ from django.utils import timezone
 from apps.core.models import Environment
 from apps.inspections.models import (
     DailySnapshot,
+    InspectionItem,
     InspectionItemRun,
     InspectionRun,
     MockDataset,
     ResourceInspectionSummary,
 )
 from apps.inspections.services.execution import execute_inspection_run
+from apps.inspections.services.events import append_run_event
 from apps.inspections.services.resource_summary import build_resource_summaries
 from apps.inspections.services.snapshot import build_daily_snapshot
 from apps.mockdata.services import persist_dataset
@@ -495,7 +497,46 @@ def execute(request, run_id):
             run.started_at = timezone.now()
         run.status = InspectionRun.Status.RUNNING
         run.save(update_fields=["started_at", "status"])
+        resolved_scope = (run.config_snapshot or {}).get("resolved_scope") or {}
+        if "inspection_item_ids" in resolved_scope:
+            item_queryset = InspectionItem.objects.filter(
+                pk__in=resolved_scope.get("inspection_item_ids") or []
+            ).order_by("code", "created_at", "pk")
+        else:
+            item_queryset = InspectionItem.objects.filter(enabled=True).order_by("code", "created_at")
+        for item in item_queryset:
+            append_run_event(
+                run,
+                "inspection.item.started",
+                InspectionRun.Status.RUNNING,
+                {"inspection_item_id": str(item.pk), "inspection_item_code": item.code},
+            )
         execute_inspection_run(run)
+        completed_items = 0
+        item_runs = InspectionItemRun.objects.filter(inspection_run=run).select_related("inspection_item")
+        for item_run in item_runs:
+            completed_items += 1
+            event_status = InspectionRun.Status.SUCCEEDED if item_run.status == InspectionItemRun.Status.SUCCEEDED else InspectionRun.Status.FAILED
+            append_run_event(
+                run,
+                "inspection.item.completed",
+                event_status,
+                {
+                    "inspection_item_id": str(item_run.inspection_item_id),
+                    "inspection_item_code": item_run.inspection_item.code,
+                    "status": item_run.status,
+                },
+            )
+            append_run_event(
+                run,
+                "inspection.item.progress",
+                InspectionRun.Status.RUNNING,
+                {
+                    "completed_items": completed_items,
+                    "total_items": item_runs.count(),
+                    "completed_asset_count": len((item_run.asset_scope or {}).get("asset_ids") or []),
+                },
+            )
         _mark_stage(run, "execute")
     return _run_response(run)
 
@@ -507,7 +548,9 @@ def correlate_risks(request, run_id):
         run = _run(run.pk, lock=True)
         if not _stage_done(run, "correlate_risks"):
             _require_predecessor(run, "correlate_risks")
+            append_run_event(run, "risk.correlation.started", InspectionRun.Status.RUNNING, {})
             correlate_run(run)
+            append_run_event(run, "risk.correlation.completed", InspectionRun.Status.SUCCEEDED, {})
             _mark_stage(run, "correlate_risks")
     run.refresh_from_db()
     return _run_response(
@@ -545,6 +588,12 @@ def resource_summaries(request, run_id):
         if not _stage_done(run, "resource_summaries"):
             _require_predecessor(run, "resource_summaries")
             summaries = build_resource_summaries(run)
+            append_run_event(
+                run,
+                "summary.completed",
+                InspectionRun.Status.SUCCEEDED,
+                {"resource_summary_ids": [str(summary.pk) for summary in summaries]},
+            )
             _mark_stage(run, "resource_summaries")
         else:
             summaries = list(ResourceInspectionSummary.objects.filter(inspection_run=run))
@@ -599,6 +648,12 @@ def complete(request, run_id):
             _require_predecessor(run, "complete")
             _finish_run(run)
             _mark_stage(run, "complete")
+            append_run_event(
+                run,
+                "run.completed",
+                run.status,
+                {"status": run.status, "finished_at": run.finished_at.isoformat() if run.finished_at else None},
+            )
     return _run_response(run)
 
 
