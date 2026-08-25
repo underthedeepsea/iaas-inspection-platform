@@ -78,6 +78,8 @@ class Conversation(EditableModel):
         INSPECTION_ITEM = "INSPECTION_ITEM", "Inspection item"
         INVESTIGATION = "INVESTIGATION", "Investigation"
         EXPERIENCE = "EXPERIENCE", "Experience"
+        RESOURCE_TYPE = "RESOURCE_TYPE", "Resource type"
+        RESOURCE_RUN = "RESOURCE_RUN", "Resource run"
 
     class Status(models.TextChoices):
         ACTIVE = "ACTIVE", "Active"
