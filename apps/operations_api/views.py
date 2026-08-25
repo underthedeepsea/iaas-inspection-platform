@@ -31,6 +31,9 @@ from apps.inspections.models import (
     InspectionRun,
     Severity,
 )
+from apps.inspections.serializers import serialize_manual_inspection_run
+from apps.inspections.services.scope import UnknownResourceType, UnsupportedAssetSelector
+from apps.inspections.services.trigger import AI_MODES, create_manual_inspection_run
 from apps.investigations.models import Conversation, Investigation
 from apps.risks.models import Evidence, Risk, RiskObservation, RiskStatusHistory
 from apps.risks.services.lifecycle import ACTIVE_RISK_STATUSES, mark_handled as lifecycle_mark_handled
@@ -805,6 +808,8 @@ def _call_airflow_transport(transport, payload):
 @_endpoint("operator", {"POST"})
 def trigger_inspection_run(request):
     payload = parse_json_object(request)
+    if "scope" in payload:
+        return _trigger_manual_inspection_run(request, payload)
     environment = _environment(payload.get("environment_id"), required=True)
     run_date = _date(payload.get("run_date"), "run_date")
     scenario = _text(payload.get("scenario"), "scenario", required=True, limit=64)
@@ -837,6 +842,46 @@ def trigger_inspection_run(request):
             payload={},
         )
     return JsonResponse({"dag_id": dag_id, "dag_run_id": dag_run_id, "status": status}, status=202)
+
+
+def _trigger_manual_inspection_run(request, payload):
+    _reject_unknown(payload, {"environment_id", "scope", "trigger_options"})
+    environment = _environment(payload.get("environment_id"), required=True)
+    scope = payload.get("scope")
+    if not isinstance(scope, Mapping):
+        raise APIRequestError("VALIDATION_ERROR", "scope must be an object", details={"field": "scope"})
+    _reject_unknown(scope, {"resource_types"})
+    options = payload.get("trigger_options") or {}
+    if not isinstance(options, Mapping):
+        raise APIRequestError(
+            "VALIDATION_ERROR",
+            "trigger_options must be an object",
+            details={"field": "trigger_options"},
+        )
+    _reject_unknown(options, {"ai_mode"})
+    ai_mode = options.get("ai_mode", "DEFERRED")
+    if ai_mode not in AI_MODES:
+        raise APIRequestError(
+            "VALIDATION_ERROR",
+            "ai_mode must be DEFERRED or DISABLED",
+            details={"field": "trigger_options.ai_mode"},
+        )
+    try:
+        run = create_manual_inspection_run(
+            environment=environment,
+            resource_type_codes=scope.get("resource_types"),
+            ai_mode=ai_mode,
+        )
+    except UnknownResourceType as error:
+        raise PublicAPIError(
+            "RESOURCE_TYPE_NOT_FOUND",
+            "one or more requested resource types do not exist",
+            status=400,
+            details={"resource_types": str(error).split(", ")},
+        ) from error
+    except UnsupportedAssetSelector as error:
+        raise PublicAPIError("VALIDATION_ERROR", str(error), status=400) from error
+    return JsonResponse(serialize_manual_inspection_run(run), status=201)
 
 
 # Short aliases make the slice straightforward to include from a root router.
