@@ -6,5 +6,10 @@
 .venv-airflow/
 .venv-web/
 .worktrees/
+frontend/node_modules/
+frontend/dist/
+frontend/*.tsbuildinfo
+.airflow-task*/
+docs/v0.2/
 __pycache__/
 *.py[cod]
