@@ -44,6 +44,42 @@ class InspectionItem(EditableModel):
         db_table = "inspection_items"
 
 
+class ResourceType(EditableModel):
+    code = models.CharField(max_length=64, unique=True)
+    name = models.CharField(max_length=128)
+    description = models.TextField(blank=True, default="")
+    icon = models.CharField(max_length=64, blank=True, default="")
+    asset_selector = models.JSONField(default=dict)
+    enabled = models.BooleanField(default=True, db_index=True)
+    sort_order = models.IntegerField(default=100)
+
+    class Meta:
+        db_table = "resource_types"
+
+
+class InspectionItemResourceType(CreatedModel):
+    resource_type = models.ForeignKey(
+        ResourceType,
+        on_delete=models.CASCADE,
+        related_name="inspection_items",
+    )
+    inspection_item = models.ForeignKey(
+        InspectionItem,
+        on_delete=models.CASCADE,
+        related_name="resource_types",
+    )
+    enabled = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = "inspection_item_resource_types"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["resource_type", "inspection_item"],
+                name="uq_resource_type_inspection_item",
+            )
+        ]
+
+
 class MockDataset(CreatedModel):
     class Status(models.TextChoices):
         GENERATING = "GENERATING", "Generating"
