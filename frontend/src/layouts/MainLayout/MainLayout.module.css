@@ -1,0 +1,142 @@
+.shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: 64px 1fr;
+  background: #f8fafc;
+  color: #111827;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 0 28px;
+  background: #ffffff;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.brandMark {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 9px;
+  background: #fff7ed;
+  color: #f97316;
+}
+
+.headerControls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  color: #4b5563;
+  font-size: 13px;
+}
+
+.environment {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.environment select {
+  min-width: 150px;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #111827;
+}
+
+.runtime {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #15803d;
+  white-space: nowrap;
+}
+
+.runtimeDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #22c55e;
+}
+
+.body {
+  display: grid;
+  grid-template-columns: 224px 1fr;
+  min-height: 0;
+}
+
+.sidebar {
+  padding: 20px 12px;
+  background: #ffffff;
+  border-right: 1px solid #e5e7eb;
+}
+
+.nav {
+  display: grid;
+  gap: 4px;
+}
+
+.navLink {
+  padding: 11px 14px;
+  border-radius: 9px;
+  color: #4b5563;
+  text-decoration: none;
+}
+
+.navLink:hover,
+.navLinkActive {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.content {
+  min-width: 0;
+  padding: 28px;
+}
+
+@media (max-width: 760px) {
+  .header {
+    padding: 0 16px;
+  }
+
+  .headerControls {
+    gap: 8px;
+  }
+
+  .runtime {
+    display: none;
+  }
+
+  .body {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    border-right: 0;
+    border-bottom: 1px solid #e5e7eb;
+    padding: 8px 12px;
+  }
+
+  .nav {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .content {
+    padding: 18px;
+  }
+}
+
