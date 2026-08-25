@@ -36,4 +36,14 @@ urlpatterns = [
         api.resource_run_detail,
         name="resource-type-run-detail-slash",
     ),
+    path(
+        "inspection-runs/<uuid:run_id>/events",
+        api.inspection_run_events,
+        name="inspection-run-events",
+    ),
+    path(
+        "inspection-runs/<uuid:run_id>/events/",
+        api.inspection_run_events,
+        name="inspection-run-events-slash",
+    ),
 ]

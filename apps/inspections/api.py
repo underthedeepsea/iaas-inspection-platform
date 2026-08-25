@@ -1,9 +1,11 @@
 from collections import Counter
 from datetime import date
+import json
+import re
 import uuid
 from functools import wraps
 
-from django.http import JsonResponse
+from django.http import JsonResponse, StreamingHttpResponse
 
 from apps.api.auth import require_role
 from apps.api.http import APIRequestError, api_error
@@ -13,6 +15,7 @@ from apps.inspections.models import (
     Finding,
     InspectionItemResourceType,
     InspectionItemRun,
+    InspectionRun,
     ResourceInspectionSummary,
     ResourceType,
 )
@@ -20,6 +23,7 @@ from apps.risks.models import Risk, RiskObservation
 from apps.operations_api.serializers import serialize_risk
 
 from .serializers import serialize_resource_summary
+from .services.events import get_run_events
 
 
 class ResourceAPIError(Exception):
@@ -265,6 +269,38 @@ def resource_run_detail(request, resource_type_code, run_id):
     )
 
 
+@_boundary
+@_endpoint({"GET"})
+def inspection_run_events(request, run_id):
+    parsed_run_id = _uuid(run_id, "run_id")
+    if not InspectionRun.objects.filter(pk=parsed_run_id).exists():
+        raise ResourceAPIError("NOT_FOUND", "inspection run does not exist", status=404)
+    raw_last_id = request.META.get("HTTP_LAST_EVENT_ID", "")
+    if raw_last_id and not re.fullmatch(r"0|[1-9][0-9]*", raw_last_id):
+        raise APIRequestError(
+            "VALIDATION_ERROR",
+            "Last-Event-ID must be a canonical non-negative integer",
+            details={"field": "Last-Event-ID"},
+        )
+    after_sequence = int(raw_last_id or 0)
+    events = list(get_run_events(parsed_run_id, after_sequence=after_sequence))
+
+    def stream():
+        for event in events:
+            envelope = {
+                "sequence": event.sequence,
+                "event_type": event.event_type,
+                "status": event.status,
+                "payload": event.payload or {},
+            }
+            yield f"id: {event.sequence}\nevent: {event.event_type}\ndata: {json.dumps(envelope, ensure_ascii=False)}\n\n"
+
+    response = StreamingHttpResponse(stream(), content_type="text/event-stream")
+    response["Cache-Control"] = "no-cache"
+    response["X-Accel-Buffering"] = "no"
+    return response
+
+
 def _date(value, field):
     try:
         return date.fromisoformat(value)
@@ -272,4 +308,10 @@ def _date(value, field):
         raise APIRequestError("VALIDATION_ERROR", f"{field} must be an ISO date", details={"field": field}) from None
 
 
-__all__ = ["resource_history", "resource_overview", "resource_run_detail", "resource_types"]
+__all__ = [
+    "inspection_run_events",
+    "resource_history",
+    "resource_overview",
+    "resource_run_detail",
+    "resource_types",
+]

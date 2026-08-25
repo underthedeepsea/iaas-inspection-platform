@@ -284,6 +284,28 @@ class ResourceInspectionSummary(CreatedModel):
         ]
 
 
+class InspectionRunEvent(CreatedModel):
+    inspection_run = models.ForeignKey(
+        InspectionRun,
+        on_delete=models.CASCADE,
+        related_name="events",
+    )
+    sequence = models.PositiveIntegerField()
+    event_type = models.CharField(max_length=64, db_index=True)
+    status = models.CharField(max_length=32, default="INFO")
+    payload = models.JSONField(default=dict)
+
+    class Meta:
+        db_table = "inspection_run_events"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["inspection_run", "sequence"],
+                name="inspection_run_event_sequence_unique",
+            )
+        ]
+        ordering = ["sequence", "pk"]
+
+
 class Finding(CreatedModel):
     class Status(models.TextChoices):
         ACTIVE = "ACTIVE", "Active"

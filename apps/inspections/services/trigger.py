@@ -2,6 +2,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.inspections.models import InspectionItem, InspectionItemRun, InspectionRun
+from apps.inspections.services.events import append_run_event
 from apps.inspections.services.scope import resolve_scope, scope_to_snapshot
 
 
@@ -43,6 +44,22 @@ def create_manual_inspection_run(*, environment, resource_type_codes, ai_mode="D
             )
             for item in items
         ]
+    )
+    append_run_event(
+        run,
+        "scope.resolved",
+        "PENDING",
+        {
+            "resource_types": list(scope.resource_type_codes),
+            "inspection_item_count": len(scope.inspection_item_ids),
+            "asset_count": scope.asset_count,
+        },
+    )
+    append_run_event(
+        run,
+        "assets.discovered",
+        "PENDING",
+        {"asset_count": scope.asset_count},
     )
     return run
 
