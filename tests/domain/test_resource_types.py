@@ -1,4 +1,5 @@
 import pytest
+import uuid
 from django.db import IntegrityError, transaction
 
 from apps.inspections.models import (
@@ -24,16 +25,20 @@ def make_item(code):
 
 @pytest.mark.django_db
 def test_resource_type_code_is_unique():
-    ResourceType.objects.create(code="LLM_RUNTIME", name="LLM 推理引擎")
+    code = f"TEST_LLM_RUNTIME_{uuid.uuid4().hex}"
+    ResourceType.objects.create(code=code, name="LLM 推理引擎")
 
     with pytest.raises(IntegrityError):
         with transaction.atomic():
-            ResourceType.objects.create(code="LLM_RUNTIME", name="duplicate")
+            ResourceType.objects.create(code=code, name="duplicate")
 
 
 @pytest.mark.django_db
 def test_resource_type_can_bind_multiple_inspection_items():
-    resource_type = ResourceType.objects.create(code="LLM_RUNTIME", name="LLM 推理引擎")
+    resource_type = ResourceType.objects.create(
+        code=f"TEST_LLM_RUNTIME_{uuid.uuid4().hex}",
+        name="LLM 推理引擎",
+    )
     first = make_item("llm.performance")
     second = make_item("llm.scheduler")
 
@@ -45,8 +50,15 @@ def test_resource_type_can_bind_multiple_inspection_items():
 
 @pytest.mark.django_db
 def test_resolve_inspection_items_only_returns_enabled_bound_items():
-    active = ResourceType.objects.create(code="LLM_RUNTIME", name="LLM 推理引擎")
-    disabled = ResourceType.objects.create(code="HOST", name="主机", enabled=False)
+    active = ResourceType.objects.create(
+        code=f"TEST_LLM_RUNTIME_{uuid.uuid4().hex.upper()}",
+        name="LLM 推理引擎",
+    )
+    disabled = ResourceType.objects.create(
+        code=f"TEST_HOST_{uuid.uuid4().hex.upper()}",
+        name="主机",
+        enabled=False,
+    )
     included = make_item("llm.included")
     disabled_item = make_item("llm.disabled")
     disabled_item.enabled = False
@@ -54,7 +66,7 @@ def test_resolve_inspection_items_only_returns_enabled_bound_items():
     InspectionItemResourceType.objects.create(resource_type=active, inspection_item=included)
     InspectionItemResourceType.objects.create(resource_type=active, inspection_item=disabled_item)
 
-    assert list(resolve_inspection_items(["LLM_RUNTIME"]).values_list("code", flat=True)) == [
+    assert list(resolve_inspection_items([active.code]).values_list("code", flat=True)) == [
         "llm.included"
     ]
     assert list(resolve_inspection_items([disabled.code])) == []
@@ -62,10 +74,14 @@ def test_resolve_inspection_items_only_returns_enabled_bound_items():
 
 @pytest.mark.django_db
 def test_get_active_resource_types_is_stable_and_excludes_disabled_types():
-    ResourceType.objects.create(code="HOST", name="主机", enabled=True, sort_order=20)
-    ResourceType.objects.create(code="GPU_POOL", name="GPU 资源", enabled=True, sort_order=10)
-    ResourceType.objects.create(code="KVM_CLUSTER", name="KVM 集群", enabled=False, sort_order=1)
+    ResourceType.objects.update(enabled=False)
+    host = f"TEST_HOST_{uuid.uuid4().hex.upper()}"
+    gpu = f"TEST_GPU_{uuid.uuid4().hex.upper()}"
+    disabled = f"TEST_KVM_{uuid.uuid4().hex.upper()}"
+    ResourceType.objects.create(code=host, name="主机", enabled=True, sort_order=20)
+    ResourceType.objects.create(code=gpu, name="GPU 资源", enabled=True, sort_order=10)
+    ResourceType.objects.create(code=disabled, name="KVM 集群", enabled=False, sort_order=1)
 
     values = get_active_resource_types("unused-environment")
 
-    assert [value.code for value in values] == ["GPU_POOL", "HOST"]
+    assert [value.code for value in values] == [gpu, host]
