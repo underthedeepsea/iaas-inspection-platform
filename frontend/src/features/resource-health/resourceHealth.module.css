@@ -1,0 +1,72 @@
+.card {
+  display: grid;
+  gap: 14px;
+  width: 100%;
+  padding: 20px;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  background: #ffffff;
+  color: #111827;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.card:hover {
+  border-color: #fdba74;
+  box-shadow: 0 8px 24px rgb(249 115 22 / 10%);
+  transform: translateY(-1px);
+}
+
+.cardHeader,
+.healthRow,
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.cardHeader > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.icon {
+  color: #f97316;
+}
+
+.name {
+  font-weight: 650;
+}
+
+.chevron {
+  color: #9ca3af;
+}
+
+.healthScore {
+  color: #c2410c;
+  font-size: 34px;
+  font-weight: 750;
+  line-height: 1;
+}
+
+.healthLabel,
+.footer {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  color: #4b5563;
+  font-size: 12px;
+}
+
+.danger {
+  color: #dc2626;
+}
+

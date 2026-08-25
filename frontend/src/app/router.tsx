@@ -1,5 +1,6 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 
+import { DashboardPage } from '../pages/Dashboard/DashboardPage'
 import { MainLayout } from '../layouts/MainLayout/MainLayout'
 
 function Placeholder({ label }: { label: string }) {
@@ -11,7 +12,7 @@ export function AppRouter() {
     <BrowserRouter>
       <MainLayout>
         <Routes>
-          <Route element={<Placeholder label="总览" />} path="/" />
+          <Route element={<DashboardPage />} path="/" />
           <Route element={<Placeholder label="资源巡检" />} path="/resources" />
           <Route element={<Placeholder label="资源详情" />} path="/resources/:resourceType" />
           <Route
@@ -28,4 +29,3 @@ export function AppRouter() {
     </BrowserRouter>
   )
 }
-

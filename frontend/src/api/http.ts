@@ -18,6 +18,6 @@ export function getApiError(error: unknown): ApiErrorBody['error'] | null {
   if (axios.isAxiosError<ApiErrorBody>(error)) {
     return error.response?.data?.error ?? null
   }
-  return null
+  const response = (error as { response?: { data?: ApiErrorBody } } | null)?.response
+  return response?.data?.error ?? null
 }
-
