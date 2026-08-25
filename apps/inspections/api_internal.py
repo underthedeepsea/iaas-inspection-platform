@@ -19,8 +19,10 @@ from apps.inspections.models import (
     InspectionItemRun,
     InspectionRun,
     MockDataset,
+    ResourceInspectionSummary,
 )
 from apps.inspections.services.execution import execute_inspection_run
+from apps.inspections.services.resource_summary import build_resource_summaries
 from apps.inspections.services.snapshot import build_daily_snapshot
 from apps.mockdata.services import persist_dataset
 from apps.risks.models import RiskObservation
@@ -36,6 +38,7 @@ STAGE_ORDER = (
     "execute",
     "correlate_risks",
     "reverify",
+    "resource_summaries",
     "snapshot",
     "complete",
 )
@@ -293,6 +296,10 @@ def _finish_run(run):
             "finished_at",
         ]
     )
+    ResourceInspectionSummary.objects.filter(inspection_run=run).update(
+        status=status,
+        finished_at=run.finished_at,
+    )
     return run
 
 
@@ -531,6 +538,23 @@ def reverify(request, run_id):
 
 
 @batch_endpoint
+def resource_summaries(request, run_id):
+    run = _stage_run(request, run_id)
+    with transaction.atomic():
+        run = _run(run.pk, lock=True)
+        if not _stage_done(run, "resource_summaries"):
+            _require_predecessor(run, "resource_summaries")
+            summaries = build_resource_summaries(run)
+            _mark_stage(run, "resource_summaries")
+        else:
+            summaries = list(ResourceInspectionSummary.objects.filter(inspection_run=run))
+    return _run_response(
+        run,
+        resource_summary_ids=[str(summary.pk) for summary in summaries],
+    )
+
+
+@batch_endpoint
 def snapshot(request, run_id):
     payload = _payload(request)
     run = _run(run_id)
@@ -586,5 +610,6 @@ __all__ = [
     "execute",
     "inspection_runs",
     "reverify",
+    "resource_summaries",
     "snapshot",
 ]

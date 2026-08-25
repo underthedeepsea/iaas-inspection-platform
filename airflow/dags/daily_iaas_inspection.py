@@ -98,6 +98,12 @@ def reverify_pending_risks_task(**context):
     return None
 
 
+def build_resource_summaries_task(**context):
+    run = context["ti"].xcom_pull(task_ids="create_run")
+    _post(f"inspection-runs/{run['inspection_run_id']}/resource-summaries/", {})
+    return None
+
+
 def build_snapshot_task(**context):
     run = context["ti"].xcom_pull(task_ids="create_run")
     _post(f"inspection-runs/{run['inspection_run_id']}/snapshot/", {})
@@ -146,6 +152,11 @@ with DAG(
         python_callable=reverify_pending_risks_task,
         provide_context=True,
     )
+    build_resource_summaries = PythonOperator(
+        task_id="build_resource_summaries",
+        python_callable=build_resource_summaries_task,
+        provide_context=True,
+    )
     build_snapshot = PythonOperator(
         task_id="build_snapshot",
         python_callable=build_snapshot_task,
@@ -159,4 +170,4 @@ with DAG(
 
     generate_dataset >> create_run >> execute_inspections
     execute_inspections >> correlate_risks >> reverify_pending_risks
-    reverify_pending_risks >> build_snapshot >> complete_run
+    reverify_pending_risks >> build_resource_summaries >> build_snapshot >> complete_run

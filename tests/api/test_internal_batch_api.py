@@ -132,6 +132,12 @@ def test_every_batch_stage_is_retry_safe_and_returns_same_resources():
     assert run.status == InspectionRun.Status.RUNNING
     assert run.finished_at is None
 
+    resource_summary_path = f"/inspection-runs/{run_id}/resource-summaries/"
+    resource_summary_first = _post(client, resource_summary_path)
+    resource_summary_retry = _post(client, resource_summary_path)
+    assert resource_summary_first.status_code == resource_summary_retry.status_code == 200
+    assert resource_summary_first.json()["resource_summary_ids"] == resource_summary_retry.json()["resource_summary_ids"]
+
     snapshot_path = f"/inspection-runs/{run_id}/snapshot/"
     snapshot_first = _post(client, snapshot_path)
     snapshot_retry = _post(client, snapshot_path)
@@ -183,6 +189,7 @@ def test_seven_batch_stages_complete_with_zero_enabled_inspection_items():
         f"/inspection-runs/{run_id}/execute/",
         f"/inspection-runs/{run_id}/correlate-risks/",
         f"/inspection-runs/{run_id}/reverify/",
+        f"/inspection-runs/{run_id}/resource-summaries/",
         f"/inspection-runs/{run_id}/snapshot/",
         f"/inspection-runs/{run_id}/complete/",
     ):
@@ -198,6 +205,7 @@ def test_seven_batch_stages_complete_with_zero_enabled_inspection_items():
         "execute": True,
         "correlate_risks": True,
         "reverify": True,
+        "resource_summaries": True,
         "snapshot": True,
         "complete": True,
     }
@@ -241,7 +249,7 @@ def test_out_of_order_stages_return_structured_conflict_without_side_effects():
             "execute",
         ),
         (f"/inspection-runs/{run['inspection_run_id']}/reverify/", "correlate_risks"),
-        (f"/inspection-runs/{run['inspection_run_id']}/snapshot/", "reverify"),
+        (f"/inspection-runs/{run['inspection_run_id']}/snapshot/", "resource_summaries"),
         (f"/inspection-runs/{run['inspection_run_id']}/complete/", "snapshot"),
     ):
         response = _post(client, path)
@@ -287,6 +295,7 @@ def test_snapshot_failure_keeps_run_nonterminal_and_does_not_mark_stage():
     assert _post(client, f"/inspection-runs/{run_id}/execute/").status_code == 200
     assert _post(client, f"/inspection-runs/{run_id}/correlate-risks/").status_code == 200
     assert _post(client, f"/inspection-runs/{run_id}/reverify/").status_code == 200
+    assert _post(client, f"/inspection-runs/{run_id}/resource-summaries/").status_code == 200
 
     with patch(
         "apps.inspections.api_internal.build_daily_snapshot",

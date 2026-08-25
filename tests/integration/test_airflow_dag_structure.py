@@ -13,6 +13,7 @@ EXPECTED_TASKS = [
     "execute_inspections",
     "correlate_risks",
     "reverify_pending_risks",
+    "build_resource_summaries",
     "build_snapshot",
     "complete_run",
 ]
@@ -54,7 +55,8 @@ def test_dag_declares_exact_literal_stage_edges():
     assert set(EXPECTED_TASKS).issubset(task_ids)
     assert "generate_dataset >> create_run >> execute_inspections" in source
     assert "execute_inspections >> correlate_risks >> reverify_pending_risks" in source
-    assert "reverify_pending_risks >> build_snapshot >> complete_run" in source
+    assert "reverify_pending_risks >> build_resource_summaries" in source
+    assert "build_resource_summaries >> build_snapshot >> complete_run" in source
 
 
 def test_dag_requires_a_valid_environment_id_before_making_http_requests():
@@ -70,6 +72,7 @@ def test_nonproducing_stage_callables_do_not_return_http_responses_or_risk_ids()
         "execute_inspections_task",
         "correlate_risks_task",
         "reverify_pending_risks_task",
+        "build_resource_summaries_task",
         "build_snapshot_task",
         "complete_run_task",
     }
