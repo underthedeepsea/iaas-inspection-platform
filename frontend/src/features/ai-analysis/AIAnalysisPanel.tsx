@@ -30,7 +30,11 @@ export function AIAnalysisPanel({
   const [investigationId, setInvestigationId] = useState(() => {
     if (initialInvestigationId) return initialInvestigationId
     if (typeof window === 'undefined') return undefined
-    return window.localStorage.getItem(storageKey) ?? undefined
+    try {
+      return window.localStorage.getItem(storageKey) ?? undefined
+    } catch {
+      return undefined
+    }
   })
   const [investigation, setInvestigation] = useState<Investigation | null>(null)
   const [starting, setStarting] = useState(false)
@@ -57,7 +61,11 @@ export function AIAnalysisPanel({
       })
       const createdId = created.investigation_id || created.id
       setInvestigationId(createdId)
-      window.localStorage.setItem(storageKey, createdId)
+      try {
+        window.localStorage.setItem(storageKey, createdId)
+      } catch {
+        // Persistence is best-effort in restricted browser contexts.
+      }
     } catch {
       setError('AI 分析启动失败，请稍后重试')
     } finally {
@@ -67,27 +75,24 @@ export function AIAnalysisPanel({
 
   const hasFailure = events.some((event) => event.event_type === 'tool.failed')
   return (
-    <section aria-label="AI 分析面板">
-      <header style={{ alignItems: 'center', display: 'flex', justifyContent: 'space-between', marginBottom: 18 }}>
-        <div>
-          <h2 style={{ marginBottom: 5 }}>AI 分析</h2>
-          <p style={{ color: '#6b7280', fontSize: 13, margin: 0 }}>{contextType === 'RESOURCE_RUN' ? '本轮资源巡检分析' : '资源类型趋势分析'}</p>
-        </div>
-        <button disabled={starting} onClick={() => void start()} type="button">{starting ? '启动中…' : investigationId ? '重新分析' : '开始 AI 分析'}</button>
+    <section aria-label="AI 分析面板" className="ai-analysis-panel">
+      <header className="section-heading ai-analysis-header">
+        <div><span className="eyebrow">ASSISTED INVESTIGATION</span><h2>AI 分析</h2><p>{contextType === 'RESOURCE_RUN' ? '本轮资源巡检分析' : '资源类型趋势分析'}</p></div>
+        <button className="button button-primary" disabled={starting} onClick={() => void start()} type="button">{starting ? '启动中…' : investigationId ? '重新分析' : '开始 AI 分析'}</button>
       </header>
-      {error ? <p role="alert" style={{ color: '#dc2626' }}>{error}</p> : null}
-      {recovering ? <p role="status">正在恢复 AI 分析状态…</p> : null}
-      {hasFailure ? <p role="alert" style={{ background: '#fef2f2', color: '#b91c1c', padding: 10 }}>部分证据工具失败，结论基于可用证据</p> : null}
+      {error ? <p className="form-error" role="alert">{error}</p> : null}
+      {recovering ? <p className="progress-recovering" role="status">正在恢复 AI 分析状态…</p> : null}
+      {hasFailure ? <p className="form-error" role="alert">部分证据工具失败，结论基于可用证据</p> : null}
       {investigationId ? (
         <>
           <InvestigationTimeline events={events} />
-          <div style={{ display: 'grid', gap: 18, marginTop: 20 }}>
+          <div className="ai-analysis-body">
             <AIAnalysisSummary events={events} investigation={investigation} />
             <EvidencePanel events={events} />
             <AIConversation />
           </div>
         </>
-      ) : <p style={{ color: '#6b7280' }}>开始分析后，这里会显示证据关联和研判过程。</p>}
+      ) : <div className="empty-state compact"><p>开始分析后，这里会显示证据关联和研判过程。</p></div>}
     </section>
   )
 }

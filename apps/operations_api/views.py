@@ -521,6 +521,9 @@ def _capability_maturity(environment_id):
 
 def _risk_queryset(request):
     queryset = Risk.objects.all().order_by("severity", "-last_seen_at", "-pk")
+    if request.GET.get("environment_id"):
+        environment = _environment(request.GET.get("environment_id"), required=True)
+        queryset = queryset.filter(environment_id=environment.pk)
     values = _choice_filter(_query_list(request, "severity"), Severity, "severity")
     if values:
         queryset = queryset.filter(severity__in=values)

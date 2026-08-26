@@ -81,9 +81,14 @@ def _environment(request, *, required=True):
         return None
     from apps.core.models import Environment
 
-    parsed = _uuid(value, "environment_id")
     try:
-        return Environment.objects.get(pk=parsed)
+        parsed = uuid.UUID(str(value))
+    except (TypeError, ValueError, AttributeError):
+        parsed = None
+    try:
+        if parsed is not None:
+            return Environment.objects.get(pk=parsed)
+        return Environment.objects.get(slug=str(value))
     except Environment.DoesNotExist:
         raise ResourceAPIError("NOT_FOUND", "environment does not exist", status=404) from None
 
@@ -126,17 +131,24 @@ def _item_count(resource_type):
 
 def _serialize_resource_type(resource_type, environment):
     latest = _latest_summary(resource_type, environment) if environment else None
+    asset_count = latest.assets_total if latest else _asset_count(resource_type, environment)
     return {
         "code": resource_type.code,
         "name": resource_type.name,
         "description": resource_type.description,
         "icon": resource_type.icon,
-        "asset_count": latest.assets_total if latest else _asset_count(resource_type, environment),
+        "asset_count": asset_count,
+        "assets_total": latest.assets_total if latest else asset_count,
+        "assets_covered": latest.assets_covered if latest else None,
+        "coverage_rate": (
+            latest.assets_covered / latest.assets_total if latest and latest.assets_total else None
+        ),
         "inspection_item_count": latest.inspection_item_count if latest else _item_count(resource_type),
         "health_score": float(latest.health_score) if latest else None,
         "risk_count": latest.risk_count if latest else 0,
         "p1_count": latest.p1_count if latest else 0,
         "p2_count": latest.p2_count if latest else 0,
+        "ai_investigation_count": latest.ai_investigation_count if latest else 0,
         "last_inspection_at": (
             (latest.finished_at or latest.started_at or latest.inspection_run.created_at).isoformat()
             if latest

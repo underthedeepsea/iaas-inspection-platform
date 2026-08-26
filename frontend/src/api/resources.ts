@@ -6,11 +6,15 @@ export interface ResourceType {
   description: string
   icon: string
   asset_count: number
+  assets_total?: number
+  assets_covered?: number | null
+  coverage_rate?: number | null
   inspection_item_count: number
   health_score: number | null
   risk_count: number
   p1_count: number
   p2_count: number
+  ai_investigation_count?: number
   last_inspection_at: string | null
 }
 
@@ -131,4 +135,3 @@ export async function getResourceRunDetail(code: string, runId: string, environm
   )
   return response.data
 }
-

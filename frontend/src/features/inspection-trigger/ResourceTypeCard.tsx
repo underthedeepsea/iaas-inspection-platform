@@ -1,5 +1,11 @@
 import type { ResourceType } from '../../api/resources'
 
+const tagsByCode: Record<string, string[]> = {
+  CONTROL_PLANE: ['反亲和', '冗余度', '容量'],
+  LLM_RUNTIME: ['性能', 'GPU', '调度', '容量'],
+  GPU_RESOURCE: ['利用率', '健康度', '容量'],
+}
+
 export function ResourceTypeCard({
   resource,
   selected,
@@ -9,29 +15,13 @@ export function ResourceTypeCard({
   selected: boolean
   onToggle: () => void
 }) {
+  const tags = tagsByCode[resource.code] ?? ['健康度', '容量']
   return (
-    <button
-      aria-pressed={selected}
-      onClick={onToggle}
-      style={{
-        background: selected ? '#fff7ed' : '#ffffff',
-        border: `1px solid ${selected ? '#f97316' : '#e5e7eb'}`,
-        borderRadius: 12,
-        color: '#111827',
-        cursor: 'pointer',
-        padding: 14,
-        textAlign: 'left',
-      }}
-      type="button"
-    >
-      <span style={{ display: 'block', fontWeight: 650 }}>{resource.name}</span>
-      <span style={{ color: '#6b7280', display: 'block', fontSize: 12, marginTop: 6 }}>
-        {resource.asset_count} 个对象 · {resource.inspection_item_count} 个巡检项
-      </span>
-      <span style={{ color: selected ? '#c2410c' : '#9ca3af', display: 'block', fontSize: 12, marginTop: 8 }}>
-        {selected ? '已选择' : '点击选择'}
-      </span>
+    <button aria-checked={selected} aria-pressed={selected} className={`inspection-resource-card${selected ? ' is-selected' : ''}`} onClick={onToggle} type="button">
+      <span className="inspection-resource-title"><span className="check-mark" aria-hidden="true">{selected ? '✓' : ''}</span><strong>{resource.name}</strong></span>
+      <span className="inspection-resource-count">{resource.asset_count} 个对象 · {resource.inspection_item_count} 个巡检项</span>
+      <span className="inspection-resource-tags">{tags.map((tag) => <span key={tag}>{tag}</span>)}</span>
+      <span className="inspection-resource-state">{selected ? '已选择' : '点击选择'}</span>
     </button>
   )
 }
-

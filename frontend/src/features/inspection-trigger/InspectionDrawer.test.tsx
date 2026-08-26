@@ -50,8 +50,15 @@ describe('InspectionDrawer', () => {
 
     render(<InspectionDrawer environmentId="env-1" open onClose={vi.fn()} resourceTypes={resources} />)
 
+    expect(screen.getByLabelText('本次巡检环境')).toHaveValue('env-1')
+    expect(screen.getByRole('button', { name: /控制面/ })).toHaveAttribute('aria-checked', 'false')
+    expect(screen.getByRole('button', { name: /开始巡检/ })).toHaveClass('button-primary')
+    expect(screen.getByRole('button', { name: '取消' })).toBeInTheDocument()
+    expect(screen.getByTestId('inspection-drawer-overlay')).toBeInTheDocument()
+
     fireEvent.click(screen.getByRole('button', { name: /控制面/ }))
     fireEvent.click(screen.getByRole('button', { name: /大模型运行时/ }))
+    expect(screen.getByRole('button', { name: /控制面/ })).toHaveAttribute('aria-checked', 'true')
     expect(screen.getByText('范围预览：48 个资源对象 / 12 个巡检项')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: '开始巡检' }))
@@ -72,4 +79,3 @@ describe('InspectionDrawer', () => {
     expect(screen.getByText('请至少选择一种巡检资源')).toBeInTheDocument()
   })
 })
-

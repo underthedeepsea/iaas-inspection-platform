@@ -27,7 +27,7 @@ describe('DashboardPage', () => {
 
     renderDashboard()
 
-    expect(screen.getByText('正在加载资源健康度')).toBeInTheDocument()
+    expect(screen.getByText('正在读取每日巡检')).toBeInTheDocument()
   })
 
   it('shows health KPIs and resource cards when ready', async () => {
@@ -56,10 +56,18 @@ describe('DashboardPage', () => {
 
     renderDashboard()
 
-    expect(await screen.findByText('大模型运行时')).toBeInTheDocument()
-    expect(screen.getAllByText('92')).toHaveLength(2)
-    expect(screen.getByText('12 个资源对象')).toBeInTheDocument()
+    expect((await screen.findAllByText('大模型运行时')).length).toBeGreaterThan(0)
+    expect(screen.getByText('整体健康度')).toBeInTheDocument()
+    expect(screen.getByText('当前风险')).toBeInTheDocument()
+    expect(screen.getByText('巡检覆盖率')).toBeInTheDocument()
+    expect(screen.getByText('AI 介入')).toBeInTheDocument()
+    expect(screen.getByText('重点风险')).toBeInTheDocument()
+    expect(screen.getByText('巡检完整性')).toBeInTheDocument()
+    expect(screen.getByText('能力成熟度')).toBeInTheDocument()
+    expect(screen.getAllByText('92').length).toBeGreaterThan(0)
+    expect(screen.getByText('12 个对象')).toBeInTheDocument()
     expect(screen.getByText('风险 2')).toBeInTheDocument()
+    expect(screen.getByText('资源健康状态')).toBeInTheDocument()
   })
 
   it('shows an empty-state CTA when no resource types are returned', async () => {

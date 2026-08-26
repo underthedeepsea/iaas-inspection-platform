@@ -49,6 +49,8 @@ it('renders investigation timeline, partial failure, evidence and final conclusi
     />,
   )
 
+  expect(screen.getByRole('region', { name: 'AI 分析面板' })).toHaveClass('ai-analysis-panel')
+
   await waitFor(() => expect(FakeEventSource.instance.listeners.size).toBeGreaterThan(0))
   await act(async () => {
     FakeEventSource.instance.emit('context.ready', {}, 1, 'COMPLETED')

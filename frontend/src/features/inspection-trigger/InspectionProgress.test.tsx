@@ -69,7 +69,8 @@ describe('InspectionProgress', () => {
 
     await waitFor(() => expect(screen.getByText('巡检已完成')).toBeInTheDocument())
     expect(screen.getByText('4 / 4 个资源对象')).toBeInTheDocument()
+    expect(screen.getByLabelText('巡检进度')).toHaveClass('inspection-progress')
+    expect(screen.getByText('解析资源范围')).toBeInTheDocument()
     expect(FakeEventSource.instance.url).toContain('/inspection-runs/run-1/events')
   })
 })
-

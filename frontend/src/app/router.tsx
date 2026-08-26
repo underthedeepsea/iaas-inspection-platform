@@ -5,10 +5,10 @@ import { MainLayout } from '../layouts/MainLayout/MainLayout'
 import { ResourcesPage } from '../pages/Resources/ResourcesPage'
 import { ResourceDetailPage } from '../pages/ResourceDetail/ResourceDetailPage'
 import { ResourceRunDetailPage } from '../pages/ResourceRunDetail/ResourceRunDetailPage'
-
-function Placeholder({ label }: { label: string }) {
-  return <section aria-label={label}>{label}</section>
-}
+import { ProductInfoPage } from '../pages/ProductInfo/ProductInfoPage'
+import { RiskDetailPage } from '../pages/Risks/RiskDetailPage'
+import { RisksPage } from '../pages/Risks/RisksPage'
+import { SectionOverviewPage } from '../pages/SectionOverview/SectionOverviewPage'
 
 export function AppRouter() {
   return (
@@ -22,11 +22,16 @@ export function AppRouter() {
             element={<ResourceRunDetailPage />}
             path="/resources/:resourceType/runs/:runId"
           />
-          <Route element={<Placeholder label="风险中心" />} path="/risks" />
-          <Route element={<Placeholder label="巡检能力" />} path="/capabilities" />
-          <Route element={<Placeholder label="能力演进" />} path="/evolution" />
-          <Route element={<Placeholder label="AI 运行" />} path="/ai-runtime" />
-          <Route element={<Placeholder label="关于平台" />} path="/about" />
+          <Route element={<RiskDetailPage />} path="/risks/:riskId" />
+          <Route element={<RisksPage />} path="/risks" />
+          <Route element={<SectionOverviewPage page="history" />} path="/history" />
+          <Route element={<SectionOverviewPage page="pending" />} path="/pending" />
+          <Route element={<SectionOverviewPage page="capabilities" />} path="/capabilities" />
+          <Route element={<SectionOverviewPage page="experiences" />} path="/experiences" />
+          <Route element={<SectionOverviewPage page="evolution" />} path="/evolution" />
+          <Route element={<SectionOverviewPage page="ai-runtime" />} path="/ai-runtime" />
+          <Route element={<ProductInfoPage />} path="/about" />
+          <Route element={<SectionOverviewPage page="settings" />} path="/settings" />
         </Routes>
       </MainLayout>
     </BrowserRouter>

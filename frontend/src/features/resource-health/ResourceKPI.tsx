@@ -2,17 +2,18 @@ export function ResourceKPI({
   label,
   value,
   detail,
+  tone,
 }: {
   label: string
   value: string | number
   detail?: string
+  tone?: 'critical' | 'warn'
 }) {
   return (
-    <div>
-      <div style={{ color: '#4b5563', fontSize: 13 }}>{label}</div>
-      <div style={{ color: '#111827', fontSize: 26, fontWeight: 700, lineHeight: 1.2 }}>{value}</div>
-      {detail ? <div style={{ color: '#6b7280', fontSize: 12 }}>{detail}</div> : null}
-    </div>
+    <article className={`metric-card${tone ? ` metric-card-${tone}` : ''}`}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+      {detail ? <small>{detail}</small> : null}
+    </article>
   )
 }
-

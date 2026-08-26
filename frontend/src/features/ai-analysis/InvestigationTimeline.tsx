@@ -12,15 +12,13 @@ const labels: Record<string, string> = {
 
 export function InvestigationTimeline({ events }: { events: InvestigationEvent[] }) {
   return (
-    <ol aria-label="AI 分析时间线" style={{ display: 'grid', gap: 10, listStyle: 'none', margin: 0, padding: 0 }}>
+    <ol aria-label="AI 分析时间线" className="timeline ai-timeline">
       {events.map((event) => (
-        <li data-status={event.status.toLowerCase()} key={event.sequence} style={{ alignItems: 'center', display: 'flex', gap: 10 }}>
-          <span aria-hidden="true" style={{ color: event.status === 'FAILED' ? '#dc2626' : event.status === 'COMPLETED' ? '#16a34a' : '#f97316' }}>●</span>
+        <li className={`ai-timeline-item status-${event.status.toLowerCase()}`} data-status={event.status.toLowerCase()} key={event.sequence}>
           <span>{labels[event.event_type] ?? event.event_type}</span>
-          {event.status === 'FAILED' ? <span style={{ color: '#dc2626', fontSize: 12 }}>失败</span> : null}
+          {event.status === 'FAILED' ? <span className="timeline-failure">失败</span> : null}
         </li>
       ))}
     </ol>
   )
 }
-

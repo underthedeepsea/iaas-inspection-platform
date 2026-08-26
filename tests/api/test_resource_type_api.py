@@ -107,10 +107,25 @@ def test_resource_type_list_exposes_latest_summary_metrics():
         **item_body,
         "name": "LLM 推理引擎",
         "asset_count": 36,
+        "assets_total": 36,
+        "assets_covered": 35,
+        "coverage_rate": 35 / 36,
         "inspection_item_count": 7,
         "health_score": 78.0,
         "risk_count": 4,
+        "ai_investigation_count": 2,
     }
+
+
+@pytest.mark.django_db
+def test_resource_type_endpoints_accept_environment_slug():
+    environment = make_environment()
+    client = Client()
+    client.force_login(make_user())
+
+    response = client.get("/api/v1/resource-types", {"environment_id": environment.slug})
+
+    assert response.status_code == 200
 
 
 @pytest.mark.django_db

@@ -59,23 +59,71 @@ export function reduceInspectionRunEvent(
 
 export function InspectionProgress({ runId }: { runId: string }) {
   const state = useInspectionRunStream(runId)
-  const labels: Record<InspectionProgressStep, string> = {
-    scope: '已解析巡检范围',
-    assets: '已发现资源对象',
-    items: '正在执行巡检项',
-    completed: '巡检已完成',
-    failed: '巡检失败',
-  }
+  const statusLabel = state.currentStep === 'completed'
+    ? '巡检已完成'
+    : state.currentStep === 'failed'
+      ? '巡检失败'
+      : '巡检执行中'
+  const activeStep = state.currentStep === 'scope'
+    ? 0
+    : state.currentStep === 'assets'
+      ? 1
+      : state.currentStep === 'items'
+        ? 2
+        : 5
+  const progress = state.currentStep === 'completed'
+    ? 100
+    : state.totalAssets > 0
+      ? Math.min(99, Math.round((state.completedAssets / state.totalAssets) * 100))
+      : Math.round((activeStep / 5) * 100)
+  const steps = [
+    { label: '解析资源范围', detail: '确认本次巡检的资源类型与巡检项' },
+    { label: '发现资源对象', detail: '读取环境中的资源对象清单' },
+    { label: '执行巡检项', detail: '按资源类型执行规则检查' },
+    { label: '风险关联', detail: '归并检查结果并计算风险等级' },
+    { label: 'AI 补充研判', detail: '对重点风险进行证据补充' },
+    { label: '生成摘要', detail: '形成可追溯的巡检结果摘要' },
+  ]
   return (
-    <section aria-label="巡检进度" style={{ marginTop: 20 }}>
-      <h3>{labels[state.currentStep]}</h3>
-      <p style={{ color: '#4b5563' }}>{state.completedAssets} / {state.totalAssets} 个资源对象</p>
-      {state.totalItems ? <p style={{ color: '#4b5563' }}>{state.completedItems} / {state.totalItems} 个巡检项</p> : null}
-      {state.recovering ? <p role="status">正在恢复巡检状态…</p> : null}
-      <ol>
-        {state.events.map((event) => <li key={event.sequence}>{event.event_type}</li>)}
+    <section aria-label="巡检进度" className="inspection-progress">
+      <div className="progress-heading">
+        <div>
+          <span className="eyebrow">RUN PROGRESS</span>
+          <h3>{statusLabel}</h3>
+        </div>
+        <strong>{progress}%</strong>
+      </div>
+      <div aria-label="巡检完成度" className="progress-track">
+        <i style={{ width: `${progress}%` }} />
+      </div>
+      <div className="progress-counts">
+        <span>{state.completedAssets} / {state.totalAssets} 个资源对象</span>
+        {state.totalItems ? <span>{state.completedItems} / {state.totalItems} 个巡检项</span> : null}
+      </div>
+      {state.recovering ? <p className="progress-recovering" role="status">正在恢复巡检状态…</p> : null}
+      <ol className="inspection-timeline">
+        {steps.map((step, index) => {
+          const status = state.currentStep === 'failed' && index === activeStep
+            ? 'failed'
+            : index < activeStep || state.currentStep === 'completed'
+              ? 'completed'
+              : index === activeStep
+                ? 'current'
+                : 'pending'
+          return (
+            <li className={`inspection-timeline-item is-${status}`} key={step.label}>
+              <span className="inspection-timeline-marker" aria-hidden="true">{status === 'completed' ? '✓' : index + 1}</span>
+              <span className="inspection-timeline-copy"><strong>{step.label}</strong><small>{step.detail}</small></span>
+            </li>
+          )
+        })}
       </ol>
+      <details className="disclosure">
+        <summary>查看事件流（{state.events.length}）</summary>
+        <ol className="inspection-event-list">
+          {state.events.map((event) => <li key={event.sequence}>{event.event_type}</li>)}
+        </ol>
+      </details>
     </section>
   )
 }
-

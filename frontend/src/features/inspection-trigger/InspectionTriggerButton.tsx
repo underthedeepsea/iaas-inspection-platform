@@ -14,7 +14,7 @@ export function InspectionTriggerButton({
   const setOpen = useUiStore((state) => state.setInspectionDrawerOpen)
   return (
     <>
-      <button onClick={() => setOpen(true)} type="button">⚡ 立即巡检</button>
+      <button className="button button-primary" onClick={() => setOpen(true)} type="button">立即巡检</button>
       <InspectionDrawer
         environmentId={environmentId}
         onClose={() => setOpen(false)}
@@ -24,4 +24,3 @@ export function InspectionTriggerButton({
     </>
   )
 }
-

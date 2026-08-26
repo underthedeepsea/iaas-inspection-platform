@@ -12,17 +12,5 @@ export function ResourceTypeSelector({
   onToggle: (code: string) => void
 }) {
   const selected = new Set(selectedCodes)
-  return (
-    <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
-      {resources.map((resource) => (
-        <ResourceTypeCard
-          key={resource.code}
-          onToggle={() => onToggle(resource.code)}
-          resource={resource}
-          selected={selected.has(resource.code)}
-        />
-      ))}
-    </div>
-  )
+  return <div className="inspection-resource-grid">{resources.map((resource) => <ResourceTypeCard key={resource.code} onToggle={() => onToggle(resource.code)} resource={resource} selected={selected.has(resource.code)} />)}</div>
 }
-

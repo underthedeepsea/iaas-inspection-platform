@@ -1,8 +1,8 @@
 export const semanticRiskTokens = {
   p1: '#DC2626',
-  p2: '#EA580C',
-  p3: '#D97706',
-  p4: '#2563EB',
+  p2: '#D97706',
+  p3: '#2563EB',
+  p4: '#64748B',
 } as const
 
 export const appTheme = {
@@ -20,4 +20,3 @@ export const appTheme = {
     fontSize: 14,
   },
 } as const
-

@@ -1,70 +1,135 @@
 import type { ReactNode } from 'react'
-import { NavLink, Outlet } from 'react-router-dom'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
 
 import { useUiStore } from '../../stores/uiStore'
-import styles from './MainLayout.module.css'
 
-const navigation = [
-  ['总览', '/'],
-  ['资源巡检', '/resources'],
-  ['风险中心', '/risks'],
-  ['巡检能力', '/capabilities'],
-  ['能力演进', '/evolution'],
-  ['AI 运行', '/ai-runtime'],
+const navigationGroups = [
+  {
+    label: '运营总览',
+    items: [
+      ['每日巡检', '/'],
+      ['资源巡检', '/resources'],
+      ['风险中心', '/risks'],
+      ['历史趋势', '/history'],
+      ['待处置', '/pending'],
+    ],
+  },
+  {
+    label: '能力体系',
+    items: [
+      ['巡检能力', '/capabilities'],
+      ['规则与经验', '/experiences'],
+      ['能力演进', '/evolution'],
+    ],
+  },
+  {
+    label: '运行与说明',
+    items: [
+      ['AI 运行情况', '/ai-runtime'],
+      ['产品说明', '/about'],
+      ['系统设置', '/settings'],
+    ],
+  },
 ] as const
+
+const pageTitles: Array<[string, string]> = [
+  ['/', '每日巡检'],
+  ['/risks', '风险中心'],
+  ['/history', '历史趋势'],
+  ['/pending', '待处置'],
+  ['/capabilities', '巡检能力'],
+  ['/experiences', '规则与经验'],
+  ['/evolution', '能力演进'],
+  ['/ai-runtime', 'AI 运行情况'],
+  ['/about', '产品说明'],
+  ['/settings', '系统设置'],
+  ['/resources', '资源巡检'],
+]
+
+function titleForPath(pathname: string) {
+  return pageTitles.find(([path]) => pathname === path || (path !== '/' && pathname.startsWith(`${path}/`)))?.[1] ?? '每日巡检'
+}
 
 export function MainLayout({ children }: { children?: ReactNode }) {
   const environmentId = useUiStore((state) => state.environmentId)
   const setEnvironmentId = useUiStore((state) => state.setEnvironmentId)
+  const sidebarCollapsed = useUiStore((state) => state.sidebarCollapsed)
+  const setSidebarCollapsed = useUiStore((state) => state.setSidebarCollapsed)
+  const location = useLocation()
+  const pageTitle = titleForPath(location.pathname)
 
   return (
-    <div className={styles.shell}>
-      <header className={styles.header}>
-        <div className={styles.brand}>
-          <span className={styles.brandMark} aria-hidden="true">
-            ✦
+    <div className={`app-shell${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
+      <aside className="sidebar" aria-label="主导航">
+        <NavLink className="brand" to="/" aria-label="返回每日巡检">
+          <span className="brand-mark" aria-hidden="true">巡</span>
+          <span>
+            <strong>IaaS 智能巡检</strong>
+            <small>控制面 · Demo v4.1</small>
           </span>
-          <span>IaaS 智能巡检</span>
+        </NavLink>
+
+        <button aria-label={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'} aria-pressed={sidebarCollapsed} className="sidebar-toggle" onClick={() => setSidebarCollapsed(!sidebarCollapsed)} type="button">
+          <span aria-hidden="true">{sidebarCollapsed ? '→' : '←'}</span>
+        </button>
+
+        <nav className="nav-groups" aria-label="主导航">
+          {navigationGroups.map((group) => (
+            <div className="nav-group" key={group.label}>
+              <span className="nav-label">{group.label}</span>
+              {group.items.map(([label, to]) => (
+                <NavLink
+                  data-short-label={label.slice(0, 1)}
+                  className={({ isActive }) => (isActive ? 'is-active' : undefined)}
+                  end={to === '/'}
+                  key={to}
+                  to={to}
+                >
+                  {label}
+                </NavLink>
+              ))}
+            </div>
+          ))}
+        </nav>
+
+        <div className="sidebar-footer">
+          <span className="status-dot" aria-hidden="true" />
+          <span>本地演示环境</span>
+          <span className="muted">MOCK</span>
         </div>
-        <div className={styles.headerControls}>
-          <label className={styles.environment}>
-            <span>环境</span>
-            <select
-              aria-label="巡检环境"
-              value={environmentId ?? ''}
-              onChange={(event) => setEnvironmentId(event.target.value || null)}
-            >
-              <option value="">租户区生产环境</option>
-              <option value="staging">租户区预发布环境</option>
-            </select>
-          </label>
-          <span className={styles.runtime}>
-            <span className={styles.runtimeDot} aria-hidden="true" />
-            AI 运行正常
-          </span>
-          <span aria-label="当前用户">管理员</span>
-        </div>
-      </header>
-      <div className={styles.body}>
-        <aside className={styles.sidebar}>
-          <nav className={styles.nav} aria-label="主导航">
-            {navigation.map(([label, to]) => (
-              <NavLink
-                className={({ isActive }) =>
-                  `${styles.navLink} ${isActive ? styles.navLinkActive : ''}`
-                }
-                end={to === '/'}
-                key={to}
-                to={to}
+      </aside>
+
+      <div className="app-frame">
+        <header className="topbar">
+          <div>
+            <span className="eyebrow">INSPECTION CONTROL PLANE</span>
+            <h1>{pageTitle}</h1>
+          </div>
+          <div className="topbar-actions">
+            <label className="environment-picker">
+              <span>环境</span>
+              <select
+                aria-label="巡检环境"
+                value={environmentId ?? ''}
+                onChange={(event) => setEnvironmentId(event.target.value || null)}
               >
-                {label}
-              </NavLink>
-            ))}
-          </nav>
-        </aside>
-        <main className={styles.content}>{children ?? <Outlet />}</main>
+                <option value="">全部环境</option>
+                <option value="dev">开发环境</option>
+                <option value="test">测试环境</option>
+                <option value="staging">预发布环境</option>
+                <option value="prod-sim">生产模拟</option>
+              </select>
+            </label>
+            <span className="runtime-status"><span className="status-dot" aria-hidden="true" />AI 运行正常</span>
+            <span className="topbar-user">管理员</span>
+            <NavLink className="avatar" to="/settings" aria-label="打开系统设置">L</NavLink>
+          </div>
+        </header>
+
+        <main className="main-content" id="app-main">
+          {children ?? <Outlet />}
+        </main>
       </div>
     </div>
   )
 }
-
