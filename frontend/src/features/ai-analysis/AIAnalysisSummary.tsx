@@ -7,7 +7,7 @@ export function AIAnalysisSummary({
   investigation: Investigation | null
   events: InvestigationEvent[]
 }) {
-  const completed = [...events].reverse().find((event) => event.event_type === 'analysis.completed')
+  const completed = [...events].reverse().find((event) => event.event_type === 'analysis.completed' || event.event_type === 'analysis.failed')
   const summary = investigation?.conclusion || String(completed?.payload.summary ?? '')
   return (
     <section className="ai-summary">

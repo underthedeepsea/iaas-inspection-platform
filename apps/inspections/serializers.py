@@ -7,6 +7,8 @@ def serialize_manual_inspection_run(run):
         "inspection_run_id": str(run.pk),
         "status": run.status,
         "trigger_type": run.trigger_type,
+        "dataset_id": str(run.dataset_id) if run.dataset_id else None,
+        "run_date": run.run_date.isoformat(),
         "scope": {
             "resource_types": list(requested.get("resource_types") or resolved.get("resource_types") or []),
             "asset_count": int(resolved.get("asset_count") or 0),

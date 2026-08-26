@@ -28,6 +28,16 @@ urlpatterns = [
         name="resource-type-history-slash",
     ),
     path(
+        "resource-types/<str:resource_type_code>/risks",
+        api.resource_risks,
+        name="resource-type-risks",
+    ),
+    path(
+        "resource-types/<str:resource_type_code>/risks/",
+        api.resource_risks,
+        name="resource-type-risks-slash",
+    ),
+    path(
         "resource-types/<str:resource_type_code>/inspection-history/<uuid:run_id>",
         api.resource_run_detail,
         name="resource-type-run-detail",

@@ -118,8 +118,15 @@ def test_resource_run_context_is_bounded_and_evidence_backed():
 
     assert context["context_type"] == "RESOURCE_RUN"
     assert context["current_summary"]["health_score"] == 90.0
-    assert context["findings"] == [{"id": str(finding.id), "code": "context.finding", "severity": "P2"}]
+    assert context["findings"][0]["id"] == str(finding.id)
+    assert context["findings"][0]["title"] == "Context finding"
+    assert context["findings"][0]["observed_at"]
     assert context["evidence"][0]["evidence_key"] == "context.event"
+    assert context["evidence"][0]["source"] == "mock"
+    assert context["evidence"][0]["confidence"] == 1.0
+    assert context["inspection_item_results"][0]["status"] == "SUCCEEDED"
+    assert context["asset_context"][0]["external_key"] == "context-llm"
+    assert context["trend_7d"]
     assert "raw_log" not in json.dumps(context)
     assert len(json.dumps(context).encode()) <= 4096
 
@@ -169,4 +176,6 @@ def test_resource_type_context_contains_window_summaries_and_active_risks():
         str(old_run.id),
         str(latest_run.id),
     ]
-    assert context["active_risks"] == [{"id": str(risk.id), "title": "Active context risk", "severity": "P2"}]
+    assert context["active_risks"][0]["id"] == str(risk.id)
+    assert context["active_risks"][0]["title"] == "Active context risk"
+    assert context["active_risks"][0]["ai_involved"] is False

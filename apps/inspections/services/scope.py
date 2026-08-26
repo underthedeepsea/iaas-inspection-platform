@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 from apps.assets.models import Asset
-from apps.inspections.models import ResourceType
+from apps.inspections.models import InspectionItemResourceType, ResourceType
 from apps.inspections.services.resource_types import resolve_inspection_items
 
 
@@ -88,6 +88,48 @@ def scope_to_snapshot(scope: ResolvedInspectionScope):
     }
 
 
+def resolve_item_asset_scope(inspection_run, inspection_item):
+    """Resolve the frozen assets applicable to one bound inspection item."""
+
+    resolved = (inspection_run.config_snapshot or {}).get("resolved_scope")
+    if not isinstance(resolved, dict) or "asset_ids" not in resolved:
+        return None
+    selected_codes = list(resolved.get("resource_types") or [])
+    bindings = list(
+        InspectionItemResourceType.objects.filter(
+            inspection_item=inspection_item,
+            enabled=True,
+            resource_type__enabled=True,
+            resource_type__code__in=selected_codes,
+        )
+        .select_related("resource_type")
+        .order_by("resource_type__sort_order", "resource_type__code", "resource_type_id")
+    )
+    bindings_by_code = {binding.resource_type.code: binding for binding in bindings}
+    item_resource_types = [code for code in selected_codes if code in bindings_by_code]
+    asset_types = set()
+    for code in item_resource_types:
+        selector = bindings_by_code[code].resource_type.asset_selector or {}
+        asset_types.update(selector.get("asset_types") or [])
+
+    frozen_ids = [str(value) for value in resolved.get("asset_ids") or []]
+    assets = list(
+        Asset.objects.filter(
+            environment_id=inspection_run.environment_id,
+            status=Asset.Status.ACTIVE,
+            id__in=frozen_ids,
+            asset_type__in=sorted(asset_types),
+        ).order_by("external_key", "pk")
+    )
+    asset_by_id = {str(asset.pk): asset for asset in assets}
+    ordered_assets = [asset_by_id[asset_id] for asset_id in frozen_ids if asset_id in asset_by_id]
+    return {
+        "asset_ids": [str(asset.pk) for asset in ordered_assets],
+        "asset_keys": [asset.external_key for asset in ordered_assets],
+        "resource_types": item_resource_types,
+    }
+
+
 def _normalized_codes(values):
     if not isinstance(values, (list, tuple, set)):
         raise UnknownResourceType("resource_types must be a list")
@@ -101,6 +143,7 @@ __all__ = [
     "ResolvedInspectionScope",
     "UnknownResourceType",
     "UnsupportedAssetSelector",
+    "resolve_item_asset_scope",
     "resolve_scope",
     "scope_to_snapshot",
 ]

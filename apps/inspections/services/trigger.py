@@ -1,18 +1,27 @@
 from django.db import transaction
 from django.utils import timezone
 
+from apps.core.models import Environment
 from apps.inspections.models import InspectionItem, InspectionItemRun, InspectionRun
 from apps.inspections.services.events import append_run_event
-from apps.inspections.services.scope import resolve_scope, scope_to_snapshot
+from apps.inspections.services.scope import (
+    resolve_item_asset_scope,
+    resolve_scope,
+    scope_to_snapshot,
+)
+from apps.mockdata.services import get_or_create_manual_dataset
 
 
 AI_MODES = {"DEFERRED", "DISABLED"}
 
 
 @transaction.atomic
-def create_manual_inspection_run(*, environment, resource_type_codes, ai_mode="DEFERRED"):
+def create_manual_inspection_run(*, environment, resource_type_codes, ai_mode="DEFERRED", run_date=None):
     if ai_mode not in AI_MODES:
         raise ValueError("ai_mode must be DEFERRED or DISABLED")
+    environment = Environment.objects.select_for_update().get(pk=environment.pk)
+    run_date = run_date or timezone.localdate()
+    dataset = get_or_create_manual_dataset(environment, run_date)
     requested_codes = _requested_codes(resource_type_codes)
     scope = resolve_scope(
         environment_id=environment.pk,
@@ -21,7 +30,8 @@ def create_manual_inspection_run(*, environment, resource_type_codes, ai_mode="D
     resolved_snapshot = scope_to_snapshot(scope)
     run = InspectionRun.objects.create(
         environment=environment,
-        run_date=timezone.localdate(),
+        dataset=dataset,
+        run_date=run_date,
         trigger_type=InspectionRun.TriggerType.MANUAL,
         status=InspectionRun.Status.PENDING,
         total_items=len(scope.inspection_item_ids),
@@ -37,10 +47,7 @@ def create_manual_inspection_run(*, environment, resource_type_codes, ai_mode="D
             InspectionItemRun(
                 inspection_run=run,
                 inspection_item=item,
-                asset_scope={
-                    "asset_ids": [str(asset_id) for asset_id in scope.asset_ids],
-                    "resource_types": list(scope.resource_type_codes),
-                },
+                asset_scope=resolve_item_asset_scope(run, item) or {},
             )
             for item in items
         ]

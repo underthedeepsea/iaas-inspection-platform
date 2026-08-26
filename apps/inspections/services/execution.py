@@ -19,6 +19,7 @@ from apps.inspections.models import (
 )
 from apps.inspections.services.coverage import ClaimCoverage, compute_claim_coverage
 from apps.inspections.services.findings import FindingSpec, persist_findings
+from apps.inspections.services.scope import resolve_item_asset_scope
 from services.plugin_runtime.registry import CapabilityRegistry
 
 
@@ -80,7 +81,12 @@ def execute_inspection_item(
         )
         admission_status = _admission_status(coverage)
         finished_at = timezone.now()
-        asset_scope = _frozen_asset_scope(inspection_run) or _asset_scope(dataset)
+        if item_run.asset_scope and "asset_ids" in item_run.asset_scope:
+            asset_scope = item_run.asset_scope
+        else:
+            asset_scope = resolve_item_asset_scope(inspection_run, inspection_item)
+            if asset_scope is None:
+                asset_scope = _asset_scope(dataset)
         summary = _summary(dataset, scenario_result, coverage)
 
         item_run.status = InspectionItemRun.Status.SUCCEEDED
@@ -357,7 +363,9 @@ def _asset_scope(dataset):
     }
 
 
-def _frozen_asset_scope(inspection_run):
+def _frozen_asset_scope(inspection_run, inspection_item=None):
+    if inspection_item is not None:
+        return resolve_item_asset_scope(inspection_run, inspection_item)
     resolved_scope = (inspection_run.config_snapshot or {}).get("resolved_scope")
     if not isinstance(resolved_scope, dict) or "asset_ids" not in resolved_scope:
         return None

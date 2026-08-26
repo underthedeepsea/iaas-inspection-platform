@@ -10,6 +10,7 @@ export const INVESTIGATION_EVENT_TYPES = [
   'tool.failed',
   'analysis.started',
   'analysis.completed',
+  'analysis.failed',
 ] as const
 
 export function useInvestigationStream(investigationId?: string) {
@@ -30,7 +31,7 @@ export function useInvestigationStream(investigationId?: string) {
         const data = JSON.parse(message.data) as InvestigationEvent
         setEvents((current) => current.some((item) => item.sequence === data.sequence) ? current : [...current, data].sort((a, b) => a.sequence - b.sequence))
         setRecovering(false)
-        if (data.event_type === 'analysis.completed') source.close()
+        if (data.event_type === 'analysis.completed' || data.event_type === 'analysis.failed') source.close()
       } catch {
         setRecovering(true)
       }
@@ -42,4 +43,3 @@ export function useInvestigationStream(investigationId?: string) {
 
   return { events, recovering }
 }
-

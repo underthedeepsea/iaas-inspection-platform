@@ -1,3 +1,7 @@
+import { useEffect, useState } from 'react'
+
+import { displayDataMode, getProductInfo, type ProductInfo } from '../../api/product'
+
 const sections = [
   ['problem', '这个系统解决什么问题', '传统巡检容易陷入两端：规则很多但解释不够，或者把所有问题都交给 LLM，结果慢、贵且难以审计。本平台把每日巡检、风险生命周期、证据、AI 调查和人工反馈放在同一条可追踪链路里。'],
   ['daily', '每日巡检如何工作', 'Airflow 按日编排模拟数据、巡检项目、风险关联、待复验和 Daily Snapshot。首页先给出今天的总体状态、重点风险、变化和完整性；用户需要时再进入风险详情查看证据和调查过程。'],
@@ -7,8 +11,7 @@ const sections = [
   ['coverage', '什么叫代码化程度', '代码化程度不是“有没有写脚本”，而是所需 Claims 中有多少已由可验证的代码 Resolver 覆盖。Code Coverage Rate、Deterministic Deflection Rate 和 AI Displacement Rate 分别描述覆盖范围、免进 AI 的比例以及被代码替代的 AI 调查。'],
   ['feedback', '人工反馈如何帮助系统进化', '用户可以对 AI 结论标记有帮助、指出不准确或确认根因。确认后的反馈可以生成 Experience，经过 CODE_PENDING、SHADOW 和质量门槛后，才会形成 CODE_ACTIVE Capability；反馈不会绕过验证直接改变线上行为。'],
   ['reverify', '为什么“已处理”后还要自动复验', '“记录已处理”只代表人已经执行了动作，不代表问题已经消失。系统会把风险置为 PENDING_REVERIFY，下一轮巡检重新观察；Finding 消失才进入 RECOVERED，仍存在则保持或升级风险。'],
-  ['mock', '当前 Demo 使用模拟数据', '第一阶段使用固定 seed 生成可重复的正常、异常、趋势和冲突 Case，不连接真实 Prometheus、Kubernetes、CMDB、日志或 ITSM。这样可以稳定演示巡检、调查、Replay 和 Shadow 流程。'],
-  ['ollama', 'LLM 本地开发使用 Ollama', '本地默认 Provider 是 Ollama，模型名称和地址来自环境配置。Django、LangGraph 和 LangChain 在 Web Runtime 中运行，Airflow 使用独立环境通过内部 API 编排，避免依赖冲突。'],
+  ['data', '当前数据源与运行时', '数据源、模型 Provider 和地址由服务端配置返回；环境页会明确显示当前环境是否已有模拟数据。这样页面不会把某个开发环境误认为正式运行状态。'],
 ] as const
 
 const glossary = [
@@ -22,14 +25,26 @@ const glossary = [
 ] as const
 
 export function ProductInfoPage() {
+  const [productInfo, setProductInfo] = useState<ProductInfo | null>(null)
+
+  useEffect(() => {
+    let active = true
+    void getProductInfo().then((value) => {
+      if (active) setProductInfo(value)
+    }).catch(() => {
+      // Product copy remains usable when the optional metadata endpoint is unavailable.
+    })
+    return () => { active = false }
+  }, [])
+
   return (
     <section aria-labelledby="product-info-title" className="view product-info-page">
       <div className="product-info-content">
         <section className="about-hero">
-          <span className="eyebrow">PRODUCT NOTE · DEMO V4.1</span>
+          <span className="eyebrow">PRODUCT NOTE · CONTROL PLANE v0.2</span>
           <h1 id="product-info-title">让巡检结果<br /><em>可解释、可复验、会进化。</em></h1>
           <p>这是给基础设施团队使用的 IaaS 智能巡检控制面：先用确定性的代码快速发现问题，再让 AI 在证据缺口处补充调查。</p>
-          <div className="about-meta"><span>数据源：MOCK</span><span>Provider：Ollama</span><span>安全模式：只读 Tool Calling</span></div>
+          <div className="about-meta"><span>数据源：{displayDataMode(productInfo?.data_mode)}</span><span>Provider：{productInfo?.llm_provider ?? '读取中…'}</span><span>安全模式：{productInfo?.security_mode ?? 'READ_ONLY_TOOLS'}</span></div>
         </section>
         <div className="about-layout">
           <nav aria-label="产品说明目录" className="about-index">

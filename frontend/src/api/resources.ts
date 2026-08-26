@@ -1,4 +1,5 @@
 import { apiClient } from './http'
+import type { Risk } from './risks'
 
 export interface ResourceType {
   code: string
@@ -132,6 +133,14 @@ export async function getResourceRunDetail(code: string, runId: string, environm
   const response = await apiClient.get<ResourceRunDetail>(
     `/resource-types/${encodeURIComponent(code)}/inspection-history/${runId}`,
     { params: { environment_id: environmentId } },
+  )
+  return response.data
+}
+
+export async function getResourceRisks(code: string, environmentId: string) {
+  const response = await apiClient.get<Paginated<Risk>>(
+    `/resource-types/${encodeURIComponent(code)}/risks`,
+    { params: { environment_id: environmentId, page_size: 100 } },
   )
   return response.data
 }

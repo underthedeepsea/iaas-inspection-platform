@@ -2,6 +2,7 @@ from collections import Counter
 from datetime import date
 import json
 import re
+import time
 import uuid
 from functools import wraps
 
@@ -20,6 +21,7 @@ from apps.inspections.models import (
     ResourceType,
 )
 from apps.risks.models import Risk, RiskObservation
+from apps.risks.services.lifecycle import ACTIVE_RISK_STATUSES
 from apps.operations_api.serializers import serialize_risk
 
 from .serializers import serialize_resource_summary
@@ -283,6 +285,24 @@ def resource_run_detail(request, resource_type_code, run_id):
 
 @_boundary
 @_endpoint({"GET"})
+def resource_risks(request, resource_type_code):
+    environment = _environment(request)
+    resource_type = _resource_type(resource_type_code)
+    item_ids = InspectionItemResourceType.objects.filter(
+        resource_type=resource_type,
+        enabled=True,
+        inspection_item__enabled=True,
+    ).values_list("inspection_item_id", flat=True)
+    queryset = Risk.objects.filter(
+        environment=environment,
+        inspection_item_id__in=item_ids,
+        status__in=ACTIVE_RISK_STATUSES,
+    ).select_related("inspection_item", "primary_asset").order_by("severity", "-last_seen_at", "title", "pk")
+    return paginate(queryset, request, serialize_risk)
+
+
+@_boundary
+@_endpoint({"GET"})
 def inspection_run_events(request, run_id):
     parsed_run_id = _uuid(run_id, "run_id")
     if not InspectionRun.objects.filter(pk=parsed_run_id).exists():
@@ -295,17 +315,29 @@ def inspection_run_events(request, run_id):
             details={"field": "Last-Event-ID"},
         )
     after_sequence = int(raw_last_id or 0)
-    events = list(get_run_events(parsed_run_id, after_sequence=after_sequence))
-
     def stream():
-        for event in events:
-            envelope = {
-                "sequence": event.sequence,
-                "event_type": event.event_type,
-                "status": event.status,
-                "payload": event.payload or {},
-            }
-            yield f"id: {event.sequence}\nevent: {event.event_type}\ndata: {json.dumps(envelope, ensure_ascii=False)}\n\n"
+        cursor = after_sequence
+        deadline = time.monotonic() + 60
+        while True:
+            for event in get_run_events(parsed_run_id, after_sequence=cursor):
+                cursor = event.sequence
+                envelope = {
+                    "sequence": event.sequence,
+                    "event_type": event.event_type,
+                    "status": event.status,
+                    "payload": event.payload or {},
+                }
+                yield f"id: {event.sequence}\nevent: {event.event_type}\ndata: {json.dumps(envelope, ensure_ascii=False)}\n\n"
+                if event.event_type in {"run.completed", "run.failed"}:
+                    return
+            if InspectionRun.objects.filter(
+                pk=parsed_run_id,
+                status__in=(InspectionRun.Status.SUCCEEDED, InspectionRun.Status.PARTIAL, InspectionRun.Status.FAILED),
+            ).exists():
+                return
+            if time.monotonic() >= deadline:
+                return
+            time.sleep(0.25)
 
     response = StreamingHttpResponse(stream(), content_type="text/event-stream")
     response["Cache-Control"] = "no-cache"
@@ -324,6 +356,7 @@ __all__ = [
     "inspection_run_events",
     "resource_history",
     "resource_overview",
+    "resource_risks",
     "resource_run_detail",
     "resource_types",
 ]

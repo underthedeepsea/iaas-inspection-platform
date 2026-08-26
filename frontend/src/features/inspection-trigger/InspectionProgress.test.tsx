@@ -50,6 +50,19 @@ describe('InspectionProgress', () => {
     expect(state.completedAssets).toBe(3)
   })
 
+  it('maps the canonical backend stage events to every visible progress step', () => {
+    const stageEvents: Array<[string, import('../../api/inspections').InspectionRunEvent]> = [
+      ['risk-correlation', { sequence: 5, event_type: 'risk.correlation.started', status: 'RUNNING', payload: {} }],
+      ['ai', { sequence: 6, event_type: 'ai.admission.started', status: 'RUNNING', payload: {} }],
+      ['summary', { sequence: 7, event_type: 'summary.started', status: 'RUNNING', payload: {} }],
+    ]
+
+    for (const [step, event] of stageEvents) {
+      const state = events.reduce(reduceInspectionRunEvent, initialInspectionProgressState)
+      expect(reduceInspectionRunEvent(state, event).currentStep).toBe(step)
+    }
+  })
+
   it('continues an existing run from SSE events without creating a new run', async () => {
     vi.stubGlobal('EventSource', FakeEventSource)
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -72,5 +85,31 @@ describe('InspectionProgress', () => {
     expect(screen.getByLabelText('巡检进度')).toHaveClass('inspection-progress')
     expect(screen.getByText('解析资源范围')).toBeInTheDocument()
     expect(FakeEventSource.instance.url).toContain('/inspection-runs/run-1/events')
+  })
+
+  it('marks the stage that failed instead of resetting the timeline to the first stage', async () => {
+    vi.stubGlobal('EventSource', FakeEventSource)
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <InspectionProgress runId="run-2" />
+      </QueryClientProvider>,
+    )
+
+    FakeEventSource.instance.emit('summary.started', {
+      sequence: 1,
+      event_type: 'summary.started',
+      status: 'RUNNING',
+      payload: {},
+    })
+    FakeEventSource.instance.emit('run.failed', {
+      sequence: 2,
+      event_type: 'run.failed',
+      status: 'FAILED',
+      payload: { error_message: 'summary failed' },
+    })
+
+    await waitFor(() => expect(screen.getByText('巡检失败')).toBeInTheDocument())
+    expect(screen.getByText('生成摘要').closest('li')).toHaveClass('is-failed')
   })
 })

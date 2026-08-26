@@ -692,6 +692,11 @@ def _graph_input(conversation: Conversation, investigation: Investigation, messa
                 "required_claims": _safe_text_list(item.required_claims),
                 "resolved_claims": _safe_text_list(item.resolved_claims),
             }
+    if conversation.context_type in {
+        Conversation.ContextType.RESOURCE_RUN,
+        Conversation.ContextType.RESOURCE_TYPE,
+    }:
+        context.update(_resource_context(conversation))
     messages = ConversationMessage.objects.filter(conversation=conversation).order_by("created_at", "pk")
     return {
         "question": message.content,
@@ -701,6 +706,42 @@ def _graph_input(conversation: Conversation, investigation: Investigation, messa
         "max_rounds": investigation.max_rounds,
         "max_tool_calls": investigation.max_tool_calls if allow_tools else 1,
     }
+
+
+def _resource_context(conversation: Conversation) -> dict[str, Any]:
+    """Load the same bounded resource context used by the initial analysis."""
+
+    from apps.inspections.models import ResourceInspectionSummary, ResourceType
+    from apps.investigations.services.context_builder import (
+        build_resource_run_context,
+        build_resource_type_context,
+    )
+
+    try:
+        if conversation.context_type == Conversation.ContextType.RESOURCE_RUN:
+            summary = (
+                ResourceInspectionSummary.objects.select_related("resource_type")
+                .filter(inspection_run_id=conversation.context_id)
+                .order_by("resource_type__sort_order", "resource_type__code", "pk")
+                .first()
+            )
+            if summary is None:
+                return {}
+            return dict(
+                build_resource_run_context(
+                    resource_type_code=summary.resource_type.code,
+                    inspection_run_id=conversation.context_id,
+                )
+            )
+        resource_type = ResourceType.objects.get(pk=conversation.context_id, enabled=True)
+        return dict(
+            build_resource_type_context(
+                environment_id=conversation.environment_id,
+                resource_type_code=resource_type.code,
+            )
+        )
+    except (ResourceType.DoesNotExist, ValueError):
+        return {}
 
 
 def _existing_user_message(conversation: Conversation, investigation: Investigation) -> ConversationMessage | None:

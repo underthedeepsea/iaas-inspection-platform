@@ -2,7 +2,15 @@ import type { InspectionRunEvent } from '../../api/inspections'
 
 import { useInspectionRunStream } from './useInspectionRunStream'
 
-export type InspectionProgressStep = 'scope' | 'assets' | 'items' | 'completed' | 'failed'
+export type InspectionProgressStep =
+  | 'scope'
+  | 'assets'
+  | 'items'
+  | 'risk-correlation'
+  | 'ai'
+  | 'summary'
+  | 'completed'
+  | 'failed'
 
 export interface InspectionProgressState {
   currentStep: InspectionProgressStep
@@ -24,10 +32,46 @@ export const initialInspectionProgressState: InspectionProgressState = {
   events: [],
 }
 
+const stepIndexByEventType: Record<string, number> = {
+  'scope.resolved': 0,
+  'assets.discovered': 1,
+  'inspection.item.started': 2,
+  'inspection.item.progress': 2,
+  'inspection.item.completed': 2,
+  'inspection.item.failed': 2,
+  'risk.correlation.started': 3,
+  'risk.correlation.completed': 3,
+  'ai.admission.started': 4,
+  'ai.admission.completed': 4,
+  'summary.started': 5,
+  'summary.completed': 5,
+}
+
+function getActiveStep(state: InspectionProgressState) {
+  if (state.currentStep === 'failed') {
+    const lastVisibleStep = [...state.events]
+      .reverse()
+      .map((event) => stepIndexByEventType[event.event_type])
+      .find((index) => index !== undefined)
+    return lastVisibleStep ?? 0
+  }
+  return {
+    scope: 0,
+    assets: 1,
+    items: 2,
+    'risk-correlation': 3,
+    ai: 4,
+    summary: 5,
+    completed: 6,
+    failed: 0,
+  }[state.currentStep]
+}
+
 export function reduceInspectionRunEvent(
   state: InspectionProgressState,
   event: InspectionRunEvent,
 ): InspectionProgressState {
+  if (state.events.some((existing) => existing.sequence === event.sequence)) return state
   const payload = event.payload ?? {}
   const totalAssets = Number(payload.asset_count ?? state.totalAssets)
   const totalItems = Number(payload.inspection_item_count ?? state.totalItems)
@@ -38,11 +82,14 @@ export function reduceInspectionRunEvent(
   let completedItems = state.completedItems
   if (event.event_type === 'scope.resolved') currentStep = 'scope'
   if (event.event_type === 'assets.discovered') currentStep = 'assets'
-  if (event.event_type === 'inspection.item.started' || event.event_type === 'inspection.item.progress') currentStep = 'items'
-  if (event.event_type === 'inspection.item.completed') {
+  if (event.event_type === 'inspection.item.started' || event.event_type === 'inspection.item.progress' || event.event_type === 'inspection.item.completed' || event.event_type === 'inspection.item.failed') currentStep = 'items'
+  if (event.event_type === 'inspection.item.completed' || event.event_type === 'inspection.item.failed') {
     currentStep = 'items'
-    completedItems += 1
+    completedItems = Math.max(completedItems, Number(payload.completed_items ?? state.completedItems + 1))
   }
+  if (event.event_type === 'risk.correlation.started' || event.event_type === 'risk.correlation.completed') currentStep = 'risk-correlation'
+  if (event.event_type === 'ai.admission.started' || event.event_type === 'ai.admission.completed') currentStep = 'ai'
+  if (event.event_type === 'summary.started' || event.event_type === 'summary.completed') currentStep = 'summary'
   if (event.event_type === 'run.completed') currentStep = 'completed'
   if (event.event_type === 'run.failed') currentStep = 'failed'
   return {
@@ -64,16 +111,10 @@ export function InspectionProgress({ runId }: { runId: string }) {
     : state.currentStep === 'failed'
       ? '巡检失败'
       : '巡检执行中'
-  const activeStep = state.currentStep === 'scope'
-    ? 0
-    : state.currentStep === 'assets'
-      ? 1
-      : state.currentStep === 'items'
-        ? 2
-        : 5
+  const activeStep = getActiveStep(state)
   const progress = state.currentStep === 'completed'
     ? 100
-    : state.totalAssets > 0
+    : activeStep <= 2 && state.totalAssets > 0
       ? Math.min(99, Math.round((state.completedAssets / state.totalAssets) * 100))
       : Math.round((activeStep / 5) * 100)
   const steps = [

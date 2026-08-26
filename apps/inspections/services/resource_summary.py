@@ -53,7 +53,7 @@ def _build_summary(run, resource_type):
         ).order_by("inspection_item__code", "pk")
     )
     total_asset_ids = _asset_ids_for_type(run, resource_type)
-    covered_asset_ids = _covered_asset_ids(item_runs)
+    covered_asset_ids = _covered_asset_ids(run, item_runs)
     covered_asset_ids &= total_asset_ids
     findings = Finding.objects.filter(inspection_item_run_id__in=[row.pk for row in item_runs])
     observations = RiskObservation.objects.filter(
@@ -145,7 +145,7 @@ def _asset_ids_for_type(run, resource_type):
     return {str(value) for value in query.values_list("id", flat=True)}
 
 
-def _covered_asset_ids(item_runs):
+def _covered_asset_ids(run, item_runs):
     ids = set()
     keys = set()
     for item_run in item_runs:
@@ -155,7 +155,10 @@ def _covered_asset_ids(item_runs):
     if keys:
         ids.update(
             str(value)
-            for value in Asset.objects.filter(external_key__in=keys).values_list("id", flat=True)
+            for value in Asset.objects.filter(
+                environment_id=run.environment_id,
+                external_key__in=keys,
+            ).values_list("id", flat=True)
         )
     return {value for value in ids}
 

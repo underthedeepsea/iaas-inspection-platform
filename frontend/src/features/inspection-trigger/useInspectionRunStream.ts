@@ -21,7 +21,12 @@ export const INSPECTION_RUN_EVENT_TYPES = [
   'inspection.item.progress',
   'inspection.item.completed',
   'inspection.item.failed',
-  'risks.correlated',
+  'risk.correlation.started',
+  'risk.correlation.completed',
+  'ai.admission.started',
+  'ai.admission.completed',
+  'summary.started',
+  'summary.completed',
   'run.completed',
   'run.failed',
 ] as const
@@ -36,6 +41,7 @@ export function useInspectionRunStream(runId: string) {
     let disposed = false
 
     const applyEvent = (event: InspectionRunEvent) => {
+      if (event.sequence <= lastEventId.current) return
       lastEventId.current = Math.max(lastEventId.current, event.sequence)
       setState((current) => reduceInspectionRunEvent(current, event))
       if (event.event_type === 'run.completed' || event.event_type === 'run.failed') {
@@ -49,7 +55,7 @@ export function useInspectionRunStream(runId: string) {
       setRecovering(true)
       try {
         const run = await getInspectionRun(runId)
-        if (run.status === 'SUCCEEDED' || run.status === 'FAILED') {
+        if (run.status === 'SUCCEEDED' || run.status === 'PARTIAL' || run.status === 'FAILED') {
           applyEvent({
             sequence: lastEventId.current + 1,
             event_type: run.status === 'SUCCEEDED' ? 'run.completed' : 'run.failed',

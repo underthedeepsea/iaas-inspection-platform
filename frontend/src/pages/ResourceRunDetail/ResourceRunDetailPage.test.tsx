@@ -22,7 +22,7 @@ describe('ResourceRunDetailPage', () => {
         severity_counts: { P1: 0, P2: 1 },
         ai_dependent_cases: 0,
         ai_investigation_count: 0,
-        major_risks: [],
+        major_risks: [{ id: 'risk-1', title: '调度压力', severity: 'P1', conclusion: '需要关注' }],
         summary: {},
       },
     } as never)
@@ -39,6 +39,7 @@ describe('ResourceRunDetailPage', () => {
     expect(await screen.findByRole('heading', { name: /2026-08-25/ })).toBeInTheDocument()
     expect(screen.getByText('覆盖率')).toBeInTheDocument()
     expect(screen.getByText('主要风险')).toBeInTheDocument()
+    expect(screen.getByText('P1')).toHaveClass('severity-p1')
     expect(screen.getByRole('region', { name: 'AI 分析面板' })).toBeInTheDocument()
   })
 })

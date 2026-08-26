@@ -19,6 +19,10 @@ test('completes the immediate inspection workflow', async ({ page }) => {
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request()
     const url = new URL(request.url())
+    if (request.method() === 'GET' && url.pathname === '/api/v1/environments') {
+      await route.fulfill({ json: { items: [{ id: 'env-1', slug: 'staging', name: '测试环境', environment_type: 'TEST', timezone: 'Asia/Shanghai', assets_count: 48, mock_dataset_count: 1, inspection_run_count: 0, has_mock_data: true }], page: 1, page_size: 1, total: 1 } })
+      return
+    }
     if (request.method() === 'GET' && url.pathname === '/api/v1/resource-types') {
       await route.fulfill({ json: resources })
       return
@@ -48,7 +52,7 @@ test('completes the immediate inspection workflow', async ({ page }) => {
   })
 
   await page.goto('/')
-  await page.getByLabel('巡检环境').selectOption('staging')
+  await page.getByLabel('巡检环境').selectOption('env-1')
   await page.getByRole('button', { name: /立即巡检/ }).click()
   await page.getByRole('button', { name: /控制面/ }).click()
   await page.getByRole('button', { name: /大模型运行时/ }).click()
@@ -59,4 +63,3 @@ test('completes the immediate inspection workflow', async ({ page }) => {
   await expect(page.getByText('巡检已完成')).toBeVisible()
   await expect(page.getByText('48 / 48 个资源对象')).toBeVisible()
 })
-

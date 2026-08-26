@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      DJANGO_SETTINGS_MODULE: config.settings.dev
+      DJANGO_SECRET_KEY: ci-only-secret
+      DATABASE_URL: postgresql://inspection:inspection_dev@127.0.0.1:5432/inspection
+      LLM_PROVIDER: ollama
+      OLLAMA_BASE_URL: http://127.0.0.1:11434
+      OLLAMA_MODEL: ci-model
+      LLM_TIMEOUT_SECONDS: 1
+      E2E_USERNAME: e2e
+      E2E_PASSWORD: e2e-password
+
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_USER: inspection
+          POSTGRES_PASSWORD: inspection_dev
+          POSTGRES_DB: inspection
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U inspection -d inspection"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: pip
+
+      - name: Install backend dependencies
+        run: python -m pip install -r requirements/web-dev.txt
+
+      - name: Django checks
+        run: |
+          python manage.py migrate --noinput
+          python manage.py check
+          python manage.py makemigrations --check
+          python -m pytest -q
+
+      - name: Install frontend dependencies
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Frontend tests and build
+        working-directory: frontend
+        run: |
+          npm ci
+          npm test
+          npm run build
+
+      - name: Seed real browser fixture
+        run: python manage.py seed_e2e
+
+      - name: Start Django for browser tests
+        run: |
+          python manage.py runserver 127.0.0.1:8000 --noreload > /tmp/iaas-django.log 2>&1 &
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8000/api/v1/health > /dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl --fail --silent http://127.0.0.1:8000/api/v1/health
+
+      - name: Install Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Mocked Playwright smoke tests
+        working-directory: frontend
+        run: npm run e2e
+
+      - name: Real Playwright inspection flow
+        working-directory: frontend
+        run: npm run e2e:real

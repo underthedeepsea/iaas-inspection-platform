@@ -6,6 +6,8 @@ from . import views
 
 
 urlpatterns = [
+    path("environments", views.environments, name="environments"),
+    path("environments/", views.environments, name="environments-slash"),
     path("dashboard/today", views.dashboard_today, name="dashboard-today"),
     path("dashboard/today/", views.dashboard_today, name="dashboard-today-slash"),
     path("daily-snapshots", views.daily_snapshots, name="daily-snapshots"),

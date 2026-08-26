@@ -36,6 +36,7 @@ export function AIAnalysisPanel({
       return undefined
     }
   })
+  const [conversationId, setConversationId] = useState<string | null>(null)
   const [investigation, setInvestigation] = useState<Investigation | null>(null)
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState('')
@@ -45,7 +46,11 @@ export function AIAnalysisPanel({
     if (!investigationId) return
     let active = true
     void getInvestigation(investigationId)
-      .then((value) => { if (active) setInvestigation(value) })
+      .then((value) => {
+        if (!active) return
+        setInvestigation(value)
+        if (value.conversation_id) setConversationId(value.conversation_id)
+      })
       .catch(() => { if (active) setError('AI 调查状态加载失败') })
     return () => { active = false }
   }, [investigationId])
@@ -61,6 +66,7 @@ export function AIAnalysisPanel({
       })
       const createdId = created.investigation_id || created.id
       setInvestigationId(createdId)
+      if (created.conversation_id) setConversationId(created.conversation_id)
       try {
         window.localStorage.setItem(storageKey, createdId)
       } catch {
@@ -70,6 +76,15 @@ export function AIAnalysisPanel({
       setError('AI 分析启动失败，请稍后重试')
     } finally {
       setStarting(false)
+    }
+  }
+
+  const startFollowUp = (nextInvestigationId: string) => {
+    setInvestigationId(nextInvestigationId)
+    try {
+      window.localStorage.setItem(storageKey, nextInvestigationId)
+    } catch {
+      // Persistence is best-effort in restricted browser contexts.
     }
   }
 
@@ -89,7 +104,7 @@ export function AIAnalysisPanel({
           <div className="ai-analysis-body">
             <AIAnalysisSummary events={events} investigation={investigation} />
             <EvidencePanel events={events} />
-            <AIConversation />
+            <AIConversation conversationId={conversationId} onTurnStarted={startFollowUp} />
           </div>
         </>
       ) : <div className="empty-state compact"><p>开始分析后，这里会显示证据关联和研判过程。</p></div>}

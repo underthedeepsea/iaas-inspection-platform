@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "test": "vitest run",
     "test:watch": "vitest",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "e2e:real": "playwright test --config playwright.real.config.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "5.102.3",

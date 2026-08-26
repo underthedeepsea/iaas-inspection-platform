@@ -168,6 +168,11 @@ def _investigation_environment(investigation):
 
 
 def _serialize_investigation(investigation):
+    conversation_id = (
+        Conversation.objects.filter(investigation=investigation)
+        .values_list("pk", flat=True)
+        .first()
+    )
     return {
         "investigation_id": str(investigation.pk),
         "id": str(investigation.pk),
@@ -183,6 +188,7 @@ def _serialize_investigation(investigation):
         "used_tools": investigation.tool_calls_used,
         "started_at": _iso(investigation.started_at),
         "finished_at": _iso(investigation.finished_at),
+        "conversation_id": str(conversation_id) if conversation_id else None,
     }
 
 

@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 
-import { getResourceHistory, getResourceOverview, resourceKeys } from '../../api/resources'
+import { getResourceHistory, getResourceOverview, getResourceRisks, resourceKeys } from '../../api/resources'
 import { AIAnalysisPanel } from '../../features/ai-analysis/AIAnalysisPanel'
 import { InspectionHistoryTable } from '../../features/inspection-history/InspectionHistoryTable'
 import { InspectionTriggerButton } from '../../features/inspection-trigger/InspectionTriggerButton'
@@ -34,6 +34,11 @@ export function ResourceDetailPage({ environmentId: providedEnvironmentId }: { e
     queryFn: () => getResourceHistory(code, { environmentId: environmentId as string }),
     enabled: Boolean(environmentId) && activeTab === 'history',
   })
+  const risksQuery = useQuery({
+    queryKey: [...resourceKeys.detail(environmentId ?? 'none', code), 'risks'],
+    queryFn: () => getResourceRisks(code, environmentId as string),
+    enabled: Boolean(environmentId) && activeTab === 'risks',
+  })
 
   if (!environmentId) return <section className="view"><div className="empty-state"><strong>资源详情</strong><p>请选择巡检环境。</p></div></section>
 
@@ -56,7 +61,7 @@ export function ResourceDetailPage({ environmentId: providedEnvironmentId }: { e
       ) : activeTab === 'overview' ? (
         <OverviewPanel overview={overviewQuery.data} />
       ) : activeTab === 'risks' ? (
-        <RiskPanel overview={overviewQuery.data} />
+        <RiskPanel overview={overviewQuery.data} risks={risksQuery.data?.items ?? []} loading={risksQuery.isLoading} />
       ) : (
         <section className="panel panel-large"><AIAnalysisPanel contextType="RESOURCE_TYPE" environmentId={environmentId} resourceCode={code} /></section>
       )}
@@ -84,7 +89,32 @@ function OverviewPanel({ overview }: { overview?: Awaited<ReturnType<typeof getR
   )
 }
 
-function RiskPanel({ overview }: { overview?: Awaited<ReturnType<typeof getResourceOverview>> }) {
-  const riskCount = overview?.latest?.risk_count ?? 0
-  return <section className="panel"><div className="section-heading"><div><span className="eyebrow">RISK SNAPSHOT</span><h3>当前风险</h3></div><span className="severity-badge severity-p2">{riskCount} 项</span></div><div className="empty-state compact"><strong>{riskCount ? '风险详情将在风险中心展示' : '当前没有资源风险'}</strong><p>{riskCount ? '进入风险中心查看生命周期、证据和处置动作。' : '下一轮巡检会继续验证资源状态。'}</p><Link className="button button-secondary" to="/risks">打开风险中心</Link></div></section>
+function RiskPanel({
+  overview,
+  risks,
+  loading,
+}: {
+  overview?: Awaited<ReturnType<typeof getResourceOverview>>
+  risks: import('../../api/risks').Risk[]
+  loading: boolean
+}) {
+  const riskCount = risks.length || overview?.latest?.risk_count || 0
+  return (
+    <section className="panel panel-large">
+      <div className="section-heading"><div><span className="eyebrow">RISK SNAPSHOT</span><h3>当前风险</h3></div><span className="legend">{riskCount} 项</span></div>
+      {loading ? <div className="empty-state compact"><p>正在读取当前风险…</p></div> : risks.length ? (
+        <div className="evidence-list">
+          {risks.map((risk) => {
+            const riskId = risk.id || risk.risk_id || ''
+            return <article className="evidence-item" key={riskId}>
+              <header><strong>{risk.title}</strong><span className={`severity-badge severity-${risk.severity.toLowerCase()}`}>{risk.severity}</span></header>
+              <p>{risk.status} · {risk.occurrence_count} 次发现{risk.ai_involved ? ' · AI 参与' : ''}</p>
+              <small>资源对象：{risk.primary_asset_id ?? '—'} · 最近发现：{risk.last_seen_at ?? '—'}</small>
+              <Link className="text-link" to={`/risks/${riskId}`}>查看风险详情 →</Link>
+            </article>
+          })}
+        </div>
+      ) : <div className="empty-state compact"><strong>当前没有资源风险</strong><p>下一轮巡检会继续验证资源状态。</p><Link className="button button-secondary" to="/risks">打开风险中心</Link></div>}
+    </section>
+  )
 }

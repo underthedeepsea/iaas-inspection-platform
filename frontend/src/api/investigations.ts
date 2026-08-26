@@ -19,6 +19,13 @@ export interface Investigation {
   confidence?: number | null
   started_at?: string | null
   finished_at?: string | null
+  conversation_id?: string | null
+}
+
+export interface ConversationTurnResponse {
+  turn_id: string
+  investigation_id: string
+  events_url?: string | null
 }
 
 export interface InvestigationEvent {
@@ -54,6 +61,14 @@ export async function getInvestigation(id: string) {
   return response.data
 }
 
+export async function createConversationTurn(conversationId: string, message: string) {
+  const response = await apiClient.post<ConversationTurnResponse>(
+    `/conversations/${encodeURIComponent(conversationId)}/turns`,
+    { message },
+  )
+  return response.data
+}
+
 export async function getResourceInvestigations(code: string, page = 1, pageSize = 20) {
   const response = await apiClient.get<{ items: Investigation[]; page: number; page_size: number; total: number }>(
     `/resource-types/${encodeURIComponent(code)}/investigations`,
@@ -65,4 +80,3 @@ export async function getResourceInvestigations(code: string, page = 1, pageSize
 export function investigationEventsUrl(id: string) {
   return `/api/v1/investigations/${encodeURIComponent(id)}/events`
 }
-

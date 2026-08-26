@@ -1,6 +1,7 @@
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 
+import { getEnvironments, type Environment } from '../../api/environments'
 import { useUiStore } from '../../stores/uiStore'
 
 const navigationGroups = [
@@ -57,6 +58,17 @@ export function MainLayout({ children }: { children?: ReactNode }) {
   const setSidebarCollapsed = useUiStore((state) => state.setSidebarCollapsed)
   const location = useLocation()
   const pageTitle = titleForPath(location.pathname)
+  const [environments, setEnvironments] = useState<Environment[]>([])
+
+  useEffect(() => {
+    let active = true
+    void getEnvironments().then((response) => {
+      if (active) setEnvironments(response.items)
+    }).catch(() => {
+      if (active) setEnvironments([])
+    })
+    return () => { active = false }
+  }, [])
 
   return (
     <div className={`app-shell${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
@@ -65,7 +77,7 @@ export function MainLayout({ children }: { children?: ReactNode }) {
           <span className="brand-mark" aria-hidden="true">巡</span>
           <span>
             <strong>IaaS 智能巡检</strong>
-            <small>控制面 · Demo v4.1</small>
+            <small>控制面 · v0.2</small>
           </span>
         </NavLink>
 
@@ -94,8 +106,8 @@ export function MainLayout({ children }: { children?: ReactNode }) {
 
         <div className="sidebar-footer">
           <span className="status-dot" aria-hidden="true" />
-          <span>本地演示环境</span>
-          <span className="muted">MOCK</span>
+          <span>环境数据由 API 提供</span>
+          <span className="muted">v0.2</span>
         </div>
       </aside>
 
@@ -114,10 +126,11 @@ export function MainLayout({ children }: { children?: ReactNode }) {
                 onChange={(event) => setEnvironmentId(event.target.value || null)}
               >
                 <option value="">全部环境</option>
-                <option value="dev">开发环境</option>
-                <option value="test">测试环境</option>
-                <option value="staging">预发布环境</option>
-                <option value="prod-sim">生产模拟</option>
+                {environments.map((environment) => (
+                  <option key={environment.id} value={environment.id}>
+                    {environment.name} · {environment.slug}{environment.has_mock_data ? ' · 有模拟数据' : ''}
+                  </option>
+                ))}
               </select>
             </label>
             <span className="runtime-status"><span className="status-dot" aria-hidden="true" />AI 运行正常</span>

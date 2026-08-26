@@ -1,11 +1,12 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 
 import { DashboardPage } from '../pages/Dashboard/DashboardPage'
+import { LoginPage } from '../pages/Login/LoginPage'
 import { MainLayout } from '../layouts/MainLayout/MainLayout'
-import { ResourcesPage } from '../pages/Resources/ResourcesPage'
+import { ProductInfoPage } from '../pages/ProductInfo/ProductInfoPage'
 import { ResourceDetailPage } from '../pages/ResourceDetail/ResourceDetailPage'
 import { ResourceRunDetailPage } from '../pages/ResourceRunDetail/ResourceRunDetailPage'
-import { ProductInfoPage } from '../pages/ProductInfo/ProductInfoPage'
+import { ResourcesPage } from '../pages/Resources/ResourcesPage'
 import { RiskDetailPage } from '../pages/Risks/RiskDetailPage'
 import { RisksPage } from '../pages/Risks/RisksPage'
 import { SectionOverviewPage } from '../pages/SectionOverview/SectionOverviewPage'
@@ -13,15 +14,13 @@ import { SectionOverviewPage } from '../pages/SectionOverview/SectionOverviewPag
 export function AppRouter() {
   return (
     <BrowserRouter>
-      <MainLayout>
-        <Routes>
+      <Routes>
+        <Route element={<LoginPage />} path="/login" />
+        <Route element={<MainLayout />}>
           <Route element={<DashboardPage />} path="/" />
           <Route element={<ResourcesPage />} path="/resources" />
           <Route element={<ResourceDetailPage />} path="/resources/:resourceType" />
-          <Route
-            element={<ResourceRunDetailPage />}
-            path="/resources/:resourceType/runs/:runId"
-          />
+          <Route element={<ResourceRunDetailPage />} path="/resources/:resourceType/runs/:runId" />
           <Route element={<RiskDetailPage />} path="/risks/:riskId" />
           <Route element={<RisksPage />} path="/risks" />
           <Route element={<SectionOverviewPage page="history" />} path="/history" />
@@ -32,8 +31,8 @@ export function AppRouter() {
           <Route element={<SectionOverviewPage page="ai-runtime" />} path="/ai-runtime" />
           <Route element={<ProductInfoPage />} path="/about" />
           <Route element={<SectionOverviewPage page="settings" />} path="/settings" />
-        </Routes>
-      </MainLayout>
+        </Route>
+      </Routes>
     </BrowserRouter>
   )
 }

@@ -161,7 +161,7 @@ def _snapshot_stats(run, item_runs, *, boundary=None):
         len(_summary_claims(item_run, "resolved_claims"))
         for item_run in valid_item_runs
     )
-    covered_asset_keys = _covered_asset_keys(item_runs)
+    covered_asset_keys = _covered_asset_keys(run, item_runs)
     risk_counts = _risk_counts_at_boundary(run, boundary=boundary)
 
     return {
@@ -300,13 +300,24 @@ def _summary_claims(item_run, field):
     return claims if isinstance(claims, (list, tuple)) else ()
 
 
-def _covered_asset_keys(item_runs):
+def _covered_asset_keys(run, item_runs):
+    asset_ids = set()
     keys = set()
     for item_run in item_runs:
-        asset_keys = (item_run.asset_scope or {}).get("asset_keys", ())
+        scope = item_run.asset_scope or {}
+        asset_ids.update(str(value) for value in scope.get("asset_ids") or [])
+        asset_keys = scope.get("asset_keys", ())
         if not isinstance(asset_keys, (list, tuple, set)):
             continue
         keys.update(key for key in asset_keys if isinstance(key, str) and key)
+    if asset_ids:
+        keys.update(
+            value
+            for value in Asset.objects.filter(
+                environment_id=run.environment_id,
+                id__in=asset_ids,
+            ).values_list("external_key", flat=True)
+        )
     return keys
 
 

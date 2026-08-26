@@ -8,6 +8,7 @@ const labels: Record<string, string> = {
   'tool.failed': '证据工具失败',
   'analysis.started': '分析生成中',
   'analysis.completed': '分析已完成',
+  'analysis.failed': '分析失败',
 }
 
 export function InvestigationTimeline({ events }: { events: InvestigationEvent[] }) {

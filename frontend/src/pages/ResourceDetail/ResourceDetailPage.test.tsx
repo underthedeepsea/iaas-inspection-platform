@@ -73,3 +73,51 @@ it('uses the document visual hierarchy for a resource overview', async () => {
   expect(screen.getByText('健康趋势')).toBeInTheDocument()
   expect(screen.getByRole('tab', { name: '概览' })).toHaveAttribute('aria-selected', 'true')
 })
+
+it('loads and renders real resource risks with severity and detail links', async () => {
+  vi.spyOn(apiClient, 'get').mockImplementation(async (url) => {
+    if (String(url).includes('/risks')) {
+      return {
+        data: {
+          items: [{
+            id: 'risk-1',
+            risk_id: 'risk-1',
+            title: '调度压力',
+            domain: 'LLM',
+            severity: 'P1',
+            status: 'PENDING_ACTION',
+            occurrence_count: 3,
+            primary_asset_id: 'asset-1',
+            last_seen_at: '2026-08-25T10:00:00Z',
+            ai_involved: true,
+          }],
+          page: 1,
+          page_size: 20,
+          total: 1,
+        },
+      } as never
+    }
+    return {
+      data: {
+        resource_type: { code: 'LLM_RUNTIME', name: '大模型运行时', description: '模型服务资源', icon: 'llm', asset_count: 1, inspection_item_count: 1, health_score: 92, risk_count: 1, p1_count: 1, p2_count: 0, last_inspection_at: null },
+        latest: null,
+        health_trend: [],
+      },
+    } as never
+  })
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
+  render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={['/resources/llm-runtime?tab=risks']}>
+        <Routes>
+          <Route element={<ResourceDetailPage environmentId="env-1" />} path="/resources/:resourceType" />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+
+  expect(await screen.findByText('调度压力')).toBeInTheDocument()
+  expect(screen.getByText('P1')).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: /查看风险详情/ })).toHaveAttribute('href', '/risks/risk-1')
+})

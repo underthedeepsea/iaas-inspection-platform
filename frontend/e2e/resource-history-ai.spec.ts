@@ -17,6 +17,10 @@ test('restores resource run AI analysis after refresh', async ({ page }) => {
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request()
     const url = new URL(request.url())
+    if (request.method() === 'GET' && url.pathname === '/api/v1/environments') {
+      await route.fulfill({ json: { items: [{ id: 'env-1', slug: 'staging', name: '测试环境', environment_type: 'TEST', timezone: 'Asia/Shanghai', assets_count: 1, mock_dataset_count: 1, inspection_run_count: 1, has_mock_data: true }], page: 1, page_size: 1, total: 1 } })
+      return
+    }
     if (request.method() === 'GET' && url.pathname.endsWith('/overview')) {
       await route.fulfill({ json: { resource_type: resource, latest: null, health_trend: [] } })
       return
@@ -55,15 +59,14 @@ test('restores resource run AI analysis after refresh', async ({ page }) => {
   })
 
   await page.goto('/resources/llm-runtime')
-  await page.getByLabel('巡检环境').selectOption('staging')
+  await page.getByLabel('巡检环境').selectOption('env-1')
   await page.getByRole('tab', { name: '巡检历史' }).click()
   await page.getByRole('button', { name: '2026-08-25' }).click()
   await page.getByRole('button', { name: '开始 AI 分析' }).click()
   await expect(page.getByText('资源运行稳定。')).toBeVisible()
 
   await page.reload()
-  await page.getByLabel('巡检环境').selectOption('staging')
+  await page.getByLabel('巡检环境').selectOption('env-1')
   await expect(page.getByText('资源运行稳定。')).toBeVisible()
   await expect(page.getByText('分析已完成')).toBeVisible()
 })
-

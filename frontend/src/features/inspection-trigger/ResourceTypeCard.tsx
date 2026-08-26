@@ -2,8 +2,11 @@ import type { ResourceType } from '../../api/resources'
 
 const tagsByCode: Record<string, string[]> = {
   CONTROL_PLANE: ['反亲和', '冗余度', '容量'],
+  KVM_CLUSTER: ['容量', '健康度', '超分'],
+  K8S_CLUSTER: ['组件容量', '调度', '告警'],
   LLM_RUNTIME: ['性能', 'GPU', '调度', '容量'],
-  GPU_RESOURCE: ['利用率', '健康度', '容量'],
+  GPU_POOL: ['ECC', '利用率', '健康度'],
+  HOST: ['基础服务', '内核参数', '容量'],
 }
 
 export function ResourceTypeCard({

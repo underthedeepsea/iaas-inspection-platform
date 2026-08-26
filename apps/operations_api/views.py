@@ -22,6 +22,7 @@ from apps.api.auth import require_role
 from apps.api.http import APIRequestError, api_error, parse_json_object, parse_positive_int
 from apps.api.pagination import paginate
 from apps.audits.services import record_event
+from apps.assets.models import Asset
 from apps.core.models import Environment
 from apps.inspections.models import (
     DailySnapshot,
@@ -29,11 +30,13 @@ from apps.inspections.models import (
     InspectionItem,
     InspectionItemRun,
     InspectionRun,
+    MockDataset,
     Severity,
 )
 from apps.inspections.serializers import serialize_manual_inspection_run
 from apps.inspections.services.scope import UnknownResourceType, UnsupportedAssetSelector
 from apps.inspections.services.trigger import AI_MODES, create_manual_inspection_run
+from apps.inspections.services.worker import enqueue_manual_inspection
 from apps.investigations.models import Conversation, Investigation
 from apps.risks.models import Evidence, Risk, RiskObservation, RiskStatusHistory
 from apps.risks.services.lifecycle import ACTIVE_RISK_STATUSES, mark_handled as lifecycle_mark_handled
@@ -243,6 +246,32 @@ def _item_queryset(request):
 @_endpoint("viewer", {"GET"})
 def inspection_items(request):
     return _paginate(request, _item_queryset(request), serialize_inspection_item)
+
+
+@_boundary
+@_endpoint("viewer", {"GET"})
+def environments(request):
+    """Return selectable environments from persisted data, never UI constants."""
+
+    rows = Environment.objects.filter(is_active=True).order_by("name", "slug", "pk")
+    return _paginate(request, rows, _serialize_environment)
+
+
+def _serialize_environment(environment):
+    assets_count = Asset.objects.filter(environment=environment).count()
+    datasets_count = MockDataset.objects.filter(environment=environment).count()
+    runs_count = InspectionRun.objects.filter(environment=environment).count()
+    return {
+        "id": str(environment.pk),
+        "slug": environment.slug,
+        "name": environment.name,
+        "environment_type": environment.environment_type,
+        "timezone": environment.timezone,
+        "assets_count": assets_count,
+        "mock_dataset_count": datasets_count,
+        "inspection_run_count": runs_count,
+        "has_mock_data": datasets_count > 0 or runs_count > 0,
+    }
 
 
 @_boundary
@@ -884,6 +913,7 @@ def _trigger_manual_inspection_run(request, payload):
         ) from error
     except UnsupportedAssetSelector as error:
         raise PublicAPIError("VALIDATION_ERROR", str(error), status=400) from error
+    transaction.on_commit(lambda run_id=run.pk: enqueue_manual_inspection(run_id))
     return JsonResponse(serialize_manual_inspection_run(run), status=201)
 
 
@@ -909,6 +939,7 @@ __all__ = [
     "daily_snapshot_detail",
     "daily_snapshots",
     "dashboard_today",
+    "environments",
     "findings",
     "ignore",
     "inspection_item_ask",

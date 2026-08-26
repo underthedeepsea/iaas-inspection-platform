@@ -10,6 +10,7 @@ from apps.inspections.models import (
     ResourceInspectionSummary,
     ResourceType,
 )
+from apps.assets.models import Asset
 from apps.risks.models import Evidence, Risk, RiskObservation
 from apps.risks.services.lifecycle import ACTIVE_RISK_STATUSES
 
@@ -37,21 +38,19 @@ def build_resource_run_context(*, resource_type_code, inspection_run_id):
         InspectionItemRun.objects.filter(
             inspection_run=run,
             inspection_item_id__in=item_ids,
-        )[:MAX_REFERENCE_ITEMS]
+        )
+        .select_related("inspection_item")
+        .order_by("inspection_item__code", "pk")[:MAX_REFERENCE_ITEMS]
     )
     item_run_ids = [row.pk for row in item_runs]
     findings = [
-        {"id": str(row.pk), "code": row.finding_code, "severity": row.severity}
+        _finding_projection(row)
         for row in Finding.objects.filter(inspection_item_run_id__in=item_run_ids)
+        .select_related("asset")
         .order_by("-severity", "-observed_at", "-pk")[:MAX_REFERENCE_ITEMS]
     ]
     evidence = [
-        {
-            "id": str(row.pk),
-            "evidence_key": row.evidence_key,
-            "evidence_type": row.evidence_type,
-            "summary": row.summary[:256],
-        }
+        _evidence_projection(row, item_run_ids)
         for row in Evidence.objects.filter(
             inspection_run=run,
             inspection_item_run_id__in=item_run_ids,
@@ -65,7 +64,7 @@ def build_resource_run_context(*, resource_type_code, inspection_run_id):
         ).values_list("risk_id", flat=True)
     )
     risks = [
-        {"id": str(row.pk), "title": row.title[:256], "severity": row.severity, "status": row.status}
+        _risk_projection(row)
         for row in Risk.objects.filter(pk__in=risk_ids).order_by("severity", "title", "pk")[:MAX_REFERENCE_ITEMS]
     ]
     previous = (
@@ -79,6 +78,17 @@ def build_resource_run_context(*, resource_type_code, inspection_run_id):
         .first()
     )
     changes = _change_references(run)
+    trend = list(
+        ResourceInspectionSummary.objects.filter(
+            resource_type=resource_type,
+            inspection_run__environment_id=run.environment_id,
+            inspection_run__run_date__gte=run.run_date - timedelta(days=6),
+            inspection_run__run_date__lte=run.run_date,
+        )
+        .select_related("inspection_run")
+        .order_by("inspection_run__run_date", "inspection_run__created_at", "pk")[:7]
+    )
+    risk_ids_by_item_run = _risk_ids_by_item_run(run, item_run_ids)
     return _fit_context(
         InvestigationContext(
             {
@@ -88,10 +98,17 @@ def build_resource_run_context(*, resource_type_code, inspection_run_id):
                 "inspection_run_id": str(run.id),
                 "current_summary": _summary_projection(summary),
                 "previous_run": _summary_projection(previous) if previous else None,
+                "trend_7d": [_summary_projection(row) for row in trend],
                 "major_risks": risks,
                 "findings": findings,
                 "evidence": evidence,
                 "changes": changes,
+                "inspection_item_results": [
+                    _item_run_projection(row) for row in item_runs
+                ],
+                "asset_context": _asset_context(run, resource_type, item_runs),
+                "missing_claim": _missing_claim(item_runs),
+                "risk_ids_by_item_run": risk_ids_by_item_run,
             }
         )
     )
@@ -117,7 +134,7 @@ def build_resource_type_context(*, environment_id, resource_type_code, date_from
     )
     item_ids = _item_ids(resource_type)
     active_risks = [
-        {"id": str(row.pk), "title": row.title[:256], "severity": row.severity}
+        _risk_projection(row)
         for row in Risk.objects.filter(
             environment_id=environment_id,
             inspection_item_id__in=item_ids,
@@ -133,6 +150,7 @@ def build_resource_type_context(*, environment_id, resource_type_code, date_from
                 "date_from": start.isoformat(),
                 "date_to": end.isoformat(),
                 "summaries": [_summary_projection(row) for row in summaries],
+                "trend_7d": [_summary_projection(row) for row in summaries[-7:]],
                 "active_risks": active_risks,
             }
         )
@@ -173,6 +191,149 @@ def _summary_projection(summary):
     }
 
 
+def _item_run_projection(item_run):
+    return {
+        "id": str(item_run.pk),
+        "inspection_item_id": str(item_run.inspection_item_id),
+        "code": item_run.inspection_item.code,
+        "name": item_run.inspection_item.name,
+        "status": item_run.status,
+        "ai_admission_status": item_run.ai_admission_status,
+        "asset_scope": {
+            "asset_ids": [str(value) for value in (item_run.asset_scope or {}).get("asset_ids") or []],
+            "asset_keys": list((item_run.asset_scope or {}).get("asset_keys") or [])[:MAX_REFERENCE_ITEMS],
+        },
+        "summary": _compact_mapping(item_run.summary or {}, 512),
+    }
+
+
+def _finding_projection(finding):
+    return {
+        "id": str(finding.pk),
+        "code": finding.finding_code,
+        "title": finding.title[:256],
+        "category": finding.category,
+        "severity": finding.severity,
+        "status": finding.status,
+        "asset_id": str(finding.asset_id) if finding.asset_id else None,
+        "observed_at": finding.observed_at.isoformat() if finding.observed_at else None,
+        "source_type": finding.source_type,
+        "value": _compact_mapping(finding.value or {}, 512),
+    }
+
+
+def _evidence_projection(evidence, item_run_ids):
+    related_finding_ids = [
+        str(value)
+        for value in Finding.objects.filter(
+            inspection_item_run_id=evidence.inspection_item_run_id,
+        ).values_list("id", flat=True)[:MAX_REFERENCE_ITEMS]
+    ]
+    related_risk_ids = [
+        str(value)
+        for value in RiskObservation.objects.filter(
+            inspection_run_id=evidence.inspection_run_id,
+            inspection_item_run_id=evidence.inspection_item_run_id,
+            detected=True,
+        ).values_list("risk_id", flat=True)[:MAX_REFERENCE_ITEMS]
+    ]
+    payload = evidence.payload if isinstance(evidence.payload, dict) else {}
+    return {
+        "id": str(evidence.pk),
+        "evidence_key": evidence.evidence_key,
+        "evidence_type": evidence.evidence_type,
+        "source": evidence.source,
+        "window_start": evidence.window_start.isoformat() if evidence.window_start else None,
+        "window_end": evidence.window_end.isoformat() if evidence.window_end else None,
+        "observed_at": evidence.created_at.isoformat() if evidence.created_at else None,
+        "value": _compact_mapping(payload, 512),
+        "summary": evidence.summary[:256],
+        "confidence": float(evidence.confidence),
+        "materiality": float(evidence.materiality),
+        "related_finding_ids": related_finding_ids,
+        "related_risk_ids": related_risk_ids,
+    }
+
+
+def _risk_projection(risk):
+    return {
+        "id": str(risk.pk),
+        "title": risk.title[:256],
+        "severity": risk.severity,
+        "status": risk.status,
+        "asset_id": str(risk.primary_asset_id) if risk.primary_asset_id else None,
+        "last_seen_at": risk.last_seen_at.isoformat() if risk.last_seen_at else None,
+        "occurrence_count": risk.occurrence_count,
+        "ai_involved": risk.llm_involved_last,
+    }
+
+
+def _risk_ids_by_item_run(run, item_run_ids):
+    return {
+        str(item_run_id): [
+            str(risk_id)
+            for risk_id in RiskObservation.objects.filter(
+                inspection_run=run,
+                inspection_item_run_id=item_run_id,
+                detected=True,
+            ).values_list("risk_id", flat=True)
+        ]
+        for item_run_id in item_run_ids
+    }
+
+
+def _asset_context(run, resource_type, item_runs):
+    asset_ids = {
+        str(value)
+        for item_run in item_runs
+        for value in (item_run.asset_scope or {}).get("asset_ids") or []
+    }
+    asset_keys = {
+        value
+        for item_run in item_runs
+        for value in (item_run.asset_scope or {}).get("asset_keys") or []
+        if isinstance(value, str)
+    }
+    resolved = (run.config_snapshot or {}).get("resolved_scope") or {}
+    if not asset_ids and not asset_keys:
+        asset_ids.update(str(value) for value in resolved.get("asset_ids") or [])
+    query = Asset.objects.filter(environment_id=run.environment_id, status=Asset.Status.ACTIVE)
+    if asset_ids:
+        query = query.filter(id__in=asset_ids)
+    elif asset_keys:
+        query = query.filter(external_key__in=asset_keys)
+    else:
+        asset_types = (resource_type.asset_selector or {}).get("asset_types") or []
+        query = query.filter(asset_type__in=asset_types)
+    return [
+        {
+            "id": str(asset.pk),
+            "external_key": asset.external_key,
+            "asset_type": asset.asset_type,
+            "name": asset.name,
+        }
+        for asset in query.order_by("external_key", "pk")[:MAX_REFERENCE_ITEMS]
+    ]
+
+
+def _missing_claim(item_runs):
+    for item_run in item_runs:
+        summary = item_run.summary or {}
+        gaps = summary.get("material_claim_gaps") or summary.get("unresolved_claims") or []
+        if gaps and isinstance(gaps[0], str):
+            return gaps[0]
+    return ""
+
+
+def _compact_mapping(value, max_bytes):
+    if not isinstance(value, dict):
+        return {}
+    raw = json.dumps(value, ensure_ascii=False, default=str)
+    if len(raw.encode()) <= max_bytes:
+        return value
+    return {"truncated": True}
+
+
 def _change_references(run):
     if not run.dataset_id:
         return []
@@ -186,7 +347,17 @@ def _change_references(run):
 def _fit_context(context):
     while len(json.dumps(context, ensure_ascii=False).encode()) > MAX_CONTEXT_BYTES:
         changed = False
-        for key in ("evidence", "findings", "major_risks", "active_risks", "changes", "summaries"):
+        for key in (
+            "evidence",
+            "findings",
+            "inspection_item_results",
+            "asset_context",
+            "trend_7d",
+            "major_risks",
+            "active_risks",
+            "changes",
+            "summaries",
+        ):
             values = context.get(key)
             if isinstance(values, list) and values:
                 values.pop()

@@ -1,11 +1,11 @@
 import json
 import re
+import time
 import uuid
 from functools import wraps
 
 from django.db import transaction
 from django.http import JsonResponse, StreamingHttpResponse
-from django.utils import timezone
 
 from apps.api.auth import require_role
 from apps.api.http import APIRequestError, api_error, parse_json_object
@@ -16,10 +16,11 @@ from apps.investigations.services.context_builder import (
     build_resource_run_context,
     build_resource_type_context,
 )
+from apps.investigations.services.worker import enqueue_resource_investigation
 from apps.investigations import public_views
+from services.model_gateway.base import configured_value
 
 from .models import Conversation, Investigation, InvestigationEvent
-from .services.runtime import run_resource_investigation
 
 
 class ResourceInvestigationError(Exception):
@@ -122,13 +123,12 @@ def create_resource_investigation(request, resource_type_code):
                 else None
             ),
             trigger_type=Investigation.TriggerType.HUMAN,
-            status=Investigation.Status.RUNNING,
+            status=Investigation.Status.CREATED,
             entry_reason=Investigation.EntryReason.TREND_GAP,
-            model_provider="resource",
-            model_name="bounded",
-            started_at=timezone.now(),
+            model_provider=str(configured_value("LLM_PROVIDER", "ollama"))[:32],
+            model_name=str(configured_value("OLLAMA_MODEL", "configured"))[:128],
         )
-        Conversation.objects.create(
+        conversation = Conversation.objects.create(
             environment=environment,
             user=request.user,
             context_type=context_type,
@@ -136,13 +136,19 @@ def create_resource_investigation(request, resource_type_code):
             investigation=investigation,
             title=f"{resource_type.name} AI 分析",
         )
-    investigation = run_resource_investigation(investigation, context)
+    transaction.on_commit(
+        lambda investigation_id=investigation.pk, runtime_context=context: enqueue_resource_investigation(
+            investigation_id,
+            runtime_context,
+        )
+    )
     return JsonResponse(
         {
             "investigation_id": str(investigation.pk),
             "id": str(investigation.pk),
-            "status": investigation.status,
+            "status": Investigation.Status.CREATED,
             "context_type": context_type,
+            "conversation_id": str(conversation.pk),
             "events_url": f"/api/v1/investigations/{investigation.pk}/events",
         },
         status=201,
@@ -191,20 +197,38 @@ def investigation_events(request, investigation_id):
             "Last-Event-ID must be a canonical non-negative integer",
             details={"field": "Last-Event-ID"},
         )
-    rows = InvestigationEvent.objects.filter(
-        investigation=investigation,
-        sequence__gt=int(raw_last_id or 0),
-    ).order_by("sequence", "pk")
-
     def stream():
-        for row in rows:
-            envelope = {
-                "sequence": row.sequence,
-                "event_type": row.event_type,
-                "status": row.status,
-                "payload": row.payload or {},
-            }
-            yield f"id: {row.sequence}\nevent: {row.event_type}\ndata: {json.dumps(envelope, ensure_ascii=False)}\n\n"
+        cursor = int(raw_last_id or 0)
+        deadline = time.monotonic() + 60
+        while True:
+            rows = InvestigationEvent.objects.filter(
+                investigation=investigation,
+                sequence__gt=cursor,
+            ).order_by("sequence", "pk")
+            for row in rows:
+                cursor = row.sequence
+                envelope = {
+                    "sequence": row.sequence,
+                    "event_type": row.event_type,
+                    "status": row.status,
+                    "payload": row.payload or {},
+                }
+                yield f"id: {row.sequence}\nevent: {row.event_type}\ndata: {json.dumps(envelope, ensure_ascii=False)}\n\n"
+                if row.event_type in {"analysis.completed", "analysis.failed"}:
+                    return
+            if Investigation.objects.filter(
+                pk=investigation.pk,
+                status__in=(
+                    Investigation.Status.RESOLVED,
+                    Investigation.Status.UNRESOLVED,
+                    Investigation.Status.FAILED,
+                    Investigation.Status.CANCELLED,
+                ),
+            ).exists():
+                return
+            if time.monotonic() >= deadline:
+                return
+            time.sleep(0.25)
 
     response = StreamingHttpResponse(stream(), content_type="text/event-stream")
     response["Cache-Control"] = "no-cache"
@@ -222,6 +246,11 @@ def _owned_investigation(request, investigation_id):
 
 
 def _serialize_investigation(investigation):
+    conversation_id = (
+        Conversation.objects.filter(investigation=investigation)
+        .values_list("pk", flat=True)
+        .first()
+    )
     return {
         "investigation_id": str(investigation.pk),
         "id": str(investigation.pk),
@@ -231,6 +260,7 @@ def _serialize_investigation(investigation):
         "confidence": float(investigation.confidence) if investigation.confidence is not None else None,
         "started_at": investigation.started_at.isoformat() if investigation.started_at else None,
         "finished_at": investigation.finished_at.isoformat() if investigation.finished_at else None,
+        "conversation_id": str(conversation_id) if conversation_id else None,
     }
 
 

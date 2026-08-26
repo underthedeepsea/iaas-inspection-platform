@@ -1,4 +1,7 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+
+import { displayDataMode, getProductInfo, type ProductInfo } from '../../api/product'
 
 export type SectionPageKey =
   | 'risks'
@@ -49,7 +52,7 @@ const pageMeta: Record<SectionPageKey, { eyebrow: string; title: string; lede: s
   settings: {
     eyebrow: 'SYSTEM',
     title: '系统设置',
-    lede: '当前 Demo 使用本地配置和模拟数据。',
+    lede: '模型、环境和数据源由服务端配置。',
   },
 }
 
@@ -144,10 +147,22 @@ function EvolutionOverview() {
 }
 
 function AiRuntimeOverview() {
+  const [productInfo, setProductInfo] = useState<ProductInfo | null>(null)
+
+  useEffect(() => {
+    let active = true
+    void getProductInfo().then((value) => {
+      if (active) setProductInfo(value)
+    }).catch(() => {
+      // Keep the boundary visible if runtime metadata is unavailable.
+    })
+    return () => { active = false }
+  }, [])
+
   return (
     <>
       <div className="runtime-grid">
-        <section className="panel"><div className="section-heading"><div><span className="eyebrow">PROVIDER</span><h3>当前运行时</h3></div></div><dl className="definition-list"><div><dt>Provider</dt><dd>Ollama</dd></div><div><dt>安全模式</dt><dd>READ_ONLY_TOOLS</dd></div><div><dt>数据源</dt><dd>MOCK</dd></div></dl></section>
+        <section className="panel"><div className="section-heading"><div><span className="eyebrow">PROVIDER</span><h3>当前运行时</h3></div></div><dl className="definition-list"><div><dt>Provider</dt><dd>{productInfo?.llm_provider ?? '读取中…'}</dd></div><div><dt>安全模式</dt><dd>{productInfo?.security_mode ?? 'READ_ONLY_TOOLS'}</dd></div><div><dt>数据源</dt><dd>{displayDataMode(productInfo?.data_mode)}</dd></div></dl></section>
         <section className="panel"><div className="section-heading"><div><span className="eyebrow">BOUNDARIES</span><h3>调查预算</h3></div></div><div className="budget-list"><div><span>最大调查轮次</span><strong>3</strong></div><div><span>最大 Tool Call</span><strong>5</strong></div><div><span>写操作</span><strong>禁止</strong></div></div></section>
       </div>
       <section className="panel runtime-note"><div className="section-heading"><div><span className="eyebrow">OBSERVABILITY</span><h3>运行说明</h3></div></div><p className="body-copy">可在风险详情中询问 AI。对话消息、调查事件和工具摘要会持久化；详细输入输出保持折叠，页面默认只展示人能决策的摘要。</p><p className="body-copy runtime-boundary">所有 Tool Call 都是只读的。</p></section>
@@ -156,5 +171,5 @@ function AiRuntimeOverview() {
 }
 
 function SettingsOverview() {
-  return <section className="panel"><div className="empty-state"><strong>开发环境设置</strong><p>模型、数据库和 Airflow 的运行状态会在产品说明与 AI 运行页面展示。</p><Link className="button button-secondary" to="/about">阅读产品说明</Link></div></section>
+  return <section className="panel"><div className="empty-state"><strong>系统配置</strong><p>模型、数据库和 Airflow 的运行状态会在产品说明与 AI 运行页面展示。</p><Link className="button button-secondary" to="/about">阅读产品说明</Link></div></section>
 }
