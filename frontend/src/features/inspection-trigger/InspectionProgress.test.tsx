@@ -6,6 +6,7 @@ import type { InspectionRunEvent } from '../../api/inspections'
 import {
   initialInspectionProgressState,
   reduceInspectionRunEvent,
+  progressForInspectionState,
   InspectionProgress,
 } from './InspectionProgress'
 
@@ -111,5 +112,33 @@ describe('InspectionProgress', () => {
 
     await waitFor(() => expect(screen.getByText('巡检失败')).toBeInTheDocument())
     expect(screen.getByText('生成摘要').closest('li')).toHaveClass('is-failed')
+  })
+
+  it('keeps progress monotonic for delayed events and maps PARTIAL to completed', () => {
+    let state = initialInspectionProgressState
+    state = reduceInspectionRunEvent(state, {
+      sequence: 5,
+      event_type: 'summary.completed',
+      status: 'SUCCEEDED',
+      payload: {},
+    })
+    const completedProgress = progressForInspectionState(state)
+    state = reduceInspectionRunEvent(state, {
+      sequence: 2,
+      event_type: 'assets.discovered',
+      status: 'SUCCEEDED',
+      payload: { asset_count: 4 },
+    })
+    expect(progressForInspectionState(state)).toBeGreaterThanOrEqual(completedProgress)
+
+    state = reduceInspectionRunEvent(state, {
+      sequence: 6,
+      event_type: 'run.completed',
+      status: 'PARTIAL',
+      payload: { status: 'PARTIAL' },
+    })
+    expect(state.currentStep).toBe('completed')
+    expect(state.runStatus).toBe('PARTIAL')
+    expect(progressForInspectionState(state)).toBe(100)
   })
 })

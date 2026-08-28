@@ -23,6 +23,7 @@ from apps.inspections.models import (
 from apps.risks.models import Risk, RiskObservation
 from apps.risks.services.lifecycle import ACTIVE_RISK_STATUSES
 from apps.operations_api.serializers import serialize_risk
+from apps.inspections.services.scope import asset_ids_for_selectors
 
 from .serializers import serialize_resource_summary
 from .services.events import get_run_events
@@ -115,12 +116,7 @@ def _latest_summary(resource_type, environment):
 
 
 def _asset_count(resource_type, environment):
-    asset_types = (resource_type.asset_selector or {}).get("asset_types", [])
-    return Asset.objects.filter(
-        environment=environment,
-        status=Asset.Status.ACTIVE,
-        asset_type__in=asset_types,
-    ).count()
+    return len(asset_ids_for_selectors(environment.pk, [resource_type.asset_selector or {}]))
 
 
 def _item_count(resource_type):
@@ -146,7 +142,12 @@ def _serialize_resource_type(resource_type, environment):
             latest.assets_covered / latest.assets_total if latest and latest.assets_total else None
         ),
         "inspection_item_count": latest.inspection_item_count if latest else _item_count(resource_type),
-        "health_score": float(latest.health_score) if latest else None,
+        "health_score": float(latest.health_score) if latest and latest.health_score is not None else None,
+        "data_state": (
+            (latest.summary or {}).get("data_state", "READY" if latest.assets_total else "NO_DATA")
+            if latest
+            else ("READY" if asset_count else "NO_DATA")
+        ),
         "risk_count": latest.risk_count if latest else 0,
         "p1_count": latest.p1_count if latest else 0,
         "p2_count": latest.p2_count if latest else 0,
@@ -268,7 +269,7 @@ def resource_run_detail(request, resource_type_code, run_id):
             "coverage": {
                 "assets_total": summary.assets_total,
                 "assets_covered": summary.assets_covered,
-                "rate": summary.assets_covered / summary.assets_total if summary.assets_total else 1.0,
+                "rate": summary.assets_covered / summary.assets_total if summary.assets_total else None,
             },
             "inspection_item_status_counts": dict(status_counts),
             "inspection_item_count": summary.inspection_item_count,

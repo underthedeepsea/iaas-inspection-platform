@@ -1,3 +1,4 @@
+import { Button, Drawer, Select } from 'antd'
 import { useEffect, useState } from 'react'
 
 import type { ResourceType } from '../../api/resources'
@@ -64,22 +65,29 @@ export function InspectionDrawer({
     }
   }
 
-  return (
-    <>
-      <div className="drawer-backdrop" data-testid="inspection-drawer-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }} />
-      <aside aria-labelledby="inspection-drawer-title" aria-modal="true" className="ai-drawer inspection-drawer" role="dialog">
-        <header className="drawer-header">
-          <div><span className="eyebrow">MANUAL INSPECTION</span><h2 id="inspection-drawer-title">立即巡检</h2></div>
-          <button aria-label="关闭巡检抽屉" className="icon-button" onClick={onClose} type="button">×</button>
-        </header>
+  const footer = run ? <Button autoInsertSpace={false} className="button button-secondary" onClick={onClose}>关闭</Button> : <><Button autoInsertSpace={false} className="button button-secondary" onClick={onClose}>取消</Button><Button autoInsertSpace={false} className="button button-primary" disabled={submitting || resourceTypes.length === 0} loading={submitting} onClick={() => void submit()} type="primary">{submitting ? '创建中…' : '开始巡检'}</Button></>
 
-        <div className="drawer-scroll">
-          <label className="drawer-field">
-            <span>巡检环境</span>
-            <select aria-label="本次巡检环境" disabled value={environmentId}>
-              <option value={environmentId}>当前环境 · {environmentId}</option>
-            </select>
-          </label>
+  return (
+    <Drawer
+      aria-labelledby="inspection-drawer-title"
+      className="ai-drawer inspection-drawer"
+      closeIcon={<span aria-hidden="true">×</span>}
+      destroyOnHidden
+      footer={footer}
+      mask={{ closable: true }}
+      onClose={onClose}
+      open={open}
+      rootClassName="inspection-drawer-root"
+      styles={{ body: { display: 'flex', flexDirection: 'column', minHeight: 0, padding: 0 }, footer: { padding: '16px 24px' } }}
+      title={<div className="drawer-title"><span className="eyebrow">MANUAL INSPECTION</span><h2 id="inspection-drawer-title">立即巡检</h2></div>}
+      width={600}
+    >
+      <span data-testid="inspection-drawer-overlay" hidden />
+      <div className="drawer-scroll">
+        <label className="drawer-field">
+          <span>巡检环境</span>
+          <Select aria-label="本次巡检环境" disabled options={[{ value: environmentId, label: `当前环境 · ${environmentId}` }]} value={environmentId} />
+        </label>
 
           {run ? (
             <>
@@ -101,12 +109,7 @@ export function InspectionDrawer({
               {requestError ? <p className="form-error" role="alert">{requestError}</p> : null}
             </>
           )}
-        </div>
-
-        <footer className="drawer-footer">
-          {run ? <button className="button button-secondary" onClick={onClose} type="button">关闭</button> : <><button className="button button-secondary" onClick={onClose} type="button">取消</button><button className="button button-primary" disabled={submitting || resourceTypes.length === 0} onClick={() => void submit()} type="button">{submitting ? '创建中…' : '开始巡检'}</button></>}
-        </footer>
-      </aside>
-    </>
+      </div>
+    </Drawer>
   )
 }

@@ -13,6 +13,18 @@ SCENARIOS = {
         "description": "Two control-plane pods are placed on one host.",
         "missing_data": (),
     },
+    "kvm_cluster_baseline": {
+        "description": "A healthy KVM cluster fixture.",
+        "missing_data": (),
+    },
+    "k8s_cluster_baseline": {
+        "description": "A healthy Kubernetes cluster fixture.",
+        "missing_data": (),
+    },
+    "mixed_resource_inspection": {
+        "description": "Control-plane and LLM signals are available together.",
+        "missing_data": (),
+    },
     "data_incomplete": {
         "description": "The queue metric is absent from the source data.",
         "missing_data": ("queue_depth",),

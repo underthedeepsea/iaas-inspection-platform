@@ -24,11 +24,12 @@ export function HealthTrendChart({
   metric?: 'health' | 'risk'
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const visibleTrend = metric === 'health' ? trend.filter((item) => item.health_score != null) : trend
 
   useEffect(() => {
-    if (!containerRef.current || trend.length === 0) return
+    if (!containerRef.current || visibleTrend.length === 0) return
     const chart = init(containerRef.current, undefined, { renderer: 'svg' })
-    const values = trend.map((item) => metric === 'risk' ? (item.risk_total ?? item.risk_count ?? 0) : (item.health_score ?? 0))
+    const values = visibleTrend.map((item) => metric === 'risk' ? (item.risk_total ?? item.risk_count ?? 0) : item.health_score as number)
     chart.setOption({
       animation: false,
       grid: { top: 12, right: 12, bottom: 24, left: 42 },
@@ -38,7 +39,7 @@ export function HealthTrendChart({
       },
       xAxis: {
         type: 'category',
-        data: trend.map((item) => item.run_date ?? item.snapshot_date ?? '—'),
+        data: visibleTrend.map((item) => item.run_date ?? item.snapshot_date ?? '—'),
         axisLabel: { color: '#6f7d87' },
         axisLine: { lineStyle: { color: '#e4e9eb' } },
       },
@@ -67,8 +68,8 @@ export function HealthTrendChart({
       window.removeEventListener('resize', resize)
       chart.dispose()
     }
-  }, [metric, trend])
+  }, [metric, visibleTrend])
 
-  if (trend.length === 0) return <div className="trend-chart"><span className="empty-cell">暂无趋势数据</span></div>
+  if (visibleTrend.length === 0) return <div className="trend-chart"><span className="empty-cell">暂无趋势数据</span></div>
   return <div aria-label={metric === 'risk' ? '风险趋势图' : '健康趋势图'} className="trend-chart"><div ref={containerRef} style={{ height: '100%', width: '100%' }} /></div>
 }

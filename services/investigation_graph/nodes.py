@@ -50,6 +50,7 @@ class InvestigationRuntime:
     gateway: Any
     registry: Any
     executor: Any
+    event_sink: Any | None = None
 
 
 class _ToolBoundaryError(RuntimeError):
@@ -249,6 +250,7 @@ def execute_readonly_tool(
     *,
     registry: Any,
     executor: Any,
+    event_sink: Any | None = None,
 ) -> dict[str, Any]:
     """Execute one validated LLM-origin capability and emit compact Evidence."""
 
@@ -292,6 +294,16 @@ def execute_readonly_tool(
 
     # Count an attempted dispatch exactly once and never beyond the ceiling.
     result["tool_calls_used"] = tool_calls + 1
+    _emit_event(
+        event_sink,
+        "tool.started",
+        {
+            "capability_id": capability_id,
+            "arguments": arguments,
+            "tool_index": result["tool_calls_used"] - 1,
+        },
+        "STARTED",
+    )
     try:
         atomic_execute = getattr(registry, "execute_readonly", None)
         if not callable(atomic_execute):
@@ -331,6 +343,18 @@ def execute_readonly_tool(
             error_code=code[:64],
             capability_version_id=selected_version_id,
         )
+        _emit_event(
+            event_sink,
+            "tool.failed",
+            {
+                "capability_id": capability_id,
+                "arguments": arguments,
+                "outcome": "FAILED",
+                "error_code": code[:64],
+                "capability_version_id": selected_version_id,
+            },
+            "FAILED",
+        )
         return _terminal_unresolved(result, code[:64], "read-only capability execution failed")
 
     evidence_item = Evidence(
@@ -349,6 +373,18 @@ def execute_readonly_tool(
         outcome="SUCCEEDED",
         evidence_key=evidence_item.evidence_key,
         capability_version_id=actual_version_id,
+    )
+    _emit_event(
+        event_sink,
+        "tool.completed",
+        {
+            "capability_id": capability_id,
+            "arguments": arguments,
+            "outcome": "SUCCEEDED",
+            "evidence_key": evidence_item.evidence_key,
+            "capability_version_id": actual_version_id,
+        },
+        "COMPLETED",
     )
     facts = _string_list(result.get("facts"))
     if evidence_item.summary not in facts:
@@ -391,6 +427,17 @@ def final_answer(state: Mapping[str, Any]) -> dict[str, Any]:
     tool_history = _safe_tool_history(result.get("tool_history"))
     if status != "RESOLVED" and not next_steps:
         next_steps = ["Collect the missing evidence and retry the investigation."]
+    structured_defaults = _structured_defaults(result)
+    comparisons = _safe_structured_items(result.get("comparisons") or structured_defaults["comparisons"])
+    root_cause_candidates = _safe_structured_items(
+        result.get("root_cause_candidates") or structured_defaults["root_cause_candidates"]
+    )
+    priority_actions = _safe_structured_items(
+        result.get("priority_actions") or structured_defaults["priority_actions"]
+    )
+    evidence_gaps = _safe_structured_items(
+        result.get("evidence_gaps") or structured_defaults["evidence_gaps"]
+    )
     final = FinalResult(
         status=status,
         summary=summary,
@@ -400,6 +447,10 @@ def final_answer(state: Mapping[str, Any]) -> dict[str, Any]:
         confidence=confidence,
         evidence=[Evidence.model_validate(item) for item in _safe_evidence_list(result.get("evidence"))],
         tool_history=[ToolCallHistory.model_validate(item) for item in tool_history],
+        comparisons=comparisons,
+        root_cause_candidates=root_cause_candidates,
+        priority_actions=priority_actions,
+        evidence_gaps=evidence_gaps,
         rounds_used=_nonnegative_int(result.get("rounds_used")),
         tool_calls_used=_nonnegative_int(result.get("tool_calls_used")),
     )
@@ -414,12 +465,135 @@ def final_answer(state: Mapping[str, Any]) -> dict[str, Any]:
             "confidence": dumped["confidence"],
             "evidence": dumped["evidence"],
             "tool_history": dumped["tool_history"],
+            "comparisons": dumped["comparisons"],
+            "root_cause_candidates": dumped["root_cause_candidates"],
+            "priority_actions": dumped["priority_actions"],
+            "evidence_gaps": dumped["evidence_gaps"],
             "rounds_used": dumped["rounds_used"],
             "tool_calls_used": dumped["tool_calls_used"],
             "final": dumped,
         }
     )
     return result
+
+
+def _emit_event(event_sink, event_type, payload, status):
+    if not callable(event_sink):
+        return
+    try:
+        event_sink(event_type, payload, status)
+    except TypeError:
+        # Keep the small two-argument callback promised to callers usable.
+        event_sink(event_type, payload)
+
+
+def _safe_structured_items(value):
+    if not isinstance(value, list):
+        return []
+    output = []
+    for item in value[:MAX_TOOL_HISTORY_ITEMS]:
+        safe = _safe_value(item, depth=0)
+        if safe is not _DROP:
+            output.append(safe)
+    return output
+
+
+def _structured_defaults(state):
+    """Project structured context into UI sections without parsing prose."""
+
+    context = state.get("context")
+    if not isinstance(context, Mapping):
+        return {
+            "comparisons": [],
+            "root_cause_candidates": [],
+            "priority_actions": [],
+            "evidence_gaps": [],
+        }
+
+    summaries = context.get("summaries")
+    current = context.get("current_summary")
+    if not isinstance(current, Mapping) and isinstance(summaries, list) and summaries:
+        current = summaries[-1]
+    previous = context.get("previous_run")
+    if not isinstance(current, Mapping):
+        current = {}
+    if not isinstance(previous, Mapping):
+        previous = {}
+
+    comparisons = []
+    for metric in ("health_score", "risk_count", "assets_covered", "ai_dependent_cases"):
+        if metric in current or metric in previous:
+            comparisons.append(
+                {
+                    "metric": metric,
+                    "current": current.get(metric),
+                    "previous": previous.get(metric),
+                }
+            )
+
+    findings = context.get("findings")
+    root_causes = []
+    if isinstance(findings, list):
+        for finding in findings[:MAX_TOOL_HISTORY_ITEMS]:
+            if not isinstance(finding, Mapping):
+                continue
+            title = _safe_text(finding.get("title") or finding.get("code"))[:256]
+            if not title:
+                continue
+            root_causes.append(
+                {
+                    "title": title,
+                    "category": _safe_text(finding.get("category"))[:128],
+                    "severity": _safe_text(finding.get("severity"))[:32],
+                }
+            )
+
+    risks = context.get("major_risks") or context.get("active_risks")
+    priority_actions = []
+    if isinstance(risks, list):
+        for risk in risks[:MAX_TOOL_HISTORY_ITEMS]:
+            if not isinstance(risk, Mapping):
+                continue
+            title = _safe_text(risk.get("title"))[:256]
+            if title:
+                priority_actions.append(
+                    {
+                        "priority": _safe_text(risk.get("severity"))[:32],
+                        "action": _safe_text(risk.get("recommendation"))[:256]
+                        or "优先处理该风险并完成复验",
+                        "title": title,
+                    }
+                )
+    if not priority_actions:
+        priority_actions = [
+            {
+                "priority": item.get("severity", ""),
+                "action": "核查该发现并完成复验",
+                "title": item.get("title", ""),
+            }
+            for item in root_causes[:MAX_TOOL_HISTORY_ITEMS]
+        ]
+
+    evidence_gaps = []
+    claim = _canonical_claim(
+        state.get("missing_claim") or state.get("claim_gap") or context.get("missing_claim")
+    )
+    if claim:
+        evidence_gaps.append({"claim": claim, "reason": "需要只读证据确认"})
+    missing_data = current.get("missing_data")
+    if isinstance(missing_data, list):
+        evidence_gaps.extend(
+            {"field": _safe_text(value)[:128], "reason": "巡检数据缺失"}
+            for value in missing_data
+            if _safe_text(value)
+        )
+
+    return {
+        "comparisons": comparisons,
+        "root_cause_candidates": root_causes,
+        "priority_actions": priority_actions,
+        "evidence_gaps": evidence_gaps,
+    }
 
 
 def route_after_plan(state: Mapping[str, Any]) -> str:

@@ -268,7 +268,7 @@ class ResourceInspectionSummary(CreatedModel):
     p4_count = models.IntegerField(default=0)
     ai_dependent_cases = models.IntegerField(default=0)
     ai_investigation_count = models.IntegerField(default=0)
-    health_score = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    health_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     status = models.CharField(max_length=32, default="PENDING", db_index=True)
     started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)

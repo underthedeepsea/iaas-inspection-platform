@@ -180,6 +180,7 @@ def _serialize_investigation(investigation):
         "entry_reason": investigation.entry_reason,
         "missing_claim": investigation.missing_claim,
         "conclusion": _text(investigation.conclusion, 4000),
+        "result": _public_json(investigation.result or {}),
         "confidence": _number(investigation.confidence),
         "max_rounds": investigation.max_rounds,
         "rounds_used": investigation.rounds_used,

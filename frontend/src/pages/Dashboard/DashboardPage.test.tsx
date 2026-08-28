@@ -68,6 +68,12 @@ describe('DashboardPage', () => {
     expect(screen.getByText('12 个对象')).toBeInTheDocument()
     expect(screen.getByText('风险 2')).toBeInTheDocument()
     expect(screen.getByText('资源健康状态')).toBeInTheDocument()
+    expect([...document.querySelectorAll('[data-dashboard-section]')].map((node) => node.getAttribute('data-dashboard-section'))).toEqual([
+      'kpi',
+      'resource-health',
+      'trend-and-risks',
+      'auxiliary',
+    ])
   })
 
   it('shows an empty-state CTA when no resource types are returned', async () => {

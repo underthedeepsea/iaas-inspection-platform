@@ -46,6 +46,10 @@ class InvestigationState(TypedDict, total=False):
     confidence: float
     error_code: str
     error_message: str
+    comparisons: list[Any]
+    root_cause_candidates: list[Any]
+    priority_actions: list[Any]
+    evidence_gaps: list[Any]
     final: dict[str, Any]
 
 
@@ -67,6 +71,10 @@ def initial_state(values: dict[str, Any] | None = None) -> InvestigationState:
         "tool_history": list(values.get("tool_history") or []) if isinstance(values.get("tool_history"), list) else [],
         "facts": list(values.get("facts") or []) if isinstance(values.get("facts"), list) else [],
         "next_steps": list(values.get("next_steps") or []) if isinstance(values.get("next_steps"), list) else [],
+        "comparisons": list(values.get("comparisons") or []) if isinstance(values.get("comparisons"), list) else [],
+        "root_cause_candidates": list(values.get("root_cause_candidates") or []) if isinstance(values.get("root_cause_candidates"), list) else [],
+        "priority_actions": list(values.get("priority_actions") or []) if isinstance(values.get("priority_actions"), list) else [],
+        "evidence_gaps": list(values.get("evidence_gaps") or []) if isinstance(values.get("evidence_gaps"), list) else [],
         "status": str(values.get("status", "")),
     }
     return state

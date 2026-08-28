@@ -10,6 +10,13 @@ export interface CreateInvestigationInput {
   dateTo?: string
 }
 
+export interface StructuredInvestigationResult {
+  comparisons?: unknown[]
+  root_cause_candidates?: unknown[]
+  priority_actions?: unknown[]
+  evidence_gaps?: unknown[]
+}
+
 export interface Investigation {
   id: string
   investigation_id: string
@@ -20,6 +27,7 @@ export interface Investigation {
   started_at?: string | null
   finished_at?: string | null
   conversation_id?: string | null
+  result?: StructuredInvestigationResult & Record<string, unknown>
 }
 
 export interface ConversationTurnResponse {
@@ -33,6 +41,15 @@ export interface InvestigationEvent {
   event_type: string
   status: string
   payload: Record<string, unknown>
+}
+
+interface InvestigationEventResponse {
+  sequence: number
+  event_type: string
+  event?: string
+  status: string
+  data?: Record<string, unknown>
+  payload?: Record<string, unknown>
 }
 
 export const investigationKeys = {
@@ -59,6 +76,18 @@ export async function createResourceInvestigation(code: string, input: CreateInv
 export async function getInvestigation(id: string) {
   const response = await apiClient.get<Investigation>(`/investigations/${encodeURIComponent(id)}`)
   return response.data
+}
+
+export async function getInvestigationEvents(id: string) {
+  const response = await apiClient.get<{ items: InvestigationEventResponse[] }>(`/investigations/${encodeURIComponent(id)}/events`, {
+    params: { page: 1, page_size: 100 },
+  })
+  return (response.data.items ?? []).map((event): InvestigationEvent => ({
+    sequence: event.sequence,
+    event_type: event.event_type || event.event || 'turn.error',
+    status: event.status,
+    payload: event.payload ?? event.data ?? {},
+  }))
 }
 
 export async function createConversationTurn(conversationId: string, message: string) {

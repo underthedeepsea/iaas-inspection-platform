@@ -56,6 +56,7 @@ def run_resource_investigation(
                     graph_input,
                     gateway=gateway,
                     allow_tools=True,
+                    event_sink=_event_sink(investigation_id),
                 )
         except Exception:
             logger.exception(
@@ -66,7 +67,13 @@ def run_resource_investigation(
         metadata = _model_metadata(gateway, raw_result)
 
     result = sanitize_result(raw_result)
-    _persist_result(investigation_id, result, metadata, context)
+    _persist_result(
+        investigation_id,
+        result,
+        metadata,
+        context,
+        realtime_events=not failed_tools and graph_runner is None,
+    )
     return Investigation.objects.get(pk=investigation_id)
 
 
@@ -137,7 +144,7 @@ def _resource_question(context):
     )
 
 
-def _persist_result(investigation_id, result, metadata, context):
+def _persist_result(investigation_id, result, metadata, context, *, realtime_events=False):
     with transaction.atomic():
         investigation = Investigation.objects.select_for_update().get(pk=investigation_id)
         if investigation.finished_at is not None and investigation.status in {
@@ -188,31 +195,32 @@ def _persist_result(investigation_id, result, metadata, context):
                 )
             evidence_rows.append(row)
 
-        for history in result.get("tool_history") or []:
-            outcome = history.get("outcome")
-            succeeded = outcome == "SUCCEEDED"
-            failed = outcome in {"FAILED", "REJECTED", "BUDGET_EXHAUSTED"}
-            _append_event(
-                investigation,
-                "tool.started",
-                InvestigationEvent.Status.STARTED,
-                {
-                    "capability_id": history.get("capability_id", ""),
-                    "arguments": history.get("arguments") or {},
-                },
-            )
-            _append_event(
-                investigation,
-                "tool.completed" if succeeded else "tool.failed" if failed else "tool.requested",
-                InvestigationEvent.Status.COMPLETED if succeeded else InvestigationEvent.Status.FAILED if failed else InvestigationEvent.Status.INFO,
-                {
-                    "capability_id": history.get("capability_id", ""),
-                    "status": history.get("status", "UNKNOWN"),
-                    "outcome": outcome or "UNKNOWN",
-                    "evidence_key": history.get("evidence_key", ""),
-                    "error_code": history.get("error_code", ""),
-                },
-            )
+        if not realtime_events:
+            for history in result.get("tool_history") or []:
+                outcome = history.get("outcome")
+                succeeded = outcome == "SUCCEEDED"
+                failed = outcome in {"FAILED", "REJECTED", "BUDGET_EXHAUSTED"}
+                _append_event(
+                    investigation,
+                    "tool.started",
+                    InvestigationEvent.Status.STARTED,
+                    {
+                        "capability_id": history.get("capability_id", ""),
+                        "arguments": history.get("arguments") or {},
+                    },
+                )
+                _append_event(
+                    investigation,
+                    "tool.completed" if succeeded else "tool.failed" if failed else "tool.requested",
+                    InvestigationEvent.Status.COMPLETED if succeeded else InvestigationEvent.Status.FAILED if failed else InvestigationEvent.Status.INFO,
+                    {
+                        "capability_id": history.get("capability_id", ""),
+                        "status": history.get("status", "UNKNOWN"),
+                        "outcome": outcome or "UNKNOWN",
+                        "evidence_key": history.get("evidence_key", ""),
+                        "error_code": history.get("error_code", ""),
+                    },
+                )
         for row in evidence_rows:
             reference = context_evidence.get(row.evidence_key, {})
             _append_event(
@@ -243,6 +251,7 @@ def _persist_result(investigation_id, result, metadata, context):
             "FAILED": Investigation.Status.FAILED,
         }[status]
         investigation.conclusion = result["conclusion"]
+        investigation.result = dict(result["final"])
         investigation.confidence = result["confidence"]
         investigation.rounds_used = result["rounds_used"]
         investigation.tool_calls_used = result["tool_calls_used"]
@@ -258,6 +267,7 @@ def _persist_result(investigation_id, result, metadata, context):
             update_fields=[
                 "status",
                 "conclusion",
+                "result",
                 "confidence",
                 "rounds_used",
                 "tool_calls_used",
@@ -281,6 +291,10 @@ def _persist_result(investigation_id, result, metadata, context):
                 "status": status,
                 "evidence_count": len(evidence_rows),
                 "next_steps": result["next_steps"],
+                "comparisons": result.get("comparisons", []),
+                "root_cause_candidates": result.get("root_cause_candidates", []),
+                "priority_actions": result.get("priority_actions", []),
+                "evidence_gaps": result.get("evidence_gaps", []),
             },
         )
 
@@ -366,6 +380,17 @@ def _append_event(investigation, event_type, status, payload):
         status=status,
         payload=payload,
     )
+
+
+def _event_sink(investigation_id):
+    def emit(event_type, payload, status=InvestigationEvent.Status.INFO):
+        with transaction.atomic():
+            investigation = Investigation.objects.select_for_update().get(pk=investigation_id)
+            if investigation.finished_at is not None:
+                return
+            _append_event(investigation, event_type, status, payload)
+
+    return emit
 
 
 def _conclusion(context):

@@ -369,6 +369,9 @@ Material Residual / Claim Gap?
 
 这保证新插件注册并激活后，同类 Case 自动减少 LLM 调用。
 
+
+
+
 ---
 
 ## 8. 每日巡检执行设计

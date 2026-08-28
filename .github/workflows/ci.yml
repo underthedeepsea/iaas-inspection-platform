@@ -4,7 +4,9 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main]
+    branches:
+      - main
+      - 'codex/**'
 
 jobs:
   verify:
@@ -13,9 +15,10 @@ jobs:
       DJANGO_SETTINGS_MODULE: config.settings.dev
       DJANGO_SECRET_KEY: ci-only-secret
       DATABASE_URL: postgresql://inspection:inspection_dev@127.0.0.1:5432/inspection
-      LLM_PROVIDER: ollama
-      OLLAMA_BASE_URL: http://127.0.0.1:11434
-      OLLAMA_MODEL: ci-model
+      LLM_PROVIDER: fake
+      FAKE_MODEL: ci-deterministic
+      FAKE_CAPABILITY_ID: e2e.llm.scheduler.pressure
+      FAKE_ASSET_ID: llm-0
       LLM_TIMEOUT_SECONDS: 1
       E2E_USERNAME: e2e
       E2E_PASSWORD: e2e-password

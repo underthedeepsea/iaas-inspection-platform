@@ -83,8 +83,41 @@ def test_resolve_scope_rejects_unsupported_selector_keys():
     ResourceType.objects.create(
         code="BAD_SELECTOR",
         name="Bad selector",
-        asset_selector={"labels": {"team": "llm"}},
+        asset_selector={"selector": {"team": "llm"}},
     )
 
     with pytest.raises(UnsupportedAssetSelector):
         resolve_scope(environment_id=environment.id, resource_type_codes=["BAD_SELECTOR"])
+
+
+@pytest.mark.django_db
+def test_resolve_scope_matches_supported_labels_exactly():
+    environment = make_environment()
+    kvm = Asset.objects.create(
+        environment=environment,
+        external_key="cluster-kvm",
+        asset_type=Asset.AssetType.CLUSTER,
+        name="KVM",
+        labels={"platform": "kvm", "zone": "a"},
+    )
+    kubernetes = Asset.objects.create(
+        environment=environment,
+        external_key="cluster-k8s",
+        asset_type=Asset.AssetType.CLUSTER,
+        name="Kubernetes",
+        labels={"platform": "kubernetes", "zone": "a"},
+    )
+    resource_type = ResourceType.objects.create(
+        code="KVM_CLUSTER_SCOPE",
+        name="KVM",
+        asset_selector={"asset_types": ["CLUSTER"], "labels": {"platform": "kvm"}},
+    )
+    InspectionItemResourceType.objects.create(resource_type=resource_type, inspection_item=make_item("scope.kvm"))
+
+    scope = resolve_scope(
+        environment_id=environment.id,
+        resource_type_codes=[resource_type.code],
+    )
+
+    assert scope.asset_ids == (kvm.id,)
+    assert kubernetes.id not in scope.asset_ids

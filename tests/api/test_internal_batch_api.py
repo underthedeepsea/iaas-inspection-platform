@@ -113,6 +113,11 @@ def test_every_batch_stage_is_retry_safe_and_returns_same_resources():
     run = InspectionRun.objects.get(pk=run_id)
     assert run.status == InspectionRun.Status.RUNNING
     assert run.finished_at is None
+    execute_events = list(
+        run.events.order_by("sequence").values_list("event_type", flat=True)
+    )
+    assert execute_events.index("inspection.started") < execute_events.index("inspection.item.started")
+    assert execute_events.index("inspection.item.completed") < execute_events.index("inspection.completed")
 
     correlate_path = f"/inspection-runs/{run_id}/correlate-risks/"
     correlate_first = _post(client, correlate_path)
@@ -121,7 +126,6 @@ def test_every_batch_stage_is_retry_safe_and_returns_same_resources():
     assert Risk.objects.count() == 1
     assert RiskObservation.objects.count() == 1
     assert RiskStatusHistory.objects.count() == 1
-
     reverify_path = f"/inspection-runs/{run_id}/reverify/"
     reverify_first = _post(client, reverify_path)
     reverify_retry = _post(client, reverify_path)
@@ -131,6 +135,8 @@ def test_every_batch_stage_is_retry_safe_and_returns_same_resources():
     run.refresh_from_db()
     assert run.status == InspectionRun.Status.RUNNING
     assert run.finished_at is None
+    event_types = list(run.events.order_by("sequence").values_list("event_type", flat=True))
+    assert event_types.index("risk.correlation.completed") < event_types.index("ai.admission.started")
 
     resource_summary_path = f"/inspection-runs/{run_id}/resource-summaries/"
     resource_summary_first = _post(client, resource_summary_path)

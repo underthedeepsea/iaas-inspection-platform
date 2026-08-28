@@ -45,7 +45,9 @@ def test_manual_run_freezes_asset_scope_for_each_inspection_item():
     llm_scope = run.item_runs.get(inspection_item=llm_item).asset_scope
     assert control_scope["resource_types"] == [control_plane.code]
     assert llm_scope["resource_types"] == [llm_runtime.code]
-    assert set(control_scope["asset_ids"]).isdisjoint(llm_scope["asset_ids"])
+    # CONTROL_PLANE and LLM_RUNTIME intentionally share POD assets under the
+    # v0.2 resource composition contract.
+    assert set(control_scope["asset_ids"]) & set(llm_scope["asset_ids"])
     assert set(control_scope["asset_ids"]) | set(llm_scope["asset_ids"]) == set(
         run.config_snapshot["resolved_scope"]["asset_ids"]
     )

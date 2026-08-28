@@ -33,6 +33,7 @@ STAGE_ORDER = (
     "execute",
     "correlate_risks",
     "reverify",
+    "ai_admission",
     "resource_summaries",
     "snapshot",
     "complete",
@@ -49,6 +50,7 @@ def start_manual_inspection_run(run_id):
         _execute(run)
         _correlate(run)
         _reverify(run)
+        _admit(run)
         _summarize(run)
         _snapshot(run)
         _complete(run)
@@ -94,6 +96,12 @@ def _execute(run):
         if _stage_done(run, "execute"):
             return
         items = _items_for_run(run)
+        append_run_event(
+            run,
+            "inspection.started",
+            InspectionRun.Status.RUNNING,
+            {"total_items": len(items)},
+        )
         for item in items:
             append_run_event(
                 run,
@@ -144,25 +152,17 @@ def _execute(run):
                     "completed_asset_count": len((item_run.asset_scope or {}).get("asset_ids") or []),
                 },
             )
-            append_run_event(
-                run,
-                "ai.admission.started",
-                InspectionRun.Status.RUNNING,
-                {
-                    "inspection_item_id": str(item_run.inspection_item_id),
-                    "inspection_item_code": item_run.inspection_item.code,
-                },
-            )
-            append_run_event(
-                run,
-                "ai.admission.completed",
-                InspectionRun.Status.SUCCEEDED,
-                {
-                    "inspection_item_id": str(item_run.inspection_item_id),
-                    "inspection_item_code": item_run.inspection_item.code,
-                    "status": item_run.ai_admission_status,
-                },
-            )
+        failed = sum(item_run.status == InspectionItemRun.Status.FAILED for item_run in item_runs)
+        append_run_event(
+            run,
+            "inspection.completed",
+            InspectionRun.Status.PARTIAL if failed else InspectionRun.Status.SUCCEEDED,
+            {
+                "total_items": total,
+                "success_items": total - failed,
+                "failed_items": failed,
+            },
+        )
         _mark_stage(run, "execute")
 
 
@@ -188,6 +188,33 @@ def _reverify(run):
             return
         reverify_pending_risks(run, allow_nonterminal=True, as_of=timezone.now())
         _mark_stage(run, "reverify")
+
+
+def _admit(run):
+    if _stage_done(run, "ai_admission"):
+        return
+    with transaction.atomic():
+        run = _locked_run(run.pk)
+        if _stage_done(run, "ai_admission"):
+            return
+        item_runs = list(
+            InspectionItemRun.objects.filter(inspection_run=run)
+            .select_related("inspection_item")
+            .order_by("inspection_item__code", "pk")
+        )
+        append_run_event(run, "ai.admission.started", InspectionRun.Status.RUNNING, {})
+        for item_run in item_runs:
+            append_run_event(
+                run,
+                "ai.admission.completed",
+                InspectionRun.Status.SUCCEEDED,
+                {
+                    "inspection_item_id": str(item_run.inspection_item_id),
+                    "inspection_item_code": item_run.inspection_item.code,
+                    "status": item_run.ai_admission_status,
+                },
+            )
+        _mark_stage(run, "ai_admission")
 
 
 def _summarize(run):

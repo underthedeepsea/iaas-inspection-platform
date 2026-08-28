@@ -1,3 +1,5 @@
+import { Card, Statistic } from 'antd'
+
 export function ResourceKPI({
   label,
   value,
@@ -9,11 +11,5 @@ export function ResourceKPI({
   detail?: string
   tone?: 'critical' | 'warn'
 }) {
-  return (
-    <article className={`metric-card${tone ? ` metric-card-${tone}` : ''}`}>
-      <span>{label}</span>
-      <strong>{value}</strong>
-      {detail ? <small>{detail}</small> : null}
-    </article>
-  )
+  return <Card className={`metric-card${tone ? ` metric-card-${tone}` : ''}`} bordered={false} styles={{ body: { padding: 0 } }}><Statistic title={label} value={value} /><small>{detail}</small></Card>
 }

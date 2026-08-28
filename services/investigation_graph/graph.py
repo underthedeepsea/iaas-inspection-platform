@@ -31,6 +31,7 @@ def build_investigation_graph(
     executor: Any | None = None,
     max_rounds: int = 3,
     max_tool_calls: int = 5,
+    event_sink: Any | None = None,
 ):
     """Compile the investigation graph with all external dependencies injected.
 
@@ -46,7 +47,12 @@ def build_investigation_graph(
         registry = _LazyCapabilityRegistry()
     if executor is None:
         executor = _LazyPluginExecutor()
-    runtime = InvestigationRuntime(gateway=gateway, registry=registry, executor=executor)
+    runtime = InvestigationRuntime(
+        gateway=gateway,
+        registry=registry,
+        executor=executor,
+        event_sink=event_sink,
+    )
 
     workflow = StateGraph(InvestigationState)
     workflow.add_node("build_context", build_context)
@@ -64,6 +70,7 @@ def build_investigation_graph(
             state,
             registry=runtime.registry,
             executor=runtime.executor,
+            event_sink=runtime.event_sink,
         ),
     )
     workflow.add_node("final_answer", final_answer)

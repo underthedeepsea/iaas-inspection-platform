@@ -12,6 +12,7 @@ from apps.inspections.models import (
 )
 from apps.investigations.models import Investigation
 from apps.risks.models import RiskObservation
+from apps.inspections.services.scope import asset_ids_for_selectors
 
 
 def build_resource_summaries(run_id):
@@ -52,7 +53,7 @@ def _build_summary(run, resource_type):
             inspection_item_id__in=item_ids,
         ).order_by("inspection_item__code", "pk")
     )
-    total_asset_ids = _asset_ids_for_type(run, resource_type)
+    total_asset_ids = {str(value) for value in _asset_ids_for_type(run, resource_type)}
     covered_asset_ids = _covered_asset_ids(run, item_runs)
     covered_asset_ids &= total_asset_ids
     findings = Finding.objects.filter(inspection_item_run_id__in=[row.pk for row in item_runs])
@@ -79,15 +80,23 @@ def _build_summary(run, resource_type):
     ).count()
     assets_total = len(total_asset_ids)
     assets_covered = len(covered_asset_ids)
-    coverage_rate = assets_covered / assets_total if assets_total else 1.0
-    penalty = (
-        severity_counts["P1"] * 25
-        + severity_counts["P2"] * 12
-        + severity_counts["P3"] * 4
-        + severity_counts["P4"] * 1
-    )
-    coverage_penalty = round(max(0.0, 1.0 - coverage_rate) * 20)
-    health_score = max(0, min(100, 100 - penalty - coverage_penalty))
+    if assets_total:
+        coverage_rate = assets_covered / assets_total
+        penalty = (
+            severity_counts["P1"] * 25
+            + severity_counts["P2"] * 12
+            + severity_counts["P3"] * 4
+            + severity_counts["P4"] * 1
+        )
+        coverage_penalty = round(max(0.0, 1.0 - coverage_rate) * 20)
+        health_score = max(0, min(100, 100 - penalty - coverage_penalty))
+        data_state = "READY"
+    else:
+        coverage_rate = None
+        penalty = None
+        coverage_penalty = None
+        health_score = None
+        data_state = "NO_DATA"
     breakdown = {
         "penalty": penalty,
         "coverage_penalty": coverage_penalty,
@@ -111,13 +120,14 @@ def _build_summary(run, resource_type):
         "p4_count": severity_counts["P4"],
         "ai_dependent_cases": ai_cases,
         "ai_investigation_count": investigation_count,
-        "health_score": Decimal(str(health_score)),
+        "health_score": Decimal(str(health_score)) if health_score is not None else None,
         "status": run.status,
         "started_at": run.started_at,
         "finished_at": run.finished_at,
         "summary": {
             "resource_type": resource_type.code,
             "coverage_rate": coverage_rate,
+            "data_state": data_state,
             "severity_counts": dict(severity_counts),
             "health_score_breakdown": breakdown,
         },
@@ -132,17 +142,13 @@ def _build_summary(run, resource_type):
 
 def _asset_ids_for_type(run, resource_type):
     selector = resource_type.asset_selector or {}
-    asset_types = selector.get("asset_types", [])
     resolved = (run.config_snapshot or {}).get("resolved_scope") or {}
     frozen_ids = resolved.get("asset_ids")
-    query = Asset.objects.filter(
-        environment_id=run.environment_id,
-        status=Asset.Status.ACTIVE,
-        asset_type__in=asset_types,
+    return asset_ids_for_selectors(
+        run.environment_id,
+        [selector],
+        frozen_ids=frozen_ids,
     )
-    if frozen_ids is not None:
-        query = query.filter(id__in=frozen_ids)
-    return {str(value) for value in query.values_list("id", flat=True)}
 
 
 def _covered_asset_ids(run, item_runs):

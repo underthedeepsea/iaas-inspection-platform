@@ -110,6 +110,24 @@ def test_data_incomplete_omits_required_data_instead_of_fabricating_null_metrics
     assert all(point.value is not None for point in dataset.metrics)
 
 
+def test_mixed_fixture_contains_control_plane_and_llm_signals():
+    dataset = generate_dataset(1729, "mixed_resource_inspection", BUSINESS_DATE)
+
+    assert {asset.asset_type for asset in dataset.assets} >= {
+        "CLUSTER",
+        "HOST",
+        "POD",
+        "GPU",
+        "LLM_INSTANCE",
+    }
+    assert {event.reason for event in dataset.events} >= {
+        "ANTI_AFFINITY_VIOLATION",
+        "SCHEDULER_PRESSURE",
+    }
+    assert {log.source for log in dataset.logs} >= {"scheduler"}
+    assert {change.asset_key for change in dataset.changes} >= {"llm-0"}
+
+
 @pytest.mark.django_db
 def test_persist_dataset_writes_ready_dataset_and_all_mock_rows():
     from apps.core.models import Environment

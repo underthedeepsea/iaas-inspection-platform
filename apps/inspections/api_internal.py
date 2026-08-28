@@ -504,6 +504,13 @@ def execute(request, run_id):
             ).order_by("code", "created_at", "pk")
         else:
             item_queryset = InspectionItem.objects.filter(enabled=True).order_by("code", "created_at")
+        item_queryset = list(item_queryset)
+        append_run_event(
+            run,
+            "inspection.started",
+            InspectionRun.Status.RUNNING,
+            {"total_items": len(item_queryset)},
+        )
         for item in item_queryset:
             append_run_event(
                 run,
@@ -513,9 +520,10 @@ def execute(request, run_id):
             )
         execute_inspection_run(run)
         completed_items = 0
-        item_runs = InspectionItemRun.objects.filter(inspection_run=run).select_related("inspection_item")
-        for item_run in item_runs:
-            completed_items += 1
+        item_runs = list(
+            InspectionItemRun.objects.filter(inspection_run=run).select_related("inspection_item")
+        )
+        for completed_items, item_run in enumerate(item_runs, start=1):
             event_status = InspectionRun.Status.SUCCEEDED if item_run.status == InspectionItemRun.Status.SUCCEEDED else InspectionRun.Status.FAILED
             append_run_event(
                 run,
@@ -533,10 +541,21 @@ def execute(request, run_id):
                 InspectionRun.Status.RUNNING,
                 {
                     "completed_items": completed_items,
-                    "total_items": item_runs.count(),
+                    "total_items": len(item_runs),
                     "completed_asset_count": len((item_run.asset_scope or {}).get("asset_ids") or []),
                 },
             )
+        failed_items = sum(item_run.status == InspectionItemRun.Status.FAILED for item_run in item_runs)
+        append_run_event(
+            run,
+            "inspection.completed",
+            InspectionRun.Status.PARTIAL if failed_items else InspectionRun.Status.SUCCEEDED,
+            {
+                "total_items": len(item_runs),
+                "success_items": len(item_runs) - failed_items,
+                "failed_items": failed_items,
+            },
+        )
         _mark_stage(run, "execute")
     return _run_response(run)
 
@@ -576,6 +595,23 @@ def reverify(request, run_id):
                 allow_nonterminal=True,
                 as_of=timezone.now(),
             )
+            item_runs = list(
+                InspectionItemRun.objects.filter(inspection_run=run)
+                .select_related("inspection_item")
+                .order_by("inspection_item__code", "pk")
+            )
+            append_run_event(run, "ai.admission.started", InspectionRun.Status.RUNNING, {})
+            for item_run in item_runs:
+                append_run_event(
+                    run,
+                    "ai.admission.completed",
+                    InspectionRun.Status.SUCCEEDED,
+                    {
+                        "inspection_item_id": str(item_run.inspection_item_id),
+                        "inspection_item_code": item_run.inspection_item.code,
+                        "status": item_run.ai_admission_status,
+                    },
+                )
             _mark_stage(run, "reverify")
     return _run_response(run)
 
@@ -587,6 +623,7 @@ def resource_summaries(request, run_id):
         run = _run(run.pk, lock=True)
         if not _stage_done(run, "resource_summaries"):
             _require_predecessor(run, "resource_summaries")
+            append_run_event(run, "summary.started", InspectionRun.Status.RUNNING, {})
             summaries = build_resource_summaries(run)
             append_run_event(
                 run,

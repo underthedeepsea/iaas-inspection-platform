@@ -179,7 +179,7 @@ def _summary_projection(summary):
         "inspection_run_id": str(summary.inspection_run_id),
         "run_date": summary.inspection_run.run_date.isoformat(),
         "status": summary.status,
-        "health_score": float(summary.health_score),
+        "health_score": float(summary.health_score) if summary.health_score is not None else None,
         "assets_total": summary.assets_total,
         "assets_covered": summary.assets_covered,
         "finding_count": summary.finding_count,

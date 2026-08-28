@@ -82,6 +82,15 @@ def test_manual_run_uses_production_orchestrator_and_publishes_resource_summary(
         "summary.completed",
         "run.completed",
     }
+    event_types = list(
+        InspectionRunEvent.objects.filter(inspection_run=run)
+        .order_by("sequence")
+        .values_list("event_type", flat=True)
+    )
+    assert event_types.index("inspection.started") < event_types.index("inspection.completed")
+    assert event_types.index("inspection.completed") < event_types.index("risk.correlation.started")
+    assert event_types.index("risk.correlation.completed") < event_types.index("ai.admission.started")
+    assert event_types.index("ai.admission.completed") < event_types.index("summary.started")
     summary = ResourceInspectionSummary.objects.get(inspection_run=run, resource_type=resource_type)
     assert summary.health_score is not None
 

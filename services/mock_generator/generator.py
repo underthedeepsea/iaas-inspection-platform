@@ -189,12 +189,16 @@ def _assets_for(scenario):
         if scenario == "control_plane_anti_affinity"
         else "host-worker-0"
     )
-    return [
+    cluster_platform = {
+        "kvm_cluster_baseline": "kvm",
+        "k8s_cluster_baseline": "kubernetes",
+    }.get(scenario, "kubernetes")
+    assets = [
         AssetRecord(
             "cluster-0",
             "CLUSTER",
             "mock-cluster",
-            labels={"environment": "mock"},
+            labels={"environment": "mock", "platform": cluster_platform},
             topology={"zones": ["zone-a", "zone-b"]},
         ),
         AssetRecord(
@@ -254,6 +258,18 @@ def _assets_for(scenario):
             topology={"gpu": "gpu-0"},
         ),
     ]
+    if scenario == "mixed_resource_inspection":
+        assets.insert(
+            1,
+            AssetRecord(
+                "cluster-k8s-0",
+                "CLUSTER",
+                "mock-kubernetes-cluster",
+                labels={"environment": "mock", "platform": "kubernetes"},
+                topology={"zones": ["zone-a", "zone-b"]},
+            ),
+        )
+    return assets
 
 
 def _metrics_for(scenario, timestamps, rng):
@@ -288,7 +304,7 @@ def _metrics_for(scenario, timestamps, rng):
                 ),
             )
         )
-        if scenario == "llm_scheduler_pressure":
+        if scenario in {"llm_scheduler_pressure", "mixed_resource_inspection"}:
             ttft = 100 + index * 20 + rng.randint(-2, 2)
             queue = 2 + index * 3 + rng.randint(-1, 1)
             gpu_util = 84 - index * 4 + rng.randint(-1, 1)
@@ -304,8 +320,9 @@ def _metrics_for(scenario, timestamps, rng):
 
 
 def _logs_for(scenario, timestamps):
-    if scenario == "llm_scheduler_pressure":
-        return [
+    logs = []
+    if scenario in {"llm_scheduler_pressure", "mixed_resource_inspection"}:
+        logs.append(
             LogRecord(
                 "llm-0",
                 timestamps[-1],
@@ -314,9 +331,9 @@ def _logs_for(scenario, timestamps):
                 "scheduler queue pressure detected",
                 {"signal": "scheduler_pressure"},
             )
-        ]
-    if scenario == "control_plane_anti_affinity":
-        return [
+        )
+    if scenario in {"control_plane_anti_affinity", "mixed_resource_inspection"}:
+        logs.append(
             LogRecord(
                 "control-plane-1",
                 timestamps[-1],
@@ -325,7 +342,9 @@ def _logs_for(scenario, timestamps):
                 "control-plane anti-affinity violation",
                 {"signal": "anti_affinity"},
             )
-        ]
+        )
+    if logs:
+        return logs
     if scenario == "data_incomplete":
         return [
             LogRecord(
@@ -350,8 +369,9 @@ def _logs_for(scenario, timestamps):
 
 
 def _events_for(scenario, timestamps):
-    if scenario == "control_plane_anti_affinity":
-        return [
+    events = []
+    if scenario in {"control_plane_anti_affinity", "mixed_resource_inspection"}:
+        events.append(
             EventRecord(
                 "control-plane-1",
                 timestamps[-1],
@@ -364,9 +384,9 @@ def _events_for(scenario, timestamps):
                     "members": ["control-plane-0", "control-plane-1"],
                 },
             )
-        ]
-    if scenario == "llm_scheduler_pressure":
-        return [
+        )
+    if scenario in {"llm_scheduler_pressure", "mixed_resource_inspection"}:
+        events.append(
             EventRecord(
                 "llm-0",
                 timestamps[-1],
@@ -375,7 +395,9 @@ def _events_for(scenario, timestamps):
                 "LLM scheduler pressure is increasing",
                 {"signals": ["ttft_ms", "queue_depth", "gpu_util_percent"]},
             )
-        ]
+        )
+    if events:
+        return events
     if scenario == "data_incomplete":
         return [
             EventRecord(
@@ -391,7 +413,7 @@ def _events_for(scenario, timestamps):
 
 
 def _changes_for(scenario, timestamps):
-    return [
+    changes = [
         ChangeRecord(
             "llm-0",
             timestamps[1],
@@ -401,6 +423,18 @@ def _changes_for(scenario, timestamps):
             {"scenario": scenario},
         )
     ]
+    if scenario == "mixed_resource_inspection":
+        changes.append(
+            ChangeRecord(
+                "control-plane-1",
+                timestamps[2],
+                timestamps[3],
+                "topology_change",
+                "mock control-plane placement change",
+                {"scenario": scenario},
+            )
+        )
+    return changes
 
 
 __all__ = [

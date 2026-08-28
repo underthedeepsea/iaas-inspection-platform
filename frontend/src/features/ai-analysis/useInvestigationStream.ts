@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-import { investigationEventsUrl, type InvestigationEvent } from '../../api/investigations'
+import { getInvestigationEvents, investigationEventsUrl, type InvestigationEvent } from '../../api/investigations'
 
 export const INVESTIGATION_EVENT_TYPES = [
   'context.ready',
@@ -8,10 +8,17 @@ export const INVESTIGATION_EVENT_TYPES = [
   'tool.started',
   'tool.completed',
   'tool.failed',
+  'evidence.created',
   'analysis.started',
   'analysis.completed',
   'analysis.failed',
 ] as const
+
+function mergeEvents(current: InvestigationEvent[], incoming: InvestigationEvent[]) {
+  const bySequence = new Map(current.map((event) => [event.sequence, event]))
+  for (const event of incoming) bySequence.set(event.sequence, event)
+  return [...bySequence.values()].sort((a, b) => a.sequence - b.sequence)
+}
 
 export function useInvestigationStream(investigationId?: string) {
   const [events, setEvents] = useState<InvestigationEvent[]>([])
@@ -20,16 +27,26 @@ export function useInvestigationStream(investigationId?: string) {
   useEffect(() => {
     if (!investigationId) return
     setEvents([])
+    let active = true
+    void getInvestigationEvents(investigationId)
+      .then((history) => {
+        if (!active) return
+        setEvents((current) => mergeEvents(current, history))
+        setRecovering(false)
+      })
+      .catch(() => {
+        if (active) setRecovering(true)
+      })
     if (typeof EventSource === 'undefined') {
       setRecovering(true)
-      return
+      return () => { active = false }
     }
     const source = new EventSource(investigationEventsUrl(investigationId))
     const handle = (event: Event) => {
       const message = event as MessageEvent<string>
       try {
         const data = JSON.parse(message.data) as InvestigationEvent
-        setEvents((current) => current.some((item) => item.sequence === data.sequence) ? current : [...current, data].sort((a, b) => a.sequence - b.sequence))
+        setEvents((current) => mergeEvents(current, [data]))
         setRecovering(false)
         if (data.event_type === 'analysis.completed' || data.event_type === 'analysis.failed') source.close()
       } catch {
@@ -38,7 +55,7 @@ export function useInvestigationStream(investigationId?: string) {
     }
     source.onerror = () => setRecovering(true)
     for (const type of INVESTIGATION_EVENT_TYPES) source.addEventListener(type, handle)
-    return () => source.close()
+    return () => { active = false; source.close() }
   }, [investigationId])
 
   return { events, recovering }

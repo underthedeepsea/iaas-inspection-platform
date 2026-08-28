@@ -28,7 +28,7 @@ export function InspectionHistoryTable({
                   {summary.run_date}
                 </button>
               </td>
-              <td>{Math.round(summary.coverage_rate * 100)}%</td>
+              <td>{summary.coverage_rate == null ? '—' : `${Math.round(summary.coverage_rate * 100)}%`}</td>
               <td>{summary.inspection_item_count}</td>
               <td>{summary.finding_count}</td>
               <td>{summary.risk_count}</td>

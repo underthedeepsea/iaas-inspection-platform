@@ -36,6 +36,12 @@ it('renders investigation timeline, partial failure, evidence and final conclusi
       status: 'RESOLVED',
       conclusion: '大模型运行时健康稳定，建议继续观察风险趋势。',
       confidence: 0.8,
+      result: {
+        comparisons: [{ metric: 'health', current: 92, previous: 86 }],
+        root_cause_candidates: [{ title: '调度压力', confidence: 0.78 }],
+        priority_actions: [{ priority: 'P1', action: '扩容调度器' }],
+        evidence_gaps: ['变更负责人'],
+      },
     },
   } as never)
 
@@ -57,13 +63,26 @@ it('renders investigation timeline, partial failure, evidence and final conclusi
     FakeEventSource.instance.emit('history.loaded', {}, 2, 'COMPLETED')
     FakeEventSource.instance.emit('tool.started', { tool: 'summary' }, 3, 'STARTED')
     FakeEventSource.instance.emit('tool.completed', { tool: 'summary' }, 4, 'COMPLETED')
-    FakeEventSource.instance.emit('tool.failed', { tool: 'change_history' }, 5, 'FAILED')
-    FakeEventSource.instance.emit('analysis.completed', { summary: '基于成功工具完成分析。' }, 6, 'COMPLETED')
+    FakeEventSource.instance.emit('evidence.created', {
+      evidence_key: 'queue.depth:1',
+      evidence_type: 'METRIC',
+      source: 'scheduler.metrics',
+      value: { last: 90 },
+      summary: '队列深度连续升高',
+      confidence: 0.93,
+    }, 5, 'COMPLETED')
+    FakeEventSource.instance.emit('tool.failed', { tool: 'change_history' }, 6, 'FAILED')
+    FakeEventSource.instance.emit('analysis.completed', { summary: '基于成功工具完成分析。' }, 7, 'COMPLETED')
   })
 
   expect(screen.getByText('上下文已准备')).toBeInTheDocument()
   expect(screen.getByText('历史数据已加载')).toBeInTheDocument()
   expect(screen.getByText(/部分证据工具失败/)).toBeInTheDocument()
-  expect(screen.getByText('可用证据')).toBeInTheDocument()
+    expect(screen.getByText('可用证据')).toBeInTheDocument()
+    expect(screen.getByText('METRIC · queue.depth:1')).toBeInTheDocument()
+    expect(screen.getByText('相比上一轮')).toBeInTheDocument()
+    expect(screen.getByText('调度压力')).toBeInTheDocument()
+    expect(screen.getByText(/扩容调度器/)).toBeInTheDocument()
+    expect(screen.getByText('变更负责人')).toBeInTheDocument()
   await waitFor(() => expect(screen.getByText('大模型运行时健康稳定，建议继续观察风险趋势。')).toBeInTheDocument())
 })

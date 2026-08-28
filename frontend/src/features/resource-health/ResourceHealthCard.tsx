@@ -1,3 +1,4 @@
+import { Card, Tag } from 'antd'
 import { Link } from 'react-router-dom'
 
 import type { ResourceType } from '../../api/resources'
@@ -12,18 +13,19 @@ export function ResourceHealthCard({ resource }: { resource: ResourceType }) {
     : `${resource.assets_covered} / ${resource.assets_total} 个对象`
 
   return (
-    <article className="panel resource-card">
+    <Card className="panel resource-card" bordered={false} styles={{ body: { padding: 0 } }}>
       <div className="resource-card-header">
         <Link to={`/resources/${resourceCodeToSlug(resource.code)}`}>
           <strong>{resource.name}</strong>
           <small>{resource.description || '资源对象健康状态'}</small>
         </Link>
-        <span className={`severity-badge severity-${severity.toLowerCase()}`}>{severity}</span>
+        <Tag className={`severity-badge severity-${severity.toLowerCase()}`} color={severity === 'P1' ? 'red' : severity === 'P2' ? 'orange' : severity === 'P3' ? 'blue' : 'green'}>{severity}</Tag>
       </div>
       <div className="resource-card-health">
         <strong>{health}</strong>
         <span>健康度</span>
       </div>
+      {resource.data_state === 'NO_DATA' ? <p className="resource-card-no-data">无可用资源数据</p> : null}
       <div className="resource-card-meta">
         <span>{resource.asset_count} 个对象</span>
         <span>巡检项 {resource.inspection_item_count}</span>
@@ -35,6 +37,6 @@ export function ResourceHealthCard({ resource }: { resource: ResourceType }) {
         <span>{resource.last_inspection_at ? '最近已巡检' : '尚未巡检'}</span>
         <Link to={`/resources/${resourceCodeToSlug(resource.code)}`}>查看详情 →</Link>
       </div>
-    </article>
+    </Card>
   )
 }

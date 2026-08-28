@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { Tabs } from 'antd'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 
 import { getResourceHistory, getResourceOverview, getResourceRisks, resourceKeys } from '../../api/resources'
@@ -53,9 +54,13 @@ export function ResourceDetailPage({ environmentId: providedEnvironmentId }: { e
         <div><span className="eyebrow">RESOURCE DETAIL</span><h2 id="resource-detail-title">{resourceName}</h2><p className="lede">{resource?.description ?? '查看资源健康、巡检历史、风险和 AI 研判。'}</p></div>
         <div className="heading-actions"><span className="freshness">{latest?.run_date ? `最近巡检：${latest.run_date}` : '等待最近巡检'}</span>{resource ? <InspectionTriggerButton environmentId={environmentId} resourceTypes={[resource]} /> : null}</div>
       </div>
-      <div aria-label="资源详情标签" className="detail-tabs" role="tablist">
-        {tabs.map(([value, label]) => <button aria-selected={activeTab === value} className={`detail-tab${activeTab === value ? ' is-active' : ''}`} onClick={() => setSearchParams({ tab: value })} role="tab" type="button" key={value}>{label}</button>)}
-      </div>
+      <Tabs
+        activeKey={activeTab}
+        aria-label="资源详情标签"
+        className="detail-tabs"
+        items={tabs.map(([key, label]) => ({ key, label, children: null }))}
+        onChange={(value) => setSearchParams({ tab: value })}
+      />
       {activeTab === 'history' ? (
         <section className="panel panel-large"><div className="section-heading"><div><span className="eyebrow">INSPECTION HISTORY</span><h3>巡检历史</h3></div><span className="legend">按时间回看每次执行</span></div>{historyQuery.isLoading ? <div className="empty-state compact"><p>正在加载巡检历史</p></div> : <InspectionHistoryTable resourceCode={code} summaries={historyQuery.data?.items ?? []} />}</section>
       ) : activeTab === 'overview' ? (
@@ -72,14 +77,16 @@ export function ResourceDetailPage({ environmentId: providedEnvironmentId }: { e
 function OverviewPanel({ overview }: { overview?: Awaited<ReturnType<typeof getResourceOverview>> }) {
   if (!overview) return <section className="panel"><div className="empty-state compact"><strong>正在加载资源概览</strong><p>正在读取健康度、覆盖率和趋势数据。</p></div></section>
   const latest = overview.latest
+  const isNoData = overview.resource_type.data_state === 'NO_DATA' || latest?.summary?.data_state === 'NO_DATA'
   const metrics = [
     ['健康度', latest?.health_score ?? '—', latest?.health_score == null ? '等待巡检结果' : '最近一轮巡检'],
-    ['巡检覆盖率', latest ? `${Math.round(latest.coverage_rate * 100)}%` : '—', '已覆盖资源对象'],
+    ['巡检覆盖率', latest?.coverage_rate == null ? '—' : `${Math.round(latest.coverage_rate * 100)}%`, '已覆盖资源对象'],
     ['当前风险', latest?.risk_count ?? 0, '跨运行关联后的风险'],
     ['P1/P2', `${latest?.p1_count ?? 0} / ${latest?.p2_count ?? 0}`, '按严重级别统计'],
   ] as const
   return (
     <>
+      {isNoData ? <p className="no-data-banner" role="status">无可用资源数据</p> : null}
       <div className="metric-grid">{metrics.map(([label, value, detail]) => <article className="metric-card" key={label}><span>{label}</span><strong>{value}</strong><small>{detail}</small></article>)}</div>
       <div className="content-grid">
         <section className="panel panel-large"><div className="section-heading"><div><span className="eyebrow">HEALTH TREND</span><h3>健康趋势</h3></div><span className="legend">最近 {overview.health_trend.length} 次巡检</span></div><HealthTrendChart trend={overview.health_trend} /></section>

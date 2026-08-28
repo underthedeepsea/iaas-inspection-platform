@@ -252,6 +252,24 @@ def test_claim_gap_calls_only_active_readonly_capability_and_compacts_evidence()
     assert result["summary"] == "scheduler pressure confirmed"
 
 
+def test_tool_events_are_emitted_during_graph_execution():
+    gateway = FakeGateway([call_tool_action(), final_action("scheduler pressure confirmed")])
+    version = active_readonly_version()
+    emitted = []
+
+    result = run_graph(
+        gateway,
+        registry=FakeRegistry(version),
+        executor=FakeExecutor(),
+        event_sink=lambda event_type, payload, status: emitted.append((event_type, status, payload)),
+    )
+
+    assert result["status"] == "RESOLVED"
+    assert [event[0] for event in emitted] == ["tool.started", "tool.completed"]
+    assert emitted[0][2]["capability_id"] == "llm.scheduler.pressure"
+    assert emitted[1][2]["evidence_key"]
+
+
 def test_claim_gap_rejects_write_capability_before_executor_dispatch():
     gateway = FakeGateway([call_tool_action(), final_action("cannot verify")])
     version = active_readonly_version()
@@ -819,3 +837,29 @@ def test_normal_execution_public_state_keeps_only_bounded_message_roles():
     assert "read-only" in outbound[0]["content"].lower()
     assert json.loads(outbound[1]["content"])["history"] == [{"role": "user"}, {"role": "assistant"}]
     assert all(key in result for key in ("summary", "conclusion", "facts", "next_steps"))
+
+
+def test_final_result_projects_structured_sections_from_context_without_parsing_prose():
+    from services.investigation_graph.graph import build_investigation_graph
+
+    result = build_investigation_graph(
+        gateway=FakeGateway([final_action("scheduler pressure confirmed")]),
+        registry=FakeRegistry(),
+        executor=FakeExecutor(),
+    ).invoke(
+        {
+            "question": "Why is TTFT increasing?",
+            "context": {
+                "current_summary": {"health_score": 78, "risk_count": 2},
+                "previous_run": {"health_score": 86, "risk_count": 1},
+                "findings": [{"title": "调度压力", "category": "performance", "severity": "P2"}],
+                "missing_claim": "llm.performance.root_cause",
+            },
+            "missing_claim": "llm.performance.root_cause",
+        }
+    )
+
+    assert result["comparisons"][0] == {"metric": "health_score", "current": 78, "previous": 86}
+    assert result["root_cause_candidates"][0]["title"] == "调度压力"
+    assert result["priority_actions"][0]["title"] == "调度压力"
+    assert result["evidence_gaps"] == [{"claim": "llm.performance.root_cause", "reason": "需要只读证据确认"}]

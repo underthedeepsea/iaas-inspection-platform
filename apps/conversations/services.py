@@ -42,6 +42,10 @@ FINAL_FIELDS = (
     "new_evidence",
     "recommended_next_steps",
     "unresolved_questions",
+    "comparisons",
+    "root_cause_candidates",
+    "priority_actions",
+    "evidence_gaps",
 )
 MAX_FINAL_ITEMS = 4
 MAX_FINAL_ITEM_TEXT = 128
@@ -227,6 +231,7 @@ def run_graph(
     gateway: Any | None = None,
     graph_factory: Any | None = None,
     allow_tools: bool = True,
+    event_sink: Any | None = None,
 ) -> Mapping[str, Any]:
     """Run the provider-injected graph synchronously for this request."""
 
@@ -239,6 +244,8 @@ def run_graph(
     }
     if not allow_tools:
         kwargs["registry"] = _NoToolsRegistry()
+    if event_sink is not None:
+        kwargs["event_sink"] = event_sink
     graph = factory(**kwargs)
     return graph.invoke(dict(values))
 
@@ -281,6 +288,16 @@ def sanitize_result(value: Any) -> dict[str, Any]:
     confidence = _safe_float(final_source.get("confidence"), 0)
     evidence = _safe_evidence(final_source.get("evidence", value.get("evidence")))
     tool_history = _safe_tool_history(final_source.get("tool_history", value.get("tool_history")))
+    comparisons = _safe_structured_items(final_source.get("comparisons", value.get("comparisons")))
+    root_cause_candidates = _safe_structured_items(
+        final_source.get("root_cause_candidates", value.get("root_cause_candidates"))
+    )
+    priority_actions = _safe_structured_items(
+        final_source.get("priority_actions", value.get("priority_actions"))
+    )
+    evidence_gaps = _safe_structured_items(
+        final_source.get("evidence_gaps", value.get("evidence_gaps"))
+    )
     result = {
         "status": status,
         "summary": summary,
@@ -290,6 +307,10 @@ def sanitize_result(value: Any) -> dict[str, Any]:
         "confidence": confidence,
         "evidence": evidence,
         "tool_history": tool_history,
+        "comparisons": comparisons,
+        "root_cause_candidates": root_cause_candidates,
+        "priority_actions": priority_actions,
+        "evidence_gaps": evidence_gaps,
         "rounds_used": _safe_count(final_source.get("rounds_used", value.get("rounds_used"))),
         "tool_calls_used": _safe_count(final_source.get("tool_calls_used", value.get("tool_calls_used"))),
     }
@@ -305,6 +326,10 @@ def sanitize_result(value: Any) -> dict[str, Any]:
         new_evidence=final_source.get("new_evidence", evidence),
         recommended_next_steps=final_source.get("recommended_next_steps", next_steps),
         unresolved_questions=final_source.get("unresolved_questions", value.get("unresolved_questions", [])),
+        comparisons=comparisons,
+        root_cause_candidates=root_cause_candidates,
+        priority_actions=priority_actions,
+        evidence_gaps=evidence_gaps,
     )
     return result
 
@@ -444,6 +469,7 @@ def _persist_turn(
         investigation.tool_calls_used = result["tool_calls_used"]
         investigation.conclusion = result["conclusion"]
         investigation.confidence = result["confidence"]
+        investigation.result = dict(result["final"])
         investigation.started_at = investigation.started_at or timezone.now()
         investigation.finished_at = timezone.now()
         investigation.claim_token = None
@@ -459,6 +485,7 @@ def _persist_turn(
                 "tool_calls_used",
                 "conclusion",
                 "confidence",
+                "result",
                 "started_at",
                 "finished_at",
                 "claim_token",
@@ -791,6 +818,10 @@ def _model_metadata(gateway: Any, raw_result: Any) -> dict[str, Any]:
 
 def _default_gateway() -> Any:
     provider = str(configured_value("LLM_PROVIDER", "ollama")).lower().strip()
+    if provider in {"fake", "stub", "test"}:
+        from services.model_gateway.fake import FakeProvider
+
+        return FakeProvider()
     if provider in {"openai", "openai_compatible", "openai-compatible"}:
         from services.model_gateway.openai_compatible import OpenAICompatibleProvider
 
@@ -842,6 +873,10 @@ def _serialize_message(message: ConversationMessage) -> dict[str, Any]:
             new_evidence=message.structured_content.get("new_evidence"),
             recommended_next_steps=message.structured_content.get("recommended_next_steps"),
             unresolved_questions=message.structured_content.get("unresolved_questions"),
+            comparisons=message.structured_content.get("comparisons"),
+            root_cause_candidates=message.structured_content.get("root_cause_candidates"),
+            priority_actions=message.structured_content.get("priority_actions"),
+            evidence_gaps=message.structured_content.get("evidence_gaps"),
         )
         if message.role == ConversationMessage.Role.ASSISTANT
         and isinstance(message.structured_content, Mapping)
@@ -940,6 +975,10 @@ def _final_projection(
     new_evidence: Any,
     recommended_next_steps: Any,
     unresolved_questions: Any,
+    comparisons: Any = None,
+    root_cause_candidates: Any = None,
+    priority_actions: Any = None,
+    evidence_gaps: Any = None,
 ) -> dict[str, Any]:
     """Build the section 47 projection with independent field budgets.
 
@@ -956,7 +995,22 @@ def _final_projection(
         "new_evidence": _safe_final_items(new_evidence),
         "recommended_next_steps": _safe_final_items(recommended_next_steps),
         "unresolved_questions": _safe_final_items(unresolved_questions),
+        "comparisons": _safe_structured_items(comparisons),
+        "root_cause_candidates": _safe_structured_items(root_cause_candidates),
+        "priority_actions": _safe_structured_items(priority_actions),
+        "evidence_gaps": _safe_structured_items(evidence_gaps),
     }
+
+
+def _safe_structured_items(value: Any) -> list[Any]:
+    if not isinstance(value, list):
+        return []
+    output = []
+    for item in value[:MAX_FINAL_ITEMS]:
+        safe = _safe_json(item, MAX_FINAL_MAPPING_BYTES)
+        if safe not in ({}, None, ""):
+            output.append(safe)
+    return output
 
 
 def _safe_final_items(value: Any) -> list[Any]:

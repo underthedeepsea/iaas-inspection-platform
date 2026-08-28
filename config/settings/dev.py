@@ -5,6 +5,12 @@ from .base import *  # noqa: F403
 
 
 DEBUG = True
+LOCAL_BACKGROUND_WORKER_ENABLED = os.getenv("LOCAL_BACKGROUND_WORKER_ENABLED", "true").lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
 
 INSTALLED_APPS = [

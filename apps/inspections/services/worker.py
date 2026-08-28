@@ -1,13 +1,24 @@
 """Small local worker used when no external queue is configured."""
 
-from concurrent.futures import ThreadPoolExecutor
 import logging
 
+from django.conf import settings
 from django.db import close_old_connections
 
 
 logger = logging.getLogger(__name__)
-_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="inspection-run")
+_EXECUTOR = None
+
+
+def _executor():
+    global _EXECUTOR
+    if not getattr(settings, "LOCAL_BACKGROUND_WORKER_ENABLED", False):
+        raise RuntimeError("durable worker adapter is required when local background worker is disabled")
+    if _EXECUTOR is None:
+        from concurrent.futures import ThreadPoolExecutor
+
+        _EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="inspection-run")
+    return _EXECUTOR
 
 
 def enqueue_manual_inspection(run_id):
@@ -18,7 +29,7 @@ def enqueue_manual_inspection(run_id):
     exercises the same orchestrator used by production adapters.
     """
 
-    future = _EXECUTOR.submit(_run_manual_inspection, str(run_id))
+    future = _executor().submit(_run_manual_inspection, str(run_id))
     return {"run_id": str(run_id), "future": future}
 
 

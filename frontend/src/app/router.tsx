@@ -1,5 +1,6 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 
+import { AuthGuard } from './AuthGuard'
 import { DashboardPage } from '../pages/Dashboard/DashboardPage'
 import { LoginPage } from '../pages/Login/LoginPage'
 import { MainLayout } from '../layouts/MainLayout/MainLayout'
@@ -16,7 +17,7 @@ export function AppRouter() {
     <BrowserRouter>
       <Routes>
         <Route element={<LoginPage />} path="/login" />
-        <Route element={<MainLayout />}>
+        <Route element={<AuthGuard><MainLayout /></AuthGuard>}>
           <Route element={<DashboardPage />} path="/" />
           <Route element={<ResourcesPage />} path="/resources" />
           <Route element={<ResourceDetailPage />} path="/resources/:resourceType" />

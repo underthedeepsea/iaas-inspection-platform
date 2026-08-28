@@ -193,3 +193,34 @@ def test_build_resource_summaries_aggregates_counts_and_explainable_health_score
         "coverage_penalty": 1,
         "coverage_rate": 35 / 36,
     }
+
+
+@pytest.mark.django_db
+def test_zero_asset_summary_is_explicit_no_data():
+    environment = make_environment()
+    resource_type = ResourceType.objects.create(
+        code="EMPTY_RESOURCE",
+        name="Empty resource",
+        asset_selector={"asset_types": [Asset.AssetType.GPU]},
+    )
+    item = make_item("empty")
+    InspectionItemResourceType.objects.create(resource_type=resource_type, inspection_item=item)
+    run = InspectionRun.objects.create(
+        environment=environment,
+        run_date=date(2026, 8, 25),
+        trigger_type=InspectionRun.TriggerType.MANUAL,
+        status=InspectionRun.Status.SUCCEEDED,
+        config_snapshot={
+            "resolved_scope": {
+                "resource_types": [resource_type.code],
+                "asset_ids": [],
+                "asset_count": 0,
+            }
+        },
+    )
+
+    summary = build_resource_summaries(run.id)[0]
+
+    assert summary.health_score is None
+    assert summary.summary["data_state"] == "NO_DATA"
+    assert summary.summary["coverage_rate"] is None

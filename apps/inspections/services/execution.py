@@ -199,6 +199,15 @@ def _run_deterministic_detector(dataset, inspection_item):
         return _control_plane_result(events, inspection_item)
     if scenario == "llm_scheduler_pressure":
         return _llm_pressure_result(events, metrics, inspection_item)
+    if scenario == "mixed_resource_inspection":
+        control = _control_plane_result(events, inspection_item)
+        llm = _llm_pressure_result(events, metrics, inspection_item)
+        return _ScenarioResult(
+            code_claims=tuple(dict.fromkeys((*control.code_claims, *llm.code_claims))),
+            findings=(*control.findings, *llm.findings),
+            missing_data=tuple(dict.fromkeys((*control.missing_data, *llm.missing_data))),
+            data_valid=control.data_valid and llm.data_valid,
+        )
     return _ScenarioResult(code_claims=(), findings=(), missing_data=(), data_valid=True)
 
 
@@ -308,6 +317,7 @@ def _llm_pressure_result(events, metrics, inspection_item):
 def _missing_data(dataset, metrics):
     required_metrics = {
         "llm_scheduler_pressure": ("ttft_ms", "queue_depth", "gpu_util_percent"),
+        "mixed_resource_inspection": ("ttft_ms", "queue_depth", "gpu_util_percent"),
         "data_incomplete": ("queue_depth",),
     }.get(dataset.scenario, ())
     present_metrics = {

@@ -39,6 +39,7 @@ class Investigation(EditableModel):
     max_tool_calls = models.IntegerField(default=5)
     tool_calls_used = models.IntegerField(default=0)
     conclusion = models.TextField(default="")
+    result = models.JSONField(default=dict)
     confidence = models.DecimalField(max_digits=5, decimal_places=4, null=True, blank=True, validators=[MinValueValidator(0), MaxValueValidator(1)])
     started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)

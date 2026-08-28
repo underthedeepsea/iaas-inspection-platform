@@ -404,6 +404,49 @@ def test_assistant_final_projection_keeps_every_required_field_when_result_is_la
     assert "result" not in event.payload
 
 
+@pytest.mark.django_db(transaction=True)
+def test_structured_investigation_result_is_persisted_without_natural_language_parsing():
+    risk = _risk()
+    user = _user()
+    client = Client()
+    client.force_login(user)
+    conversation_id = _post(
+        client,
+        "/api/v1/conversations/",
+        {"context_type": "RISK", "context_id": str(risk.pk), "title": "Risk analysis"},
+    ).json()["conversation_id"]
+    result = {
+        "status": "RESOLVED",
+        "summary": "structured result",
+        "conclusion": "structured result",
+        "confidence": 0.87,
+        "facts": [],
+        "next_steps": [],
+        "comparisons": [{"metric": "health", "current": 78, "previous": 86}],
+        "root_cause_candidates": [{"title": "scheduler pressure", "confidence": 0.8}],
+        "priority_actions": [{"priority": "P1", "action": "扩容"}],
+        "evidence_gaps": ["change owner"],
+        "evidence": [],
+        "tool_history": [],
+        "rounds_used": 1,
+        "tool_calls_used": 0,
+    }
+
+    with patch("apps.conversations.services.run_graph", return_value=result):
+        response = _post(
+            client,
+            f"/api/v1/conversations/{conversation_id}/turns/",
+            {"message": "Investigate", "idempotency_key": "structured-result"},
+        )
+
+    assert response.status_code == 202
+    investigation = Investigation.objects.get(pk=response.json()["investigation_id"])
+    assert investigation.result["comparisons"] == result["comparisons"]
+    assert investigation.result["root_cause_candidates"] == result["root_cause_candidates"]
+    assert investigation.result["priority_actions"] == result["priority_actions"]
+    assert investigation.result["evidence_gaps"] == result["evidence_gaps"]
+
+
 def _capability_version_fixture(*, capability_id="llm.scheduler.pressure"):
     capability = Capability.objects.create(
         capability_id=capability_id,

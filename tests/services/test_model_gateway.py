@@ -54,6 +54,35 @@ def test_parse_action_rejects_unknown_action_with_stable_code():
     assert raised.value.code == "STRUCTURED_OUTPUT_INVALID"
 
 
+def test_fake_provider_calls_one_configured_tool_then_finishes(monkeypatch):
+    monkeypatch.setenv("FAKE_CAPABILITY_ID", "e2e.llm.scheduler.pressure")
+    monkeypatch.setenv("FAKE_ASSET_ID", "llm-0")
+
+    from services.model_gateway.base import ModelRequest
+    from services.model_gateway.fake import FakeProvider
+
+    provider = FakeProvider()
+    first = provider.invoke(
+        ModelRequest(
+            messages=[
+                {"role": "user", "content": json.dumps({"context": {"missing_claim": "llm.performance.root_cause"}, "evidence": []})}
+            ]
+        )
+    )
+    second = provider.invoke(
+        ModelRequest(
+            messages=[
+                {"role": "user", "content": json.dumps({"context": {"missing_claim": "llm.performance.root_cause"}, "evidence": [{"evidence_key": "tool:1"}]})}
+            ]
+        )
+    )
+
+    assert first.action.action == "CALL_TOOL"
+    assert first.action.capability_id == "e2e.llm.scheduler.pressure"
+    assert first.action.arguments == {"asset_id": "llm-0"}
+    assert second.action.action == "FINAL"
+
+
 @pytest.mark.parametrize(
     "payload",
     [

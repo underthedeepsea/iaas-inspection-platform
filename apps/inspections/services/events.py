@@ -6,10 +6,12 @@ from apps.inspections.models import InspectionRun, InspectionRunEvent
 RUN_EVENT_TYPES = (
     "scope.resolved",
     "assets.discovered",
+    "inspection.started",
     "inspection.item.started",
     "inspection.item.progress",
     "inspection.item.completed",
     "inspection.item.failed",
+    "inspection.completed",
     "risk.correlation.started",
     "risk.correlation.completed",
     "ai.admission.started",

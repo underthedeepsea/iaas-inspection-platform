@@ -21,8 +21,12 @@ def create_manual_inspection_run(*, environment, resource_type_codes, ai_mode="D
         raise ValueError("ai_mode must be DEFERRED or DISABLED")
     environment = Environment.objects.select_for_update().get(pk=environment.pk)
     run_date = run_date or timezone.localdate()
-    dataset = get_or_create_manual_dataset(environment, run_date)
     requested_codes = _requested_codes(resource_type_codes)
+    dataset = get_or_create_manual_dataset(
+        environment,
+        run_date,
+        resource_type_codes=requested_codes,
+    )
     scope = resolve_scope(
         environment_id=environment.pk,
         resource_type_codes=requested_codes,

@@ -70,6 +70,10 @@ class FinalResult(BaseModel):
     confidence: float = Field(default=0.0, ge=0, le=1)
     evidence: list[Evidence] = Field(default_factory=list)
     tool_history: list[ToolCallHistory] = Field(default_factory=list)
+    comparisons: list[Any] = Field(default_factory=list)
+    root_cause_candidates: list[Any] = Field(default_factory=list)
+    priority_actions: list[Any] = Field(default_factory=list)
+    evidence_gaps: list[Any] = Field(default_factory=list)
     rounds_used: int = Field(default=0, ge=0)
     tool_calls_used: int = Field(default=0, ge=0)
 

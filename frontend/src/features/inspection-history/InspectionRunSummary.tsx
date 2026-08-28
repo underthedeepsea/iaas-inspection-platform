@@ -3,7 +3,7 @@ import type { ResourceRunDetail } from '../../api/resources'
 export function InspectionRunSummary({ detail }: { detail: ResourceRunDetail }) {
   const metrics = [
     ['状态', detail.run.status],
-    ['覆盖率', `${Math.round(detail.coverage.rate * 100)}%`],
+    ['覆盖率', detail.coverage.rate == null ? '—' : `${Math.round(detail.coverage.rate * 100)}%`],
     ['巡检项', detail.inspection_item_count],
     ['Finding', detail.finding_count],
     ['风险', detail.risk_count],

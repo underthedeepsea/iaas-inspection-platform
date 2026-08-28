@@ -7,6 +7,16 @@ from django.db import transaction
 from django.utils import timezone
 
 
+_MANUAL_DATASET_PROFILES = {
+    "CONTROL_PLANE": "control_plane_anti_affinity",
+    "KVM_CLUSTER": "kvm_cluster_baseline",
+    "K8S_CLUSTER": "k8s_cluster_baseline",
+    "LLM_RUNTIME": "llm_scheduler_pressure",
+    "GPU_POOL": "healthy_baseline",
+    "HOST": "healthy_baseline",
+}
+
+
 def persist_dataset(environment, generated_dataset):
     from apps.assets.models import Asset
     from apps.inspections.models import MockChange, MockDataset, MockEvent, MockLog, MockMetric
@@ -132,7 +142,20 @@ def generate_and_persist(environment, seed, scenario, dataset_date=None, *, busi
     return persist_dataset(environment, generated)
 
 
-def get_or_create_manual_dataset(environment, run_date=None):
+def resolve_manual_dataset_profile(resource_type_codes):
+    """Resolve the deterministic fixture from the requested resource scope."""
+
+    if not isinstance(resource_type_codes, (list, tuple, set)):
+        raise ValueError("resource_type_codes must be a list")
+    codes = {str(value).strip().upper() for value in resource_type_codes if str(value).strip()}
+    if len(codes) > 1:
+        return "mixed_resource_inspection"
+    if not codes:
+        return None
+    return _MANUAL_DATASET_PROFILES.get(next(iter(codes)), "healthy_baseline")
+
+
+def get_or_create_manual_dataset(environment, run_date=None, *, resource_type_codes=None):
     """Return the deterministic dataset used by a manual inspection run.
 
     Manual runs have one canonical input.  Reusing a READY dataset makes a
@@ -148,9 +171,11 @@ def get_or_create_manual_dataset(environment, run_date=None):
     seed = getattr(settings, "MANUAL_INSPECTION_SEED", None)
     if seed is None:
         seed = os.getenv("MANUAL_INSPECTION_SEED", "20260823")
-    scenario = getattr(settings, "MANUAL_INSPECTION_SCENARIO", None)
+    scenario = resolve_manual_dataset_profile(resource_type_codes)
     if scenario is None:
-        scenario = os.getenv("MANUAL_INSPECTION_SCENARIO", "llm_scheduler_pressure")
+        scenario = getattr(settings, "MANUAL_INSPECTION_SCENARIO", None)
+        if scenario is None:
+            scenario = os.getenv("MANUAL_INSPECTION_SCENARIO", "llm_scheduler_pressure")
     seed = int(seed)
     scenario = str(scenario).strip()
 
@@ -179,4 +204,5 @@ __all__ = [
     "generate_and_persist",
     "get_or_create_manual_dataset",
     "persist_dataset",
+    "resolve_manual_dataset_profile",
 ]

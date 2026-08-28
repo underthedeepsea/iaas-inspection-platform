@@ -27,7 +27,7 @@ def serialize_resource_summary(summary):
         "assets_total": summary.assets_total,
         "assets_covered": summary.assets_covered,
         "coverage_rate": (
-            summary.assets_covered / summary.assets_total if summary.assets_total else 1.0
+            summary.assets_covered / summary.assets_total if summary.assets_total else None
         ),
         "inspection_item_count": summary.inspection_item_count,
         "success_item_count": summary.success_item_count,
@@ -40,10 +40,11 @@ def serialize_resource_summary(summary):
         "p4_count": summary.p4_count,
         "ai_dependent_cases": summary.ai_dependent_cases,
         "ai_investigation_count": summary.ai_investigation_count,
-        "health_score": float(summary.health_score),
+        "health_score": float(summary.health_score) if summary.health_score is not None else None,
         "started_at": summary.started_at.isoformat() if summary.started_at else None,
         "finished_at": summary.finished_at.isoformat() if summary.finished_at else None,
         "summary": summary.summary or {},
+        "data_state": (summary.summary or {}).get("data_state", "READY" if summary.assets_total else "NO_DATA"),
     }
 
 

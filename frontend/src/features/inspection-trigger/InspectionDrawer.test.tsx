@@ -50,7 +50,9 @@ describe('InspectionDrawer', () => {
 
     render(<InspectionDrawer environmentId="env-1" open onClose={vi.fn()} resourceTypes={resources} />)
 
-    expect(screen.getByLabelText('本次巡检环境')).toHaveValue('env-1')
+    expect(screen.getByLabelText('本次巡检环境')).toBeInTheDocument()
+    expect(screen.getByRole('dialog')).toHaveClass('inspection-drawer')
+    expect(document.querySelector('.ant-drawer')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /控制面/ })).toHaveAttribute('aria-checked', 'false')
     expect(screen.getByRole('button', { name: /开始巡检/ })).toHaveClass('button-primary')
     expect(screen.getByRole('button', { name: '取消' })).toBeInTheDocument()

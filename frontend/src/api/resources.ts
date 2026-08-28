@@ -16,6 +16,7 @@ export interface ResourceType {
   p1_count: number
   p2_count: number
   ai_investigation_count?: number
+  data_state?: 'READY' | 'NO_DATA' | string
   last_inspection_at: string | null
 }
 
@@ -27,7 +28,7 @@ export interface ResourceSummary {
   status: string
   assets_total: number
   assets_covered: number
-  coverage_rate: number
+  coverage_rate: number | null
   inspection_item_count: number
   success_item_count: number
   failed_item_count: number
@@ -39,7 +40,7 @@ export interface ResourceSummary {
   p4_count: number
   ai_dependent_cases: number
   ai_investigation_count: number
-  health_score: number
+  health_score: number | null
   started_at: string | null
   finished_at: string | null
   summary: Record<string, unknown>
@@ -75,7 +76,7 @@ export interface ResourceRunDetail {
     started_at: string | null
     finished_at: string | null
   }
-  coverage: { assets_total: number; assets_covered: number; rate: number }
+  coverage: { assets_total: number; assets_covered: number; rate: number | null }
   inspection_item_status_counts: Record<string, number>
   inspection_item_count: number
   finding_count: number

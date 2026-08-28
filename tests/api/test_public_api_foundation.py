@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import uuid
 from types import SimpleNamespace
@@ -165,7 +166,7 @@ def test_product_info_is_anonymous_and_has_exact_numeric_versions():
     body = response.json()
     assert body["product_name"] == "IaaS 智能巡检"
     assert body["data_mode"] == "MOCK"
-    assert body["llm_provider"] == "ollama"
+    assert body["llm_provider"] == os.getenv("LLM_PROVIDER", "ollama")
     assert body["security_mode"] == "READ_ONLY_TOOLS"
     assert body["versions"] == {
         "django": "4.2.16",

@@ -121,3 +121,28 @@ it('loads and renders real resource risks with severity and detail links', async
   expect(screen.getByText('P1')).toBeInTheDocument()
   expect(screen.getByRole('link', { name: /查看风险详情/ })).toHaveAttribute('href', '/risks/risk-1')
 })
+
+it('keeps a zero-asset summary in the NO_DATA state', async () => {
+  vi.spyOn(apiClient, 'get').mockResolvedValue({
+    data: {
+      resource_type: { code: 'HOST', name: '主机基础环境', description: '', icon: 'host', asset_count: 0, inspection_item_count: 1, health_score: null, risk_count: 0, p1_count: 0, p2_count: 0, last_inspection_at: null, data_state: 'NO_DATA' },
+      latest: { health_score: null, coverage_rate: null, risk_count: 0, p1_count: 0, p2_count: 0, inspection_item_count: 1, summary: { data_state: 'NO_DATA' } },
+      health_trend: [],
+    },
+  } as never)
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
+  render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={['/resources/host']}>
+        <Routes>
+          <Route element={<ResourceDetailPage environmentId="env-1" />} path="/resources/:resourceType" />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+
+  expect(await screen.findByText('健康度')).toBeInTheDocument()
+  expect(screen.getAllByText('—').length).toBeGreaterThan(0)
+  expect(screen.queryByText('100%')).not.toBeInTheDocument()
+})
