@@ -1,4 +1,4 @@
-import { BrowserRouter, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 
 import { AuthGuard } from './AuthGuard'
 import { DashboardPage } from '../pages/Dashboard/DashboardPage'
@@ -16,7 +16,11 @@ export function AppRouter() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route element={<LoginPage />} path="/login" />
+        {import.meta.env.DEV ? (
+          <Route element={<Navigate replace to="/" />} path="/login" />
+        ) : (
+          <Route element={<LoginPage />} path="/login" />
+        )}
         <Route element={<AuthGuard><MainLayout /></AuthGuard>}>
           <Route element={<DashboardPage />} path="/" />
           <Route element={<ResourcesPage />} path="/resources" />

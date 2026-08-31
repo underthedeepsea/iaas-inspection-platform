@@ -70,10 +70,32 @@ describe('DashboardPage', () => {
     expect(screen.getByText('资源健康状态')).toBeInTheDocument()
     expect([...document.querySelectorAll('[data-dashboard-section]')].map((node) => node.getAttribute('data-dashboard-section'))).toEqual([
       'kpi',
-      'resource-health',
       'trend-and-risks',
       'auxiliary',
+      'resource-health',
     ])
+  })
+
+  it('renders the completeness rate as a bounded percentage', async () => {
+    vi.spyOn(apiClient, 'get').mockImplementation((url) => {
+      if (String(url) === '/resource-types') {
+        return Promise.resolve({ data: { items: [{ code: 'HOST', name: '主机基础环境', description: '基础设施资源', icon: 'host', asset_count: 1, inspection_item_count: 1, health_score: 96, risk_count: 0, p1_count: 0, p2_count: 0, last_inspection_at: null }], total: 1 } }) as never
+      }
+      return Promise.resolve({
+        data: {
+          snapshot: { snapshot_date: '2026-08-31', data_completeness_rate: 100, assets_total: 1, assets_covered: 1, risk_total: 0, p1_count: 0, p2_count: 0, ai_dependent_cases: 0 },
+          top_risks: [],
+          trend_7d: [],
+          capability_maturity: { enabled_items: 1, coded_items: 1 },
+        },
+      }) as never
+    })
+
+    renderDashboard()
+
+    expect(await screen.findByText('当前 100%')).toBeInTheDocument()
+    expect(screen.getByText('100')).toBeInTheDocument()
+    expect(screen.queryByText('10000')).not.toBeInTheDocument()
   })
 
   it('shows an empty-state CTA when no resource types are returned', async () => {

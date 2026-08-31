@@ -11,6 +11,10 @@ const labels: Record<string, string> = {
   'analysis.started': '分析生成中',
   'analysis.completed': '分析已完成',
   'analysis.failed': '分析失败',
+  'turn.started': '追问已开始',
+  'assistant.final': '回答已生成',
+  'turn.completed': '追问已完成',
+  'turn.error': '追问失败',
 }
 
 export function InvestigationTimeline({ events }: { events: InvestigationEvent[] }) {

@@ -40,14 +40,14 @@ export function HealthTrendChart({
       xAxis: {
         type: 'category',
         data: visibleTrend.map((item) => item.run_date ?? item.snapshot_date ?? '—'),
-        axisLabel: { color: '#6f7d87' },
-        axisLine: { lineStyle: { color: '#e4e9eb' } },
+        axisLabel: { color: '#9C877B' },
+        axisLine: { lineStyle: { color: '#EEE5DF' } },
       },
       yAxis: {
         type: 'value',
         min: metric === 'health' ? 0 : undefined,
         max: metric === 'health' ? 100 : undefined,
-        splitLine: { lineStyle: { color: '#edf0f1' } },
+        splitLine: { lineStyle: { color: '#EEE5DF' } },
       },
       series: [
         {
@@ -55,9 +55,9 @@ export function HealthTrendChart({
           smooth: true,
           symbol: 'circle',
           symbolSize: 7,
-          itemStyle: { color: '#F97316' },
-          lineStyle: { color: '#F97316', width: 2 },
-          areaStyle: { color: 'rgba(255, 247, 237, .75)' },
+          itemStyle: { color: '#D66335' },
+          lineStyle: { color: '#D66335', width: 2 },
+          areaStyle: { color: 'rgba(254, 229, 215, .75)' },
           data: values,
         },
       ],

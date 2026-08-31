@@ -12,7 +12,18 @@ export const INVESTIGATION_EVENT_TYPES = [
   'analysis.started',
   'analysis.completed',
   'analysis.failed',
+  'turn.started',
+  'assistant.final',
+  'turn.completed',
+  'turn.error',
 ] as const
+
+function isTerminalEvent(eventType: string) {
+  return eventType === 'analysis.completed'
+    || eventType === 'analysis.failed'
+    || eventType === 'turn.completed'
+    || eventType === 'turn.error'
+}
 
 function mergeEvents(current: InvestigationEvent[], incoming: InvestigationEvent[]) {
   const bySequence = new Map(current.map((event) => [event.sequence, event]))
@@ -48,7 +59,7 @@ export function useInvestigationStream(investigationId?: string) {
         const data = JSON.parse(message.data) as InvestigationEvent
         setEvents((current) => mergeEvents(current, [data]))
         setRecovering(false)
-        if (data.event_type === 'analysis.completed' || data.event_type === 'analysis.failed') source.close()
+        if (isTerminalEvent(data.event_type)) source.close()
       } catch {
         setRecovering(true)
       }

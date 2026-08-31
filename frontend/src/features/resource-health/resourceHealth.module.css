@@ -3,18 +3,18 @@
   gap: 14px;
   width: 100%;
   padding: 20px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--color-border);
   border-radius: 14px;
-  background: #ffffff;
-  color: #111827;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
   text-align: left;
   cursor: pointer;
   transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
 }
 
 .card:hover {
-  border-color: #fdba74;
-  box-shadow: 0 8px 24px rgb(249 115 22 / 10%);
+  border-color: var(--color-brand-border);
+  box-shadow: 0 8px 24px rgb(214 99 53 / 10%);
   transform: translateY(-1px);
 }
 
@@ -34,7 +34,7 @@
 }
 
 .icon {
-  color: #f97316;
+  color: var(--color-brand);
 }
 
 .name {
@@ -42,11 +42,11 @@
 }
 
 .chevron {
-  color: #9ca3af;
+  color: var(--color-text-muted);
 }
 
 .healthScore {
-  color: #c2410c;
+  color: var(--color-brand-active);
   font-size: 34px;
   font-weight: 750;
   line-height: 1;
@@ -54,7 +54,7 @@
 
 .healthLabel,
 .footer {
-  color: #6b7280;
+  color: var(--color-text-secondary);
   font-size: 12px;
 }
 
@@ -62,11 +62,10 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
-  color: #4b5563;
+  color: var(--color-text-secondary);
   font-size: 12px;
 }
 
 .danger {
-  color: #dc2626;
+  color: var(--color-p1);
 }
-

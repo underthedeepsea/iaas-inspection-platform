@@ -7,14 +7,30 @@ export function AIAnalysisSummary({
   investigation: Investigation | null
   events: InvestigationEvent[]
 }) {
-  const completed = [...events].reverse().find((event) => event.event_type === 'analysis.completed' || event.event_type === 'analysis.failed')
-  const summary = investigation?.conclusion || String(completed?.payload.summary ?? '')
-  const result = investigation?.result ?? completed?.payload
+  const terminal = [...events].reverse().find((event) => (
+    event.event_type === 'analysis.completed'
+    || event.event_type === 'analysis.failed'
+    || event.event_type === 'turn.completed'
+    || event.event_type === 'turn.error'
+  ))
+  const resultEvent = [...events].reverse().find((event) => (
+    event.event_type === 'analysis.completed'
+    || event.event_type === 'analysis.failed'
+    || event.event_type === 'assistant.final'
+  ))
+  const persistedResult = investigation?.result && Object.keys(investigation.result).length
+    ? investigation.result
+    : undefined
+  const summary = investigation?.conclusion || String(resultEvent?.payload.summary ?? terminal?.payload.summary ?? '')
+  const result = persistedResult ?? resultEvent?.payload ?? terminal?.payload
   const comparisons = listValue(result?.comparisons)
   const rootCauses = listValue(result?.root_cause_candidates)
   const priorityActions = listValue(result?.priority_actions)
   const evidenceGaps = listValue(result?.evidence_gaps)
-  const confidence = investigation?.confidence ?? numberValue(completed?.payload.confidence)
+  const confidence = investigation?.confidence ?? numberValue(resultEvent?.payload.confidence ?? terminal?.payload.confidence)
+  const status = terminal
+    ? String(terminal.payload.status ?? (terminal.event_type === 'analysis.failed' || terminal.event_type === 'turn.error' ? 'FAILED' : 'RESOLVED'))
+    : investigation?.status ?? '执行中'
   return (
     <section className="ai-summary">
       <div className="section-heading"><div><span className="eyebrow">L1 · DECISION</span><h3>综合判断</h3></div><span className="mode-badge">只读调查</span></div>
@@ -25,7 +41,7 @@ export function AIAnalysisSummary({
         <StructuredSection title="建议优先级" items={priorityActions} empty="暂无优先行动" />
         <StructuredSection title="Evidence Gaps" items={evidenceGaps} empty="暂无证据缺口" />
       </div>
-      <div className="definition-list ai-summary-meta"><div><dt>置信度</dt><dd>{confidence == null ? '—' : `${Math.round(Number(confidence) * 100)}%`}</dd></div><div><dt>调查状态</dt><dd>{investigation?.status ?? '执行中'}</dd></div></div>
+      <div className="definition-list ai-summary-meta"><div><dt>置信度</dt><dd>{confidence == null ? '—' : `${Math.round(Number(confidence) * 100)}%`}</dd></div><div><dt>调查状态</dt><dd>{status}</dd></div></div>
     </section>
   )
 }

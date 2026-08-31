@@ -104,10 +104,6 @@ def build_daily_snapshot(
             .filter(environment_id=run.environment_id, snapshot_date=snapshot_date)
             .first()
         )
-        if snapshot is not None and snapshot.inspection_run_id != run.pk:
-            raise ValueError(
-                "daily snapshot already exists for this date with a different inspection run"
-            )
 
         item_runs = list(
             InspectionItemRun.objects.filter(

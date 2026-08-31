@@ -41,9 +41,13 @@ it('renders the document navigation and runtime controls from the environment AP
   expect(screen.queryByText('本地演示环境')).not.toBeInTheDocument()
   expect(screen.queryByText('Demo v4.1')).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: '收起侧边栏' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '打开主导航' })).toHaveAttribute('aria-expanded', 'false')
 
   fireEvent.click(screen.getByRole('button', { name: '收起侧边栏' }))
   expect(screen.getByRole('button', { name: '展开侧边栏' })).toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole('button', { name: '打开主导航' }))
+  expect(screen.getByRole('button', { name: '关闭主导航' })).toHaveAttribute('aria-expanded', 'true')
 })
 
 it('resolves the environment in URL, persisted state, then API order', () => {

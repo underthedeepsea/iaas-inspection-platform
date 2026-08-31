@@ -269,6 +269,16 @@ def _assets_for(scenario):
                 topology={"zones": ["zone-a", "zone-b"]},
             ),
         )
+        assets.insert(
+            2,
+            AssetRecord(
+                "cluster-kvm-0",
+                "CLUSTER",
+                "mock-kvm-cluster",
+                labels={"environment": "mock", "platform": "kvm"},
+                topology={"zones": ["zone-a", "zone-b"]},
+            ),
+        )
     return assets
 
 

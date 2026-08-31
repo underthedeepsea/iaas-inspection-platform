@@ -41,6 +41,12 @@ export function AIAnalysisPanel({
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState('')
   const { events, recovering } = useInvestigationStream(investigationId)
+  const terminalSequence = [...events].reverse().find((event) => (
+    event.event_type === 'analysis.completed'
+    || event.event_type === 'analysis.failed'
+    || event.event_type === 'turn.completed'
+    || event.event_type === 'turn.error'
+  ))?.sequence
 
   useEffect(() => {
     if (!investigationId) return
@@ -51,9 +57,9 @@ export function AIAnalysisPanel({
         setInvestigation(value)
         if (value.conversation_id) setConversationId(value.conversation_id)
       })
-      .catch(() => { if (active) setError('AI 调查状态加载失败') })
+    .catch(() => { if (active) setError('AI 调查状态加载失败') })
     return () => { active = false }
-  }, [investigationId])
+  }, [investigationId, terminalSequence])
 
   const start = async () => {
     setStarting(true)

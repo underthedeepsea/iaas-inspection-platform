@@ -86,3 +86,95 @@ it('renders investigation timeline, partial failure, evidence and final conclusi
     expect(screen.getByText('变更负责人')).toBeInTheDocument()
   await waitFor(() => expect(screen.getByText('大模型运行时健康稳定，建议继续观察风险趋势。')).toBeInTheDocument())
 })
+
+it('refreshes persisted investigation state after a terminal stream event', async () => {
+  vi.stubGlobal('EventSource', FakeEventSource)
+  let detailCalls = 0
+  const get = vi.spyOn(apiClient, 'get').mockImplementation(async (url) => {
+    if (String(url).endsWith('/events')) return { data: { items: [] } } as never
+    detailCalls += 1
+    return {
+      data: detailCalls === 1
+        ? {
+            id: 'investigation-2',
+            investigation_id: 'investigation-2',
+            status: 'RUNNING',
+            conclusion: '',
+            result: {},
+          }
+        : {
+            id: 'investigation-2',
+            investigation_id: 'investigation-2',
+            status: 'RESOLVED',
+            conclusion: '持久化后的完整结论',
+            confidence: 0.94,
+            result: {
+              comparisons: [{ metric: 'health_score', current: 88, previous: 76 }],
+              root_cause_candidates: [{ title: '调度器压力' }],
+              priority_actions: [{ priority: 'P2', action: '复核队列与调度策略' }],
+              evidence_gaps: [],
+            },
+          },
+    } as never
+  })
+
+  render(
+    <AIAnalysisPanel
+      contextType="RESOURCE_RUN"
+      environmentId="env-1"
+      inspectionRunId="run-2"
+      initialInvestigationId="investigation-2"
+      resourceCode="LLM_RUNTIME"
+    />,
+  )
+
+  await waitFor(() => expect(FakeEventSource.instance.listeners.size).toBeGreaterThan(0))
+  await act(async () => {
+    FakeEventSource.instance.emit('analysis.completed', {
+      summary: '事件结论',
+      confidence: 0.94,
+      status: 'RESOLVED',
+    }, 1, 'COMPLETED')
+  })
+
+  await waitFor(() => expect(screen.getByText('持久化后的完整结论')).toBeInTheDocument())
+  expect(detailCalls).toBeGreaterThanOrEqual(2)
+  expect(get).toHaveBeenCalledWith('/investigations/investigation-2')
+  expect(screen.getByText('RESOLVED')).toBeInTheDocument()
+})
+
+it('handles conversational follow-up terminal events without reconnecting', async () => {
+  vi.stubGlobal('EventSource', FakeEventSource)
+  vi.spyOn(apiClient, 'get').mockImplementation(async (url) => {
+    if (String(url).endsWith('/events')) return { data: { items: [] } } as never
+    return {
+      data: {
+        id: 'investigation-3',
+        investigation_id: 'investigation-3',
+        status: 'RUNNING',
+        result: {},
+      },
+    } as never
+  })
+
+  render(
+    <AIAnalysisPanel
+      contextType="RESOURCE_RUN"
+      environmentId="env-1"
+      inspectionRunId="run-3"
+      initialInvestigationId="investigation-3"
+      resourceCode="LLM_RUNTIME"
+    />,
+  )
+
+  await waitFor(() => expect(FakeEventSource.instance.listeners.size).toBeGreaterThan(0))
+  await act(async () => {
+    FakeEventSource.instance.emit('turn.completed', {
+      status: 'RESOLVED',
+      summary: '追问已完成',
+    }, 1, 'COMPLETED')
+  })
+
+  expect(screen.getAllByText('追问已完成')).toHaveLength(2)
+  expect(FakeEventSource.instance.close).toHaveBeenCalled()
+})

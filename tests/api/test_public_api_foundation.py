@@ -5,6 +5,7 @@ import uuid
 from types import SimpleNamespace
 
 import pytest
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.test import Client, RequestFactory, override_settings
@@ -166,7 +167,7 @@ def test_product_info_is_anonymous_and_has_exact_numeric_versions():
     body = response.json()
     assert body["product_name"] == "IaaS 智能巡检"
     assert body["data_mode"] == "MOCK"
-    assert body["llm_provider"] == os.getenv("LLM_PROVIDER", "ollama")
+    assert body["llm_provider"] == os.getenv("LLM_PROVIDER", "fake")
     assert body["security_mode"] == "READ_ONLY_TOOLS"
     assert body["versions"] == {
         "django": "4.2.16",
@@ -174,6 +175,10 @@ def test_product_info_is_anonymous_and_has_exact_numeric_versions():
         "langgraph": "1.2.10",
         "langchain": "1.3.14",
     }
+
+
+def test_local_development_defaults_to_deterministic_ai_provider():
+    assert settings.LLM_PROVIDER == os.getenv("LLM_PROVIDER", "fake")
 
 
 @pytest.mark.django_db

@@ -113,6 +113,10 @@ def test_data_incomplete_omits_required_data_instead_of_fabricating_null_metrics
 def test_mixed_fixture_contains_control_plane_and_llm_signals():
     dataset = generate_dataset(1729, "mixed_resource_inspection", BUSINESS_DATE)
 
+    assert {asset.asset_key for asset in dataset.assets} >= {
+        "cluster-kvm-0",
+        "cluster-k8s-0",
+    }
     assert {asset.asset_type for asset in dataset.assets} >= {
         "CLUSTER",
         "HOST",

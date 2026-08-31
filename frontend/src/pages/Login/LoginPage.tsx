@@ -30,7 +30,7 @@ export function LoginPage() {
     <main className="login-page">
       <section aria-labelledby="login-title" className="login-card panel">
         <span className="brand-mark" aria-hidden="true">巡</span>
-        <span className="eyebrow">INSPECTION CONTROL PLANE</span>
+        <span className="panel-kicker">平台入口</span>
         <h1 id="login-title">登录 IaaS 智能巡检</h1>
         <p className="lede">使用已有平台账号进入巡检控制面。</p>
         <form onSubmit={(event) => void submit(event)}>

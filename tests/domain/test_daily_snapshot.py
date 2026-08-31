@@ -456,22 +456,23 @@ def test_nonterminal_snapshot_requires_explicit_as_of():
 
 
 @pytest.mark.django_db
-def test_daily_snapshot_rejects_different_source_run_for_existing_environment_date():
+def test_daily_snapshot_replaces_source_run_for_existing_environment_date():
     from apps.inspections.services.snapshot import build_daily_snapshot
 
     environment = make_environment()
     first_run = make_run(environment)
-    make_item_run(first_run)
+    make_item_run(first_run, asset_keys=("asset-before",))
     first = build_daily_snapshot(first_run)
 
     conflicting_run = make_run(environment)
-    make_item_run(conflicting_run)
+    make_item_run(conflicting_run, asset_keys=("asset-after-1", "asset-after-2"))
 
-    with pytest.raises(ValueError, match="different inspection run"):
-        build_daily_snapshot(conflicting_run)
+    second = build_daily_snapshot(conflicting_run)
 
     persisted = DailySnapshot.objects.get(pk=first.pk)
-    assert persisted.inspection_run_id == first_run.id
+    assert second.pk == first.pk
+    assert persisted.inspection_run_id == conflicting_run.id
+    assert persisted.assets_covered == 2
 
 
 @pytest.mark.django_db

@@ -1,5 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { apiClient } from '../api/http'
@@ -7,26 +7,23 @@ import { AuthGuard, useAuthUser } from './AuthGuard'
 
 afterEach(() => vi.restoreAllMocks())
 
-function LocationProbe() {
-  const location = useLocation()
-  return <span>{location.pathname}{location.search}</span>
-}
-
 describe('AuthGuard', () => {
-  it('redirects an expired session before rendering the private page', async () => {
+  it('silently signs into the local demo session before rendering the private page', async () => {
     vi.spyOn(apiClient, 'get').mockRejectedValue({ response: { status: 401 } })
+    const post = vi.spyOn(apiClient, 'post').mockResolvedValue({
+      data: { user_id: 'demo-user', username: 'e2e', roles: ['operator', 'viewer'] },
+    } as never)
 
     render(
       <MemoryRouter initialEntries={['/resources/llm-runtime?environment=env-1']}>
         <Routes>
           <Route element={<AuthGuard><div>private page</div></AuthGuard>} path="*" />
-          <Route element={<LocationProbe />} path="/login" />
         </Routes>
       </MemoryRouter>,
     )
 
-    await waitFor(() => expect(screen.getByText('/login?next=%2Fresources%2Fllm-runtime%3Fenvironment%3Denv-1')).toBeInTheDocument())
-    expect(screen.queryByText('private page')).not.toBeInTheDocument()
+    expect(await screen.findByText('private page')).toBeInTheDocument()
+    expect(post).toHaveBeenCalledWith('/auth/login', { username: 'e2e', password: 'e2e-password' })
   })
 
   it('provides the authenticated username and roles to the private page', async () => {

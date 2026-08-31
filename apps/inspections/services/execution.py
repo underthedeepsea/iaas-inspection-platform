@@ -200,15 +200,39 @@ def _run_deterministic_detector(dataset, inspection_item):
     if scenario == "llm_scheduler_pressure":
         return _llm_pressure_result(events, metrics, inspection_item)
     if scenario == "mixed_resource_inspection":
-        control = _control_plane_result(events, inspection_item)
-        llm = _llm_pressure_result(events, metrics, inspection_item)
-        return _ScenarioResult(
-            code_claims=tuple(dict.fromkeys((*control.code_claims, *llm.code_claims))),
-            findings=(*control.findings, *llm.findings),
-            missing_data=tuple(dict.fromkeys((*control.missing_data, *llm.missing_data))),
-            data_valid=control.data_valid and llm.data_valid,
-        )
+        return _mixed_resource_result(events, metrics, inspection_item)
     return _ScenarioResult(code_claims=(), findings=(), missing_data=(), data_valid=True)
+
+
+def _mixed_resource_result(events, metrics, inspection_item):
+    """Keep mixed-scenario findings on the item that owns each claim."""
+
+    code = str(inspection_item.code).lower()
+    claims = {
+        str(claim).lower()
+        for claim in (inspection_item.required_claims or [])
+        if isinstance(claim, str)
+    }
+    targets = set()
+    if "anti_affinity" in code or any("anti_affinity" in claim for claim in claims):
+        targets.add("control")
+    if "llm" in code or any("llm" in claim or "performance" in claim for claim in claims):
+        targets.add("llm")
+
+    results = []
+    if "control" in targets:
+        results.append(_control_plane_result(events, inspection_item))
+    if "llm" in targets:
+        results.append(_llm_pressure_result(events, metrics, inspection_item))
+    if not results:
+        return _ScenarioResult(code_claims=(), findings=(), missing_data=(), data_valid=True)
+
+    return _ScenarioResult(
+        code_claims=tuple(dict.fromkeys(claim for result in results for claim in result.code_claims)),
+        findings=tuple(finding for result in results for finding in result.findings),
+        missing_data=tuple(dict.fromkeys(data for result in results for data in result.missing_data)),
+        data_valid=all(result.data_valid for result in results),
+    )
 
 
 def _control_plane_result(events, inspection_item):

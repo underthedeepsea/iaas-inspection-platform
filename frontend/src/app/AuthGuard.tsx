@@ -3,7 +3,7 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { useLocation, useNavigate } from 'react-router-dom'
 
 import { getApiError } from '../api/http'
-import { getCurrentUser, type SessionUser } from '../api/session'
+import { getCurrentUser, login, type SessionUser } from '../api/session'
 
 const AuthContext = createContext<SessionUser | null>(null)
 
@@ -29,12 +29,24 @@ export function AuthGuard({ children }: { children: ReactNode }) {
     let active = true
     setLoading(true)
     setError(null)
-    void getCurrentUser()
-      .then((currentUser) => {
+
+    const loadUser = async () => {
+      try {
+        const currentUser = await getCurrentUser()
         if (active) setUser(currentUser)
-      })
-      .catch((requestError) => {
+      } catch (requestError) {
         if (!active) return
+
+        if (statusOf(requestError) === 401 && import.meta.env.DEV) {
+          try {
+            const demoUser = await login('e2e', 'e2e-password')
+            if (active) setUser(demoUser)
+          } catch (loginError) {
+            if (active) setError(loginError)
+          }
+          return
+        }
+
         if (statusOf(requestError) === 401) {
           const currentLocation = locationRef.current
           const next = `${currentLocation.pathname}${currentLocation.search}${currentLocation.hash}`
@@ -42,10 +54,12 @@ export function AuthGuard({ children }: { children: ReactNode }) {
           return
         }
         setError(requestError)
-      })
-      .finally(() => {
+      } finally {
         if (active) setLoading(false)
-      })
+      }
+    }
+
+    void loadUser()
     return () => { active = false }
   }, [navigate, retry])
 

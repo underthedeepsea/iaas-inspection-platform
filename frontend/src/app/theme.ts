@@ -1,21 +1,22 @@
 export const semanticRiskTokens = {
-  p1: '#DC2626',
-  p2: '#D97706',
-  p3: '#2563EB',
-  p4: '#64748B',
+  p1: '#B4433F',
+  p2: '#A97027',
+  p3: '#5A7194',
+  p4: '#718189',
 } as const
 
 export const appTheme = {
   token: {
-    colorPrimary: '#F97316',
-    colorInfo: '#F97316',
-    colorBgLayout: '#F8FAFC',
+    colorPrimary: '#D66335',
+    colorInfo: '#D66335',
+    colorBgLayout: '#FFFFFF',
     colorBgContainer: '#FFFFFF',
-    colorText: '#111827',
-    colorTextSecondary: '#4B5563',
-    colorBorderSecondary: '#E5E7EB',
+    colorText: '#2A211E',
+    colorTextSecondary: '#6D5B53',
+    colorBorderSecondary: '#EEE5DF',
+    colorFillAlter: '#FFF7F2',
     borderRadius: 10,
-    borderRadiusLG: 14,
+    borderRadiusLG: 16,
     controlHeight: 36,
     fontSize: 14,
   },

@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Alert, Button, Progress, Skeleton, Table, Tag } from 'antd'
+import { Alert, Button, Progress, Skeleton, Tag } from 'antd'
 import { Link } from 'react-router-dom'
 
 import { getApiError } from '../../api/http'
@@ -25,6 +25,10 @@ function total(resources: ResourceType[], key: 'risk_count' | 'p1_count' | 'p2_c
 function averageHealth(resources: ResourceType[]) {
   const scores = resources.map((resource) => resource.health_score).filter((value): value is number => value != null)
   return scores.length ? Math.round(scores.reduce((sum, value) => sum + value, 0) / scores.length) : '—'
+}
+
+function asPercent(value?: number | null) {
+  return Math.min(100, Math.max(0, Math.round(value ?? 0)))
 }
 
 function fallbackRisks(resources: ResourceType[]): DashboardRisk[] {
@@ -97,7 +101,7 @@ export function DashboardPage({
   const coverage = snapshot && snapshot.assets_total ? Math.round((snapshot.assets_covered / snapshot.assets_total) * 100) : '—'
   const coverageDetail = snapshot && snapshot.assets_total ? `${snapshot.assets_covered} / ${snapshot.assets_total} 个对象` : '等待本轮快照'
   const aiCount = snapshot?.ai_dependent_cases ?? 0
-  const completeness = snapshot ? Math.round(snapshot.data_completeness_rate * 100) : 0
+  const completeness = snapshot ? asPercent(snapshot.data_completeness_rate) : 0
   const maturity = dashboardQuery.data?.capability_maturity ?? { enabled_items: 0, coded_items: 0 }
   const topRisks = dashboardQuery.data?.top_risks?.length ? dashboardQuery.data.top_risks : fallbackRisks(resources)
   const trend = dashboardQuery.data?.trend_7d ?? []
@@ -125,48 +129,66 @@ export function DashboardPage({
         <ResourceKPI label="AI 介入" value={aiCount} detail="Code-first / 按需介入" />
       </div>
 
-      <section className="panel dashboard-resource-panel" data-dashboard-section="resource-health">
-        <div className="section-heading"><div><span className="eyebrow">RESOURCE HEALTH</span><h3>资源健康状态</h3></div><Link className="text-link" to="/resources">查看资源巡检</Link></div>
-        <div className="resource-grid">{resources.map((resource) => <ResourceHealthCard key={resource.code} resource={resource} />)}</div>
-      </section>
-
-      <div className="content-grid content-grid-wide" data-dashboard-section="trend-and-risks">
-        <section className="panel">
-          <div className="section-heading"><div><span className="eyebrow">LAST 7 DAYS</span><h3>风险趋势</h3></div><span className="legend">风险总数 · 当前 {riskCount}</span></div>
-          <HealthTrendChart metric="risk" trend={trend} />
+      <div className="dashboard-workspace-grid">
+        <section className="panel dashboard-risk-panel" data-dashboard-section="trend-and-risks">
+          <div className="section-heading"><div><span className="panel-kicker">重点风险</span><h3>关注队列</h3><p className="panel-lede">按影响和生命周期排序</p></div><Link className="text-link" to="/risks">风险中心 →</Link></div>
+          <div className="dashboard-risk-list">
+            {topRisks.slice(0, 6).map((risk) => (
+              <article className="dashboard-risk-item" key={risk.id}>
+                <Tag className={`severity-badge severity-${risk.severity.toLowerCase()}`} color={severityColor(risk.severity)}>{risk.severity}</Tag>
+                <Link className="risk-row-link dashboard-risk-copy" to={risk.href ?? `/risks/${risk.id}`}>
+                  <strong>{risk.title}</strong>
+                  <small>{risk.domain} · {statusLabel(risk.status)}{risk.occurrence_count ? ` · 持续 ${risk.occurrence_count} 次发现` : ''}</small>
+                </Link>
+                <div className="dashboard-risk-meta"><span>{statusLabel(risk.status)}</span><Link to={risk.href ?? `/risks/${risk.id}`}>打开 →</Link></div>
+              </article>
+            ))}
+            {topRisks.length === 0 ? <div className="empty-cell">当前没有需要关注的重点风险。</div> : null}
+          </div>
         </section>
-        <section className="panel panel-large">
-          <div className="section-heading"><div><span className="eyebrow">ATTENTION QUEUE</span><h3>重点风险</h3></div><Link className="text-link" to="/risks">查看全部</Link></div>
-          <Table
-            className="data-table dashboard-risk-table"
-            columns={[
-              { title: '风险', dataIndex: 'title', render: (_value, risk: DashboardRisk) => <Link className="risk-row-link risk-name" to={risk.href ?? `/risks/${risk.id}`}><strong>{risk.title}</strong><small>{risk.domain}</small></Link> },
-              { title: '级别', dataIndex: 'severity', render: (value: string) => <Tag className={`severity-badge severity-${value.toLowerCase()}`} color={severityColor(value)}>{value}</Tag> },
-              { title: '状态', dataIndex: 'status', render: (value: string, risk: DashboardRisk) => <Tag className={`status-badge${risk.severity === 'P1' ? ' status-critical' : ''}`}>{statusLabel(value)}</Tag> },
-              { title: '最近发现', dataIndex: 'last_seen_at', render: (value: string | null) => <span className="muted">{formatDate(value)}</span> },
-              { title: '', key: 'action', render: (_value, risk: DashboardRisk) => <Link className="text-link" to={risk.href ?? `/risks/${risk.id}`}>查看 →</Link> },
-            ]}
-            dataSource={topRisks.slice(0, 6)}
-            locale={{ emptyText: '当前没有需要关注的重点风险。' }}
-            pagination={false}
-            rowKey="id"
-            size="small"
-          />
+
+        <section className="panel dashboard-completeness-panel" data-dashboard-section="auxiliary">
+          <div className="section-heading"><div><span className="panel-kicker">今日数据</span><h3>巡检完整性</h3><p className="panel-lede">完整数据让结论更稳定</p></div><span className="legend">当前 {completeness}%</span></div>
+          <div className="dashboard-health-layout">
+            <div className="ring-stat" style={{ '--ring-progress': completeness } as CSSProperties}><div className="ring-content"><strong>{completeness}</strong><span>完整性</span></div></div>
+            <div className="dashboard-health-copy">
+              <h4>{completeness >= 80 ? '大部分对象已覆盖' : '仍有对象等待覆盖'}</h4>
+              <p>{snapshot ? `还有 ${Math.max(0, snapshot.assets_total - snapshot.assets_covered)} 个对象等待本轮快照。` : '等待今日快照完成后更新覆盖情况。'}</p>
+              <dl className="dashboard-health-facts">
+                <div><dt>已代码化能力</dt><dd>{maturity.coded_items} 个</dd></div>
+                <div><dt>已启用能力</dt><dd>{maturity.enabled_items} 个</dd></div>
+                <div><dt>待复验风险</dt><dd>{topRisks.filter((risk) => risk.status === 'PENDING_REVERIFY').length} 个</dd></div>
+              </dl>
+            </div>
+          </div>
+          <div className="dashboard-trend-block">
+            <div className="trend-head"><strong>近 7 日风险趋势</strong><span>当前 {riskCount} 个</span></div>
+            <HealthTrendChart metric="risk" trend={trend} />
+          </div>
         </section>
       </div>
 
-      <div className="content-grid" data-dashboard-section="auxiliary">
-        <section className="panel">
-          <div className="section-heading"><div><span className="eyebrow">COMPLETENESS</span><h3>巡检完整性</h3></div></div>
-          <div className="ring-stat" style={{ '--ring-progress': completeness } as CSSProperties}><div className="ring-content"><strong>{completeness}</strong><span>%</span></div></div>
-          <p className="muted">数据完整性越高，风险结论越稳定。</p>
-          <div className="mini-stats"><span><b>{maturity.coded_items}</b> 个能力已代码化</span><span><b>{maturity.enabled_items}</b> 个能力已启用</span></div>
+      <section className="panel dashboard-resource-panel" data-dashboard-section="resource-health">
+        <div className="section-heading"><div><span className="panel-kicker">资源概览</span><h3>资源健康状态</h3><p className="panel-lede">按资源类型查看覆盖、健康度和风险</p></div><Link className="text-link" to="/resources">资源巡检 →</Link></div>
+        <div className="resource-grid">{resources.map((resource) => <ResourceHealthCard key={resource.code} resource={resource} />)}</div>
+      </section>
+
+      <div className="dashboard-lower-grid">
+        <section className="panel dashboard-ai-panel">
+          <div className="section-heading"><div><span className="panel-kicker">运行边界</span><h3>AI 按需介入</h3><p className="panel-lede">先代码，后调查</p></div><span className="mode-badge">只读</span></div>
+          <p className="body-copy">确定性的规则由代码完成。AI 只在证据不足或需要分类判断时介入，所有工具调用保持只读。</p>
+          <div className="dashboard-ai-rule"><strong>当前运行边界</strong><span>最大调查 3 轮，最多 5 次 Tool Call，不执行写操作。</span></div>
+          <div className="dashboard-ai-event">
+            {topRisks[0] ? <span><strong>{topRisks[0].title}</strong><small>已完成证据收集，等待人工确认原因。</small></span> : <span><strong>暂无待调查案例</strong><small>当前没有需要 AI 介入的风险。</small></span>}
+          </div>
+          <Link className="text-link" to="/ai-runtime">查看 AI 运行情况 →</Link>
         </section>
-        <section className="panel">
-          <div className="section-heading"><div><span className="eyebrow">MATURITY</span><h3>能力成熟度</h3></div><Link className="text-link" to="/evolution">看演进</Link></div>
+
+        <section className="panel dashboard-maturity-panel">
+          <div className="section-heading"><div><span className="panel-kicker">能力演进</span><h3>能力成熟度</h3></div><Link className="text-link" to="/evolution">看演进 →</Link></div>
           <div className="maturity-list">
             <div className="maturity-row"><span>代码化能力</span><strong>{maturity.coded_items}/{maturity.enabled_items || '—'}</strong><Progress percent={maturity.enabled_items ? Math.round((maturity.coded_items / maturity.enabled_items) * 100) : 0} showInfo={false} size="small" /></div>
-            <div className="maturity-row"><span>资源对象覆盖</span><strong>{total(resources, 'asset_count')}</strong><Progress percent={snapshot ? Math.round(snapshot.data_completeness_rate * 100) : 0} showInfo={false} size="small" /></div>
+            <div className="maturity-row"><span>资源对象覆盖</span><strong>{total(resources, 'asset_count')}</strong><Progress percent={completeness} showInfo={false} size="small" /></div>
             <div className="maturity-row"><span>AI 介入案例</span><strong>{snapshot?.ai_dependent_cases ?? 0}</strong><Progress percent={snapshot ? Math.min(100, snapshot.ai_dependent_cases * 10) : 0} showInfo={false} size="small" /></div>
           </div>
         </section>

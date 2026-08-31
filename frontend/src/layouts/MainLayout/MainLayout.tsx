@@ -58,6 +58,7 @@ export function MainLayout({ children }: { children?: ReactNode }) {
   const pageTitle = titleForPath(location.pathname)
   const [environments, setEnvironments] = useState<Environment[]>([])
   const [environmentsLoading, setEnvironmentsLoading] = useState(true)
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const user = useAuthUser()
 
   const urlEnvironmentId = searchParams.get('environment')
@@ -98,15 +99,16 @@ export function MainLayout({ children }: { children?: ReactNode }) {
   const username = user?.username ?? '未登录'
   const roles = user?.roles.length ? user.roles.join(' · ') : '未建立会话'
   const avatarInitial = user?.username?.trim().slice(0, 1).toUpperCase() || '?'
+  const closeMobileNav = () => setMobileNavOpen(false)
 
   return (
-    <div className={`app-shell${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
-      <aside className="sidebar" aria-label="主导航">
-        <NavLink className="brand" to="/" aria-label="返回每日巡检">
+    <div className={`app-shell${sidebarCollapsed ? ' sidebar-collapsed' : ''}${mobileNavOpen ? ' mobile-nav-open' : ''}`}>
+      <aside className={`sidebar${mobileNavOpen ? ' is-open' : ''}`} id="main-navigation" aria-label="主导航">
+        <NavLink className="brand" onClick={closeMobileNav} to="/" aria-label="返回每日巡检">
           <span className="brand-mark" aria-hidden="true">巡</span>
           <span>
             <strong>IaaS 智能巡检</strong>
-            <small>控制面 · v0.2</small>
+            <small>控制面</small>
           </span>
         </NavLink>
 
@@ -118,14 +120,14 @@ export function MainLayout({ children }: { children?: ReactNode }) {
           <div className="nav-group nav-primary">
             <span className="nav-label">工作台</span>
             {primaryNavigation.map(([label, to]) => (
-              <NavLink data-short-label={label.slice(0, 1)} className={({ isActive }) => (isActive ? 'is-active' : undefined)} end={to === '/'} key={to} to={to}>{label}</NavLink>
+              <NavLink data-short-label={label.slice(0, 1)} className={({ isActive }) => (isActive ? 'is-active' : undefined)} end={to === '/'} key={to} onClick={closeMobileNav} to={to}>{label}</NavLink>
             ))}
           </div>
           <details className="nav-more">
             <summary>更多</summary>
             <div className="nav-group">
               {secondaryNavigation.map(([label, to]) => (
-                <NavLink data-short-label={label.slice(0, 1)} className={({ isActive }) => (isActive ? 'is-active' : undefined)} key={to} to={to}>{label}</NavLink>
+                <NavLink data-short-label={label.slice(0, 1)} className={({ isActive }) => (isActive ? 'is-active' : undefined)} key={to} onClick={closeMobileNav} to={to}>{label}</NavLink>
               ))}
             </div>
           </details>
@@ -134,17 +136,18 @@ export function MainLayout({ children }: { children?: ReactNode }) {
         <div className="sidebar-footer">
           <span className="status-dot" aria-hidden="true" />
           <span>环境数据由 API 提供</span>
-          <span className="muted">v0.2</span>
         </div>
       </aside>
+      {mobileNavOpen ? <button aria-label="关闭主导航遮罩" className="mobile-nav-backdrop" onClick={closeMobileNav} type="button" /> : null}
 
       <div className="app-frame">
         <header className="topbar">
-          <div>
-            <span className="eyebrow">INSPECTION CONTROL PLANE</span>
+          <div className="topbar-title">
+            <span>今日工作区</span>
             <h1>{pageTitle}</h1>
           </div>
           <div className="topbar-actions">
+            <button aria-controls="main-navigation" aria-expanded={mobileNavOpen} aria-label={mobileNavOpen ? '关闭主导航' : '打开主导航'} className="menu-toggle" onClick={() => setMobileNavOpen((open) => !open)} type="button"><span aria-hidden="true">菜单</span></button>
             <label className="environment-picker">
               <span>环境</span>
               <Select
