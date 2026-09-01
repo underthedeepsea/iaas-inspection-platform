@@ -138,11 +138,17 @@ def test_mixed_resource_control_plane_topology_matches_violation_event():
 
     assert assets["control-plane-0"].topology["host"] == "host-control-0"
     assert assets["control-plane-1"].topology["host"] == "host-control-0"
-    assert any(
-        event.event_type == "TOPOLOGY_RISK"
-        and event.reason == "ANTI_AFFINITY_VIOLATION"
+    risk_events = [
+        event
         for event in dataset.events
-    )
+        if event.event_type == "TOPOLOGY_RISK"
+        and event.reason == "ANTI_AFFINITY_VIOLATION"
+    ]
+    assert len(risk_events) == 1
+    risk_event = risk_events[0]
+    assert risk_event.attributes["host"] == assets["control-plane-0"].topology["host"]
+    assert risk_event.attributes["host"] == assets["control-plane-1"].topology["host"]
+    assert risk_event.attributes["members"] == ["control-plane-0", "control-plane-1"]
 
 
 def test_mixed_resource_contains_kvm_and_kubernetes_clusters():
