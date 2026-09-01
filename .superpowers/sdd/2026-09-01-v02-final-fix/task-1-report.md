@@ -39,3 +39,37 @@ No automated test suite was needed for this documentation and file-layout-only t
 
 - The prescribed grep includes `README.md`, but this repository has no `README.md`; the command emitted that diagnostic while still finding the approved-baseline heading and exiting successfully. An equivalent check over existing paths passed.
 - The initial sandboxed `git mv` could not update `.git/index`; the same requested Git operation succeeded with the required repository permission escalation. No task work was blocked.
+
+## Fix report: responsive resource grid
+
+### Fix summary
+
+- Added the binding responsive rule `Below 1280px: 2 columns.` immediately after the unchanged desktop resource-grid statement in `docs/design/v0.2-approved-ui-baseline.md`.
+- Preserved all existing approved baseline values, left the experimental preview annotation unchanged, and did not change `README.md`.
+
+### Focused verification
+
+Command:
+
+```sh
+set -eu
+grep -nF 'Desktop: 3 columns × 2 rows for six default ResourceTypes.' docs/design/v0.2-approved-ui-baseline.md
+grep -nF 'Below 1280px: 2 columns.' docs/design/v0.2-approved-ui-baseline.md
+grep -nF 'This file is not the approved v0.2 product UI baseline.' docs/design/frontend-preview-experimental.html
+git diff --check
+```
+
+Output:
+
+```text
+26:Desktop: 3 columns × 2 rows for six default ResourceTypes.
+27:Below 1280px: 2 columns.
+2:     This file is not the approved v0.2 product UI baseline. -->
+```
+
+Exit status: `0`.
+
+### Fix self-review and concerns
+
+- The fix is limited to the missing responsive baseline line and this appended report section; no implementation files or README were touched.
+- No concerns remain for the requested fix; the pre-existing untracked `homepage-16-9.png` remains preserved.
