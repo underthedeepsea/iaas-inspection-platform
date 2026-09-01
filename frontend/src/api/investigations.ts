@@ -1,4 +1,8 @@
 import { apiClient } from './http'
+import {
+  getInvestigationEventHistory,
+  investigationEventStreamUrl,
+} from './investigationEvents'
 
 export type InvestigationContextType = 'RESOURCE_TYPE' | 'RESOURCE_RUN'
 
@@ -43,15 +47,6 @@ export interface InvestigationEvent {
   payload: Record<string, unknown>
 }
 
-interface InvestigationEventResponse {
-  sequence: number
-  event_type: string
-  event?: string
-  status: string
-  data?: Record<string, unknown>
-  payload?: Record<string, unknown>
-}
-
 export const investigationKeys = {
   all: ['investigations'] as const,
   detail: (id: string) => [...investigationKeys.all, 'detail', id] as const,
@@ -79,15 +74,7 @@ export async function getInvestigation(id: string) {
 }
 
 export async function getInvestigationEvents(id: string) {
-  const response = await apiClient.get<{ items: InvestigationEventResponse[] }>(`/investigations/${encodeURIComponent(id)}/events`, {
-    params: { page: 1, page_size: 100 },
-  })
-  return (response.data.items ?? []).map((event): InvestigationEvent => ({
-    sequence: event.sequence,
-    event_type: event.event_type || event.event || 'turn.error',
-    status: event.status,
-    payload: event.payload ?? event.data ?? {},
-  }))
+  return getInvestigationEventHistory(id)
 }
 
 export async function createConversationTurn(conversationId: string, message: string) {
@@ -107,5 +94,5 @@ export async function getResourceInvestigations(code: string, page = 1, pageSize
 }
 
 export function investigationEventsUrl(id: string) {
-  return `/api/v1/investigations/${encodeURIComponent(id)}/events`
+  return investigationEventStreamUrl(id)
 }

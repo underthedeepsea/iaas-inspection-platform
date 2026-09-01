@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react'
 
-import { getInvestigationEvents, investigationEventsUrl, type InvestigationEvent } from '../../api/investigations'
+import type { InvestigationEvent } from '../../api/investigations'
+import {
+  getInvestigationEventHistory,
+  investigationEventStreamUrl,
+} from '../../api/investigationEvents'
 
 export const INVESTIGATION_EVENT_TYPES = [
   'context.ready',
@@ -39,7 +43,7 @@ export function useInvestigationStream(investigationId?: string) {
     if (!investigationId) return
     setEvents([])
     let active = true
-    void getInvestigationEvents(investigationId)
+    void getInvestigationEventHistory(investigationId)
       .then((history) => {
         if (!active) return
         setEvents((current) => mergeEvents(current, history))
@@ -52,7 +56,7 @@ export function useInvestigationStream(investigationId?: string) {
       setRecovering(true)
       return () => { active = false }
     }
-    const source = new EventSource(investigationEventsUrl(investigationId))
+    const source = new EventSource(investigationEventStreamUrl(investigationId))
     const handle = (event: Event) => {
       const message = event as MessageEvent<string>
       try {
