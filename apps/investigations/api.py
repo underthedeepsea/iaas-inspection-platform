@@ -17,7 +17,6 @@ from apps.investigations.services.context_builder import (
     build_resource_type_context,
 )
 from apps.investigations.services.worker import enqueue_resource_investigation
-from apps.investigations import public_views
 from services.model_gateway.base import configured_value
 
 from .models import Conversation, Investigation, InvestigationEvent
@@ -149,7 +148,7 @@ def create_resource_investigation(request, resource_type_code):
             "status": Investigation.Status.CREATED,
             "context_type": context_type,
             "conversation_id": str(conversation.pk),
-            "events_url": f"/api/v1/investigations/{investigation.pk}/events",
+            "events_url": f"/api/v1/investigations/{investigation.pk}/events/stream",
         },
         status=201,
     )
@@ -179,17 +178,10 @@ def resource_investigation_collection(request, resource_type_code):
 
 @_boundary
 @_endpoint({"GET"})
-def investigation_events(request, investigation_id):
-    # Keep the existing JSON event projection for non-resource investigations;
-    # resource investigations use this route for replayable SSE.
+def investigation_event_stream(request, investigation_id):
     investigation = _owned_investigation(request, investigation_id)
     if investigation is None:
         raise ResourceInvestigationError("NOT_FOUND", "investigation does not exist", status=404)
-    if not Conversation.objects.filter(
-        investigation=investigation,
-        context_type__in=(Conversation.ContextType.RESOURCE_TYPE, Conversation.ContextType.RESOURCE_RUN),
-    ).exists():
-        return public_views.events(request, investigation_id)
     raw_last_id = request.META.get("HTTP_LAST_EVENT_ID", "")
     if raw_last_id and not re.fullmatch(r"0|[1-9][0-9]*", raw_last_id):
         raise APIRequestError(
@@ -234,6 +226,9 @@ def investigation_events(request, investigation_id):
     response["Cache-Control"] = "no-cache"
     response["X-Accel-Buffering"] = "no"
     return response
+
+
+investigation_events = investigation_event_stream
 
 
 def _owned_investigation(request, investigation_id):
@@ -302,6 +297,7 @@ def _reject_unknown(payload, allowed):
 
 __all__ = [
     "create_resource_investigation",
+    "investigation_event_stream",
     "investigation_events",
     "resource_investigation_collection",
     "resource_investigations",

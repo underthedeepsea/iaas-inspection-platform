@@ -2,6 +2,7 @@ from django.urls import path
 
 from . import api
 from apps.investigations import api as investigation_api
+from apps.investigations import public_views as investigation_public_views
 
 
 urlpatterns = [
@@ -68,13 +69,23 @@ urlpatterns = [
         name="resource-investigation-collection-slash",
     ),
     path(
+        "investigations/<uuid:investigation_id>/events/stream",
+        investigation_api.investigation_event_stream,
+        name="resource-investigation-event-stream",
+    ),
+    path(
+        "investigations/<uuid:investigation_id>/events/stream/",
+        investigation_api.investigation_event_stream,
+        name="resource-investigation-event-stream-slash",
+    ),
+    path(
         "investigations/<uuid:investigation_id>/events",
-        investigation_api.investigation_events,
+        investigation_public_views.events,
         name="resource-investigation-events",
     ),
     path(
         "investigations/<uuid:investigation_id>/events/",
-        investigation_api.investigation_events,
+        investigation_public_views.events,
         name="resource-investigation-events-slash",
     ),
 ]

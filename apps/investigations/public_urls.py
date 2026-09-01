@@ -1,11 +1,22 @@
 from django.urls import path
 
+from . import api as investigation_api
 from . import public_views
 
 
 urlpatterns = [
     path("<uuid:investigation_id>", public_views.detail, name="investigation-detail-no-slash"),
     path("<uuid:investigation_id>/", public_views.detail, name="investigation-detail"),
+    path(
+        "<uuid:investigation_id>/events/stream",
+        investigation_api.investigation_event_stream,
+        name="investigation-event-stream-no-slash",
+    ),
+    path(
+        "<uuid:investigation_id>/events/stream/",
+        investigation_api.investigation_event_stream,
+        name="investigation-event-stream",
+    ),
     path(
         "<uuid:investigation_id>/events",
         public_views.events,

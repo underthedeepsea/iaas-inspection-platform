@@ -60,6 +60,75 @@ def make_run(environment, resource_type):
     return run
 
 
+def make_owned_investigation(environment, run, user):
+    investigation = Investigation.objects.create(
+        trigger_type=Investigation.TriggerType.HUMAN,
+        status=Investigation.Status.RESOLVED,
+        entry_reason=Investigation.EntryReason.TREND_GAP,
+        model_provider="test",
+        model_name="bounded",
+    )
+    Conversation.objects.create(
+        environment=environment,
+        user=user,
+        context_type=Conversation.ContextType.RESOURCE_RUN,
+        context_id=run.pk,
+        investigation=investigation,
+        title="Resource investigation",
+    )
+    return investigation
+
+
+@pytest.mark.django_db
+def test_resource_investigation_events_returns_json_history():
+    environment = make_environment()
+    resource_type = make_resource_type("HISTORY_RESOURCE")
+    run = make_run(environment, resource_type)
+    user = make_user()
+    investigation = make_owned_investigation(environment, run, user)
+    InvestigationEvent.objects.create(
+        investigation=investigation,
+        sequence=1,
+        event_type="analysis.completed",
+        status=InvestigationEvent.Status.COMPLETED,
+        payload={"summary": "completed"},
+    )
+    client = Client()
+    client.force_login(user)
+
+    response = client.get(
+        f"/api/v1/investigations/{investigation.pk}/events?page=1&page_size=100"
+    )
+
+    assert response.status_code == 200
+    assert response["Content-Type"].startswith("application/json")
+    assert response.json()["items"][0]["sequence"] == 1
+
+
+@pytest.mark.django_db
+def test_resource_investigation_event_stream_returns_sse():
+    environment = make_environment()
+    resource_type = make_resource_type("STREAM_RESOURCE")
+    run = make_run(environment, resource_type)
+    user = make_user()
+    investigation = make_owned_investigation(environment, run, user)
+    InvestigationEvent.objects.create(
+        investigation=investigation,
+        sequence=1,
+        event_type="analysis.completed",
+        status=InvestigationEvent.Status.COMPLETED,
+        payload={"summary": "completed"},
+    )
+    client = Client()
+    client.force_login(user)
+
+    response = client.get(f"/api/v1/investigations/{investigation.pk}/events/stream")
+
+    assert response.status_code == 200
+    assert response["Content-Type"].startswith("text/event-stream")
+    assert "analysis.completed" in b"".join(response.streaming_content).decode()
+
+
 @pytest.mark.django_db
 def test_resource_investigation_rejects_cross_environment_and_out_of_scope_runs():
     environment = make_environment()
@@ -135,8 +204,15 @@ def test_resource_investigation_creates_owner_scoped_investigation_and_replayabl
     )
     investigation.refresh_from_db()
     assert investigation.status == Investigation.Status.RESOLVED
+    history = client.get(
+        f"/api/v1/investigations/{investigation_id}/events?page=1&page_size=100",
+    )
+    assert history.status_code == 200
+    assert history["Content-Type"].startswith("application/json")
+    assert history.json()["items"]
+
     events = client.get(
-        f"/api/v1/investigations/{investigation_id}/events",
+        f"/api/v1/investigations/{investigation_id}/events/stream",
         HTTP_LAST_EVENT_ID="1",
     )
     assert events.status_code == 200
