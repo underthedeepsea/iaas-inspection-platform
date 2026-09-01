@@ -186,7 +186,7 @@ def _assets_for(scenario):
     control_plane_host = "host-control-0"
     second_control_plane_host = (
         control_plane_host
-        if scenario == "control_plane_anti_affinity"
+        if scenario in {"control_plane_anti_affinity", "mixed_resource_inspection"}
         else "host-worker-0"
     )
     cluster_platform = {

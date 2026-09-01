@@ -132,6 +132,30 @@ def test_mixed_fixture_contains_control_plane_and_llm_signals():
     assert {change.asset_key for change in dataset.changes} >= {"llm-0"}
 
 
+def test_mixed_resource_control_plane_topology_matches_violation_event():
+    dataset = generate_dataset(42, "mixed_resource_inspection")
+    assets = {asset.external_key: asset for asset in dataset.assets}
+
+    assert assets["control-plane-0"].topology["host"] == "host-control-0"
+    assert assets["control-plane-1"].topology["host"] == "host-control-0"
+    assert any(
+        event.event_type == "TOPOLOGY_RISK"
+        and event.reason == "ANTI_AFFINITY_VIOLATION"
+        for event in dataset.events
+    )
+
+
+def test_mixed_resource_contains_kvm_and_kubernetes_clusters():
+    dataset = generate_dataset(42, "mixed_resource_inspection")
+    platforms = {
+        asset.labels.get("platform")
+        for asset in dataset.assets
+        if asset.asset_type == "CLUSTER"
+    }
+
+    assert {"kvm", "kubernetes"} <= platforms
+
+
 @pytest.mark.django_db
 def test_persist_dataset_writes_ready_dataset_and_all_mock_rows():
     from apps.core.models import Environment
