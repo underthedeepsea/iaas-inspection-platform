@@ -88,3 +88,48 @@ Both passed. `manage.py makemigrations --check` reported `No changes detected`, 
 ## Concerns
 
 - Final broader database-backed regression and a clean migration-state check remain unverified after the last stale expectation correction because the user requested no further database/network waiting at the checkpoint. The focused GREEN run before that correction was successful, and the remaining edit only changes expected `asset_count` from `4` to `3` in the already-failing assertion.
+
+## Fix round 1
+
+### Implementation
+
+- Added nested selector-term key validation in `_validated_selector_term()`. Each bounded OR term now accepts only `asset_types` and `labels`, matching the documented selector contract.
+- Added `test_resolve_scope_rejects_unsupported_nested_selector_term_keys`, which verifies a nested `unsupported` key raises `UnsupportedAssetSelector`.
+
+### RED and GREEN evidence
+
+The focused regression was added before the production change. With controlled local PostgreSQL access, it initially failed as expected:
+
+```text
+DJANGO_SETTINGS_MODULE=config.settings.dev .venv-web/bin/python -m pytest tests/domain/test_inspection_scope.py -q -k unsupported_nested_selector_term_keys
+FAILED test_resolve_scope_rejects_unsupported_nested_selector_term_keys
+Failed: DID NOT RAISE <class 'apps.inspections.services.scope.UnsupportedAssetSelector'>
+1 failed, 6 deselected in 2.10s
+```
+
+After the validator change, the same command passed:
+
+```text
+DJANGO_SETTINGS_MODULE=config.settings.dev .venv-web/bin/python -m pytest tests/domain/test_inspection_scope.py -q -k unsupported_nested_selector_term_keys
+1 passed, 6 deselected in 1.61s
+```
+
+### Required database-backed reruns
+
+```text
+DJANGO_SETTINGS_MODULE=config.settings.dev .venv-web/bin/python -m pytest tests -q -k "scope or resource_type or manual_inspection"
+35 passed, 367 deselected in 5.20s
+
+DJANGO_SETTINGS_MODULE=config.settings.dev .venv-web/bin/python manage.py makemigrations --check
+No changes detected
+```
+
+### Self-review
+
+- Confirmed the nested key check runs before any term fields are read, so unsupported values cannot be silently ignored.
+- Confirmed the change preserves the legacy single-selector and valid bounded OR-term paths.
+- Confirmed the required database-backed filtered suite and migration-state check were rerun after the stale expectation correction and this fix.
+
+### Concerns
+
+- None. The unrelated untracked `homepage-16-9.png` remains excluded from this fix commit.

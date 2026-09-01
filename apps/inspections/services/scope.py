@@ -184,6 +184,11 @@ def _validated_selector(value, resource_type_code):
 
 
 def _validated_selector_term(selector, resource_type_code):
+    unsupported = set(selector) - {"asset_types", "labels"}
+    if unsupported:
+        raise UnsupportedAssetSelector(
+            f"{resource_type_code} contains unsupported keys: {sorted(unsupported)}"
+        )
     selected_types = selector.get("asset_types", [])
     if not isinstance(selected_types, list) or any(
         not isinstance(asset_type, str) for asset_type in selected_types

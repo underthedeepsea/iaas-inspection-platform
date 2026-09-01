@@ -93,6 +93,23 @@ def test_resolve_scope_rejects_unsupported_selector_keys():
 
 
 @pytest.mark.django_db
+def test_resolve_scope_rejects_unsupported_nested_selector_term_keys():
+    environment = make_environment()
+    ResourceType.objects.create(
+        code="BAD_NESTED_SELECTOR",
+        name="Bad nested selector",
+        asset_selector={
+            "selectors": [
+                {"asset_types": ["HOST"], "unsupported": "value"},
+            ]
+        },
+    )
+
+    with pytest.raises(UnsupportedAssetSelector, match="unsupported keys"):
+        resolve_scope(environment_id=environment.id, resource_type_codes=["BAD_NESTED_SELECTOR"])
+
+
+@pytest.mark.django_db
 def test_resolve_scope_matches_supported_labels_exactly():
     environment = make_environment()
     kvm = Asset.objects.create(
