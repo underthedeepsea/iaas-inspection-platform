@@ -60,7 +60,7 @@ export function useInspectionRunStream(runId: string) {
         if (run.status === 'SUCCEEDED' || run.status === 'PARTIAL' || run.status === 'FAILED') {
           applyEvent({
             sequence: lastEventId.current + 1,
-            event_type: run.status === 'SUCCEEDED' ? 'run.completed' : 'run.failed',
+            event_type: run.status === 'FAILED' ? 'run.failed' : 'run.completed',
             status: run.status,
             payload: {},
           })
