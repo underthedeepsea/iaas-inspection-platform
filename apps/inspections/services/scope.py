@@ -15,6 +15,12 @@ class UnsupportedAssetSelector(ValueError):
 
 
 @dataclass(frozen=True)
+class SelectorTerm:
+    asset_types: tuple[str, ...]
+    labels: dict[str, str]
+
+
+@dataclass(frozen=True)
 class ResolvedInspectionScope:
     resource_type_codes: tuple[str, ...]
     inspection_item_ids: tuple
@@ -132,30 +138,52 @@ def asset_ids_for_selectors(environment_id, selectors, *, frozen_ids=None):
     matching_ids = set()
     for selector in selectors:
         if isinstance(selector, Mapping):
-            asset_types, labels = _validated_selector(selector, "asset_selector")
+            validated_selector = _validated_selector(selector, "asset_selector")
+        elif isinstance(selector, tuple) and all(
+            isinstance(term, SelectorTerm) for term in selector
+        ):
+            validated_selector = selector
         else:
-            try:
-                asset_types, labels = selector
-            except (TypeError, ValueError):
-                raise UnsupportedAssetSelector("asset selector must be a validated selector") from None
-        if not asset_types and not labels:
-            continue
-        query = base
-        if asset_types:
-            query = query.filter(asset_type__in=asset_types)
-        if labels:
-            query = query.filter(labels__contains=labels)
-        matching_ids.update(query.values_list("id", flat=True))
+            raise UnsupportedAssetSelector("asset selector must be a validated selector")
+        for term in validated_selector:
+            if not term.asset_types and not term.labels:
+                continue
+            query = base
+            if term.asset_types:
+                query = query.filter(asset_type__in=term.asset_types)
+            if term.labels:
+                query = query.filter(labels__contains=term.labels)
+            matching_ids.update(query.values_list("id", flat=True))
     return matching_ids
 
 
 def _validated_selector(value, resource_type_code):
     selector = value if isinstance(value, Mapping) else {}
     unsupported = set(selector) - {"asset_types", "labels"}
+    if "selectors" in selector:
+        unsupported -= {"selectors"}
     if unsupported:
         raise UnsupportedAssetSelector(
             f"{resource_type_code} contains unsupported keys: {sorted(unsupported)}"
         )
+    if "selectors" in selector:
+        if set(selector) != {"selectors"}:
+            raise UnsupportedAssetSelector(
+                f"{resource_type_code} must use selectors or a single selector, not both"
+            )
+        terms = selector["selectors"]
+        if not isinstance(terms, list) or any(not isinstance(term, Mapping) for term in terms):
+            raise UnsupportedAssetSelector(
+                f"{resource_type_code}.selectors must be a list of selector terms"
+            )
+        return tuple(
+            _validated_selector_term(term, f"{resource_type_code}.selectors[{index}]")
+            for index, term in enumerate(terms)
+        )
+    return (_validated_selector_term(selector, resource_type_code),)
+
+
+def _validated_selector_term(selector, resource_type_code):
     selected_types = selector.get("asset_types", [])
     if not isinstance(selected_types, list) or any(
         not isinstance(asset_type, str) for asset_type in selected_types
@@ -176,11 +204,12 @@ def _validated_selector(value, resource_type_code):
         raise UnsupportedAssetSelector(
             f"{resource_type_code}.asset_selector.labels must be a string map"
         )
-    return tuple(selected_types), dict(labels)
+    return SelectorTerm(asset_types=tuple(selected_types), labels=dict(labels))
 
 
 __all__ = [
     "ResolvedInspectionScope",
+    "SelectorTerm",
     "UnknownResourceType",
     "UnsupportedAssetSelector",
     "asset_ids_for_selectors",

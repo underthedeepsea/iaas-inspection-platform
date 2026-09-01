@@ -123,12 +123,11 @@ def test_valid_request_freezes_requested_and_resolved_scope():
     assert run.status == InspectionRun.Status.PENDING
     assert run.config_snapshot["requested_scope"] == {"resource_types": ["LLM_RUNTIME"]}
     assert run.config_snapshot["resolved_scope"]["resource_types"] == ["LLM_RUNTIME"]
-    # LLM_RUNTIME follows the v0.2 composition contract: LLM instance, GPU,
-    # and the two control-plane pods present in the deterministic fixture.
-    assert run.config_snapshot["resolved_scope"]["asset_count"] == 4
+    # LLM_RUNTIME includes only the labeled LLM instance, GPU, and runtime pod.
+    assert run.config_snapshot["resolved_scope"]["asset_count"] == 3
     assert body["scope"] == {
         "resource_types": ["LLM_RUNTIME"],
-        "asset_count": 4,
+        "asset_count": 3,
         "inspection_item_count": 1,
     }
 

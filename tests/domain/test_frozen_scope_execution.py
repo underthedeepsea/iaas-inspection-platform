@@ -61,3 +61,26 @@ def test_execution_uses_item_ids_frozen_at_run_creation():
     item_run = run.item_runs.get()
     assert item_run.asset_scope["resource_types"] == [resource_type.code]
     assert item_run.asset_scope["asset_ids"] == run.config_snapshot["resolved_scope"]["asset_ids"]
+
+
+@pytest.mark.django_db
+def test_execution_keeps_asset_ids_frozen_when_resource_selector_changes():
+    environment = make_environment()
+    resource_type = ResourceType.objects.get(code="CONTROL_PLANE")
+    item = make_item("frozen.selector-change")
+    InspectionItemResourceType.objects.create(
+        resource_type=resource_type,
+        inspection_item=item,
+    )
+    run = create_manual_inspection_run(
+        environment=environment,
+        resource_type_codes=[resource_type.code],
+    )
+    frozen_asset_ids = run.config_snapshot["resolved_scope"]["asset_ids"]
+
+    resource_type.asset_selector = {"asset_types": [Asset.AssetType.HOST]}
+    resource_type.save(update_fields=["asset_selector"])
+
+    execute_inspection_run(run)
+
+    assert run.item_runs.get(inspection_item=item).asset_scope["asset_ids"] == frozen_asset_ids

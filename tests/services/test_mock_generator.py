@@ -132,6 +132,22 @@ def test_mixed_fixture_contains_control_plane_and_llm_signals():
     assert {change.asset_key for change in dataset.changes} >= {"llm-0"}
 
 
+def test_mixed_fixture_has_resource_selector_labels():
+    assets = {
+        asset.asset_key: asset
+        for asset in generate_dataset(1729, "mixed_resource_inspection", BUSINESS_DATE).assets
+    }
+
+    assert assets["host-control-0"].labels["role"] == "control-plane"
+    assert assets["control-plane-0"].labels["component"] == "control-plane"
+    assert assets["control-plane-1"].labels["component"] == "control-plane"
+    assert assets["host-worker-0"].labels["gpu_host"] == "true"
+    assert assets["gpu-0"].labels == {"model": "A100", "workload": "llm", "pool": "gpu"}
+    assert assets["llm-0"].labels == {"model": "mock-llm", "workload": "llm"}
+    assert assets["llm-runtime-0"].asset_type == "POD"
+    assert assets["llm-runtime-0"].labels == {"workload": "llm"}
+
+
 def test_mixed_resource_control_plane_topology_matches_violation_event():
     dataset = generate_dataset(42, "mixed_resource_inspection")
     assets = {asset.external_key: asset for asset in dataset.assets}

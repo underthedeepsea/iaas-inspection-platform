@@ -11,6 +11,8 @@ from apps.inspections.services.scope import (
     resolve_scope,
     scope_to_snapshot,
 )
+from apps.mockdata.services import persist_dataset
+from services.mock_generator.generator import generate_dataset
 
 
 def make_environment():
@@ -121,3 +123,37 @@ def test_resolve_scope_matches_supported_labels_exactly():
 
     assert scope.asset_ids == (kvm.id,)
     assert kubernetes.id not in scope.asset_ids
+
+
+@pytest.mark.django_db
+def test_control_plane_scope_excludes_worker_host():
+    environment = make_environment()
+    persist_dataset(environment, generate_dataset(42, "mixed_resource_inspection"))
+
+    scope = resolve_scope(
+        environment_id=environment.id,
+        resource_type_codes=["CONTROL_PLANE"],
+    )
+    keys = set(
+        Asset.objects.filter(id__in=scope.asset_ids).values_list("external_key", flat=True)
+    )
+
+    assert "host-control-0" in keys
+    assert "host-worker-0" not in keys
+
+
+@pytest.mark.django_db
+def test_llm_runtime_scope_excludes_control_plane_pods():
+    environment = make_environment()
+    persist_dataset(environment, generate_dataset(42, "mixed_resource_inspection"))
+
+    scope = resolve_scope(
+        environment_id=environment.id,
+        resource_type_codes=["LLM_RUNTIME"],
+    )
+    keys = set(
+        Asset.objects.filter(id__in=scope.asset_ids).values_list("external_key", flat=True)
+    )
+
+    assert "llm-runtime-0" in keys
+    assert "control-plane-0" not in keys

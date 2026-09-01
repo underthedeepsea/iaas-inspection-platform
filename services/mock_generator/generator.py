@@ -214,7 +214,7 @@ def _assets_for(scenario):
             "HOST",
             "worker-host-0",
             parent_key="cluster-0",
-            labels={"role": "worker", "zone": "zone-b"},
+            labels={"role": "worker", "zone": "zone-b", "gpu_host": "true"},
             topology={"zone": "zone-b"},
         ),
         AssetRecord(
@@ -246,7 +246,7 @@ def _assets_for(scenario):
             "GPU",
             "mock-gpu-0",
             parent_key="vm-0",
-            labels={"model": "A100"},
+            labels={"model": "A100", "workload": "llm", "pool": "gpu"},
             topology={"host": "host-worker-0"},
         ),
         AssetRecord(
@@ -254,8 +254,16 @@ def _assets_for(scenario):
             "LLM_INSTANCE",
             "mock-llm-0",
             parent_key="vm-0",
-            labels={"model": "mock-llm"},
+            labels={"model": "mock-llm", "workload": "llm"},
             topology={"gpu": "gpu-0"},
+        ),
+        AssetRecord(
+            "llm-runtime-0",
+            "POD",
+            "llm-runtime-0",
+            parent_key="host-worker-0",
+            labels={"workload": "llm"},
+            topology={"host": "host-worker-0"},
         ),
     ]
     if scenario == "mixed_resource_inspection":
