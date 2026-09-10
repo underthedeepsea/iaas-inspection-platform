@@ -1,3 +1,4 @@
+"""Historical scenario detector contract; production rules are tested in test_launch_execution."""
 from datetime import date
 import uuid
 
@@ -110,7 +111,7 @@ def test_control_plane_anti_affinity_is_code_only_and_persists_literal_finding_a
     )
     run = create_run(environment, dataset)
 
-    from apps.inspections.services.execution import execute_inspection_item
+    from apps.inspections.legacy.mock_scenario_detector import execute_inspection_item
 
     item_run = execute_inspection_item(run, item)
 
@@ -182,7 +183,7 @@ def test_asset_scope_uses_mutated_persisted_assets_instead_of_regenerating_datas
     )
     run = create_run(environment, dataset)
 
-    from apps.inspections.services.execution import execute_inspection_item
+    from apps.inspections.legacy.mock_scenario_detector import execute_inspection_item
 
     item_run = execute_inspection_item(run, item)
 
@@ -276,7 +277,7 @@ def test_asset_scope_unions_current_dataset_evidence_and_excludes_unrelated_envi
     )
     run = create_run(environment, dataset)
 
-    from apps.inspections.services.execution import execute_inspection_item
+    from apps.inspections.legacy.mock_scenario_detector import execute_inspection_item
 
     item_run = execute_inspection_item(run, item)
 
@@ -322,7 +323,7 @@ def test_non_active_registry_resolver_does_not_resolve_detector_claim(resolver_s
     )
     run = create_run(environment, dataset)
 
-    from apps.inspections.services.execution import execute_inspection_item
+    from apps.inspections.legacy.mock_scenario_detector import execute_inspection_item
 
     item_run = execute_inspection_item(run, item)
 
@@ -347,7 +348,7 @@ def test_registry_without_resolve_method_does_not_resolve_detector_claim():
     )
     run = create_run(environment, dataset)
 
-    from apps.inspections.services.execution import execute_inspection_item
+    from apps.inspections.legacy.mock_scenario_detector import execute_inspection_item
 
     item_run = execute_inspection_item(run, item, registry=object())
 
@@ -374,7 +375,7 @@ def test_ready_dataset_with_deleted_queue_rows_is_data_invalid_and_never_ai_elig
     )
     run = create_run(environment, dataset)
 
-    from apps.inspections.services.execution import execute_inspection_item
+    from apps.inspections.legacy.mock_scenario_detector import execute_inspection_item
 
     item_run = execute_inspection_item(run, item)
 
@@ -404,7 +405,7 @@ def test_llm_scheduler_pressure_leaves_only_degradation_category_as_ai_claim_gap
     )
     run = create_run(environment, dataset)
 
-    from apps.inspections.services.execution import execute_inspection_item
+    from apps.inspections.legacy.mock_scenario_detector import execute_inspection_item
 
     item_run = execute_inspection_item(run, item)
 
@@ -446,7 +447,7 @@ def test_data_incomplete_is_invalid_and_never_ai_eligible_when_required_evidence
     )
     run = create_run(environment, dataset)
 
-    from apps.inspections.services.execution import execute_inspection_item
+    from apps.inspections.legacy.mock_scenario_detector import execute_inspection_item
 
     item_run = execute_inspection_item(run, item)
 
