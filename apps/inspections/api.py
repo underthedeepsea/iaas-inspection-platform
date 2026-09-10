@@ -25,7 +25,7 @@ from apps.risks.services.lifecycle import ACTIVE_RISK_STATUSES
 from apps.operations_api.serializers import serialize_risk
 from apps.inspections.services.scope import asset_ids_for_selectors
 
-from .serializers import serialize_resource_summary
+from .serializers import serialize_resource_summary, resource_check_results
 from .services.events import get_run_events
 
 
@@ -132,6 +132,7 @@ def _serialize_resource_type(resource_type, environment):
     asset_count = latest.assets_total if latest else _asset_count(resource_type, environment)
     return {
         "code": resource_type.code,
+        "release_state": "READY" if resource_type.code in {"CONTROL_PLANE", "LLM_RUNTIME"} else "PLANNED",
         "name": resource_type.name,
         "description": resource_type.description,
         "icon": resource_type.icon,
@@ -190,6 +191,7 @@ def resource_overview(request, resource_type_code):
         {
             "resource_type": _serialize_resource_type(resource_type, environment),
             "latest": serialize_resource_summary(latest) if latest else None,
+            "check_results": resource_check_results(latest.inspection_run, resource_type) if latest else [],
             "health_trend": [serialize_resource_summary(item) for item in trend],
         }
     )
@@ -271,6 +273,7 @@ def resource_run_detail(request, resource_type_code, run_id):
                 "assets_covered": summary.assets_covered,
                 "rate": summary.assets_covered / summary.assets_total if summary.assets_total else None,
             },
+            "check_results": resource_check_results(summary.inspection_run, resource_type),
             "inspection_item_status_counts": dict(status_counts),
             "inspection_item_count": summary.inspection_item_count,
             "finding_count": summary.finding_count,

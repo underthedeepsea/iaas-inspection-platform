@@ -1,3 +1,4 @@
+import { CheckResultsTable } from '../../features/inspection-history/CheckResultsTable'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
 
@@ -32,6 +33,7 @@ export function ResourceRunDetailPage({ environmentId: providedEnvironmentId }: 
         <span className={`status-badge${status === 'failed' ? ' status-critical' : ''}`}>{detail.run.status}</span>
       </div>
       <InspectionRunSummary detail={detail} />
+      <CheckResultsTable results={detail.check_results} />
       <div className="content-grid">
         <section className="panel panel-large">
           <div className="section-heading"><div><span className="eyebrow">ATTENTION QUEUE</span><h3>主要风险</h3></div><span className="legend">本轮风险 {detail.risk_count}</span></div>

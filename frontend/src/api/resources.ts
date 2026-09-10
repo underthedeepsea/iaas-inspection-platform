@@ -47,6 +47,7 @@ export interface ResourceSummary {
 }
 
 export interface ResourceOverview {
+  check_results?: CheckResult[]
   resource_type: ResourceType
   latest: ResourceSummary | null
   health_trend: ResourceSummary[]
@@ -68,6 +69,7 @@ export interface ResourceHistoryParams {
 }
 
 export interface ResourceRunDetail {
+  check_results?: CheckResult[]
   resource_type: string
   run: {
     id: string
@@ -144,4 +146,18 @@ export async function getResourceRisks(code: string, environmentId: string) {
     { params: { environment_id: environmentId, page_size: 100 } },
   )
   return response.data
+}
+
+export interface CheckResult {
+  id: string
+  inspection_item_code: string
+  inspection_item_name: string
+  asset_id: string
+  asset_name: string
+  status: 'PASS' | 'FAIL' | 'UNKNOWN' | 'ERROR' | 'NOT_APPLICABLE'
+  summary: string
+  observed_value: Record<string, unknown>
+  expected_value: Record<string, unknown>
+  evidence: Record<string, unknown>
+  checked_at: string
 }

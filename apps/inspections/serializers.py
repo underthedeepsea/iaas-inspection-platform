@@ -49,3 +49,22 @@ def serialize_resource_summary(summary):
 
 
 __all__ = ["serialize_manual_inspection_run", "serialize_resource_summary"]
+
+
+def serialize_check_result(result):
+    return {
+        'id':str(result.pk), 'inspection_item_code':result.inspection_item_run.inspection_item.code,
+        'inspection_item_name':result.inspection_item_run.inspection_item.name,
+        'asset_id':str(result.asset_id), 'asset_name':result.evidence.get('asset_name', result.asset.name),
+        'status':result.status, 'summary':result.summary, 'observed_value':result.observed_value,
+        'expected_value':result.expected_value, 'evidence':result.evidence, 'checked_at':result.checked_at.isoformat(),
+    }
+
+
+def resource_check_results(run, resource_type):
+    from apps.inspections.models import CheckResult
+    item_runs = [row for row in run.item_runs.all() if resource_type.code in (row.asset_scope or {}).get('resource_types', [])]
+    if not item_runs:
+        item_runs = list(run.item_runs.filter(inspection_item__resource_types__resource_type=resource_type).distinct())
+    asset_ids = {value for row in item_runs for value in (row.asset_scope or {}).get('asset_ids', [])}
+    return [serialize_check_result(row) for row in CheckResult.objects.filter(inspection_run=run, inspection_item_run__in=item_runs, asset_id__in=asset_ids).select_related('asset','inspection_item_run__inspection_item').order_by('inspection_item_run__inspection_item__code','asset__external_key')]

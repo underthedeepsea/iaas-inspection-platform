@@ -102,7 +102,6 @@ export function DashboardPage({
   const coverage = snapshot && snapshot.assets_total ? Math.round((snapshot.assets_covered / snapshot.assets_total) * 100) : '—'
   const coverageDetail = snapshot && snapshot.assets_total ? `${snapshot.assets_covered} / ${snapshot.assets_total} 个对象` : '等待本轮快照'
   const completeness = snapshot ? asPercent(snapshot.data_completeness_rate) : 0
-  const maturity = dashboardQuery.data?.capability_maturity ?? { enabled_items: 0, coded_items: 0 }
   const topRisks = dashboardQuery.data?.top_risks?.length ? dashboardQuery.data.top_risks : fallbackRisks(resources)
   const trend = dashboardQuery.data?.trend_7d ?? []
   const newDiff = dashboardQuery.data?.yesterday_diff?.new_count
@@ -155,8 +154,8 @@ export function DashboardPage({
               <h4>{completeness >= 80 ? '大部分对象已覆盖' : '仍有对象等待覆盖'}</h4>
               <p>{snapshot ? `还有 ${Math.max(0, snapshot.assets_total - snapshot.assets_covered)} 个对象等待本轮快照。` : '等待今日快照完成后更新覆盖情况。'}</p>
               <dl className="dashboard-health-facts">
-                <div><dt>已代码化能力</dt><dd>{maturity.coded_items} 个</dd></div>
-                <div><dt>已启用能力</dt><dd>{maturity.enabled_items} 个</dd></div>
+
+
                 <div><dt>待复验风险</dt><dd>{topRisks.filter((risk) => risk.status === 'PENDING_REVERIFY').length} 个</dd></div>
               </dl>
             </div>

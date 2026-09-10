@@ -1,3 +1,4 @@
+import { CheckResultsTable } from '../../features/inspection-history/CheckResultsTable'
 import { useQuery } from '@tanstack/react-query'
 import { Tabs } from 'antd'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
@@ -86,6 +87,8 @@ function OverviewPanel({ overview }: { overview?: Awaited<ReturnType<typeof getR
   ] as const
   return (
     <>
+      <CheckResultsTable results={overview.check_results} />
+      {latest?.summary?.data_state === 'UNKNOWN' ? <p role="status">证据不足，暂无可信健康分数</p> : null}
       {isNoData ? <p className="no-data-banner" role="status">无可用资源数据</p> : null}
       <div className="metric-grid">{metrics.map(([label, value, detail]) => <article className="metric-card" key={label}><span>{label}</span><strong>{value}</strong><small>{detail}</small></article>)}</div>
       <div className="content-grid">

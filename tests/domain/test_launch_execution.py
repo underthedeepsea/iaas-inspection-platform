@@ -127,3 +127,17 @@ def test_ai_receives_scoped_facts_and_cannot_mutate_inspection(launch_context):
         assert result.max_rounds == 1 and result.tool_calls_used == 0
         assert list(CheckResult.objects.values()) == before
         assert list(Risk.objects.values()) == risks
+
+
+def test_resource_check_history_exposes_only_scoped_results(launch_context):
+    from apps.inspections.models import ResourceType, InspectionItemResourceType
+    from apps.inspections.serializers import resource_check_results
+    item_run = execute(launch_context)
+    resource = ResourceType.objects.get(code='LLM_RUNTIME')
+    InspectionItemResourceType.objects.create(inspection_item=launch_context[2],resource_type=resource)
+    rows = resource_check_results(item_run.inspection_run,resource)
+    assert len(rows) == 1
+    assert rows[0]['status'] == 'FAIL'
+    assert rows[0]['observed_value']['p95_ms'] == 220
+    assert rows[0]['expected_value']['threshold_ms'] == 180
+    assert rows[0]['evidence']['samples']
