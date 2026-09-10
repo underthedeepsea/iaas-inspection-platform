@@ -33,7 +33,7 @@ def react_app(request, **kwargs):
 
 
 def react_asset(request, path):
-    return serve(request, path, document_root=str(Path(settings.BASE_DIR) / "frontend" / "dist"))
+    return serve(request, path, document_root=str(Path(settings.BASE_DIR) / "frontend" / "dist" / "assets"))
 
 
 urlpatterns = [

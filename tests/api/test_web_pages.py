@@ -81,3 +81,14 @@ def test_product_about_uses_the_react_shell():
 def test_task_15_static_modules_are_present():
     for relative_path in STATIC_MODULES:
         assert (PROJECT_ROOT / relative_path).is_file(), relative_path
+
+
+def test_built_frontend_assets_are_served_from_the_assets_directory(tmp_path, settings):
+    settings.BASE_DIR = str(tmp_path)
+    assets = tmp_path / 'frontend' / 'dist' / 'assets'
+    assets.mkdir(parents=True)
+    (assets / 'app.js').write_text('window.mvpReady = true;')
+    response = Client().get('/assets/app.js')
+    assert response.status_code == 200
+    assert b''.join(response.streaming_content) == b'window.mvpReady = true;'
+    assert Client().get('/assets/../index.html').status_code == 400
