@@ -115,6 +115,7 @@ def resolve_item_asset_scope(inspection_run, inspection_item):
         "asset_ids": [str(asset.pk) for asset in ordered_assets],
         "asset_keys": [asset.external_key for asset in ordered_assets],
         "resource_types": item_resource_types,
+        "rule_config": dict(inspection_item.rule_config),
     }
 
 

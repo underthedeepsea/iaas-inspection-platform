@@ -109,6 +109,12 @@ def persist_dataset(environment, generated_dataset):
             ]
         )
 
+        dataset.generator_config['asset_snapshot'] = {
+            str(asset.pk): {
+                'name':asset.name, 'asset_type':asset.asset_type, 'labels':asset.labels,
+                'topology':{**asset.topology, **({'host':asset.parent.external_key} if asset.parent and asset.parent.asset_type == 'HOST' else {})},
+            } for asset in assets.values()
+        }
         dataset.asset_count = len(assets)
         dataset.metric_count = len(generated_dataset.metrics)
         dataset.log_count = len(generated_dataset.logs)
@@ -118,6 +124,7 @@ def persist_dataset(environment, generated_dataset):
         dataset.ready_at = timezone.now()
         dataset.save(
             update_fields=[
+                "generator_config",
                 "asset_count",
                 "metric_count",
                 "log_count",

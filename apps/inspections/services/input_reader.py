@@ -9,7 +9,17 @@ class InspectionInputReader:
         self.asset_ids = tuple(asset_ids)
 
     def assets(self):
-        return Asset.objects.filter(environment_id=self.dataset.environment_id, pk__in=self.asset_ids).select_related('parent').order_by('external_key', 'pk')
+        assets = list(Asset.objects.filter(environment_id=self.dataset.environment_id, pk__in=self.asset_ids).select_related('parent').order_by('external_key', 'pk'))
+        snapshot = (self.dataset.generator_config or {}).get('asset_snapshot')
+        if snapshot is not None:
+            for asset in assets:
+                facts = snapshot.get(str(asset.pk), {})
+                asset.parent = None
+                asset.topology = facts.get('topology', {})
+                asset.labels = facts.get('labels', asset.labels)
+                asset.name = facts.get('name', asset.name)
+                asset.asset_type = facts.get('asset_type', asset.asset_type)
+        return assets
 
     def metrics(self, metric_name, *, asset_ids=None):
         query = MockMetric.objects.filter(dataset=self.dataset, asset__in=self.assets(), metric_name=metric_name)

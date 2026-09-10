@@ -30,7 +30,7 @@ def _resource_types_for_run(run):
     codes = resolved.get("resource_types")
     if codes:
         return list(
-            ResourceType.objects.filter(enabled=True, code__in=codes).order_by("sort_order", "code", "pk")
+            ResourceType.objects.filter(code__in=codes).order_by("sort_order", "code", "pk")
         )
     return list(
         ResourceType.objects.filter(
@@ -54,6 +54,9 @@ def _build_summary(run, resource_type):
             inspection_item_id__in=item_ids,
         ).order_by("inspection_item__code", "pk")
     )
+    frozen_item_runs = [row for row in run.item_runs.all() if resource_type.code in (row.asset_scope or {}).get('resource_types', [])]
+    if frozen_item_runs:
+        item_runs = frozen_item_runs
     total_asset_ids = {str(value) for value in _asset_ids_for_type(run, resource_type)}
     covered_asset_ids = _covered_asset_ids(run, item_runs)
     covered_asset_ids &= total_asset_ids
@@ -162,6 +165,9 @@ def _build_summary(run, resource_type):
 def _asset_ids_for_type(run, resource_type):
     selector = resource_type.asset_selector or {}
     resolved = (run.config_snapshot or {}).get("resolved_scope") or {}
+    resource_ids = resolved.get('resource_asset_ids', {})
+    if resource_type.code in resource_ids:
+        return set(resource_ids[resource_type.code])
     frozen_ids = resolved.get("asset_ids")
     return asset_ids_for_selectors(
         run.environment_id,

@@ -2,9 +2,10 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.core.models import Environment
-from apps.inspections.models import InspectionItem, InspectionItemRun, InspectionRun
+from apps.inspections.models import InspectionItem, InspectionItemRun, InspectionRun, ResourceType
 from apps.inspections.services.events import append_run_event
 from apps.inspections.services.scope import (
+    asset_ids_for_selectors,
     resolve_item_asset_scope,
     resolve_scope,
     scope_to_snapshot,
@@ -32,6 +33,10 @@ def create_manual_inspection_run(*, environment, resource_type_codes, ai_mode="D
         resource_type_codes=requested_codes,
     )
     resolved_snapshot = scope_to_snapshot(scope)
+    resolved_snapshot['resource_asset_ids'] = {
+        resource.code: sorted(str(pk) for pk in asset_ids_for_selectors(environment.pk, [resource.asset_selector], frozen_ids=scope.asset_ids))
+        for resource in ResourceType.objects.filter(code__in=scope.resource_type_codes)
+    }
     run = InspectionRun.objects.create(
         environment=environment,
         dataset=dataset,

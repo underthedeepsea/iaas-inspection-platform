@@ -209,7 +209,8 @@ def test_persist_dataset_writes_ready_dataset_and_all_mock_rows():
     assert persisted.log_count == len(generated.logs)
     assert persisted.event_count == len(generated.events)
     assert persisted.change_count == len(generated.changes)
-    assert persisted.generator_config == {
+    assert len(persisted.generator_config["asset_snapshot"]) == len(generated.assets)
+    assert {key:value for key,value in persisted.generator_config.items() if key != "asset_snapshot"} == {
         "seed": 1729,
         "scenario": "llm_scheduler_pressure",
         "dataset_date": "2026-08-23",

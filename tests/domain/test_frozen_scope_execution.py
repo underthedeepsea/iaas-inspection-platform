@@ -84,3 +84,25 @@ def test_execution_keeps_asset_ids_frozen_when_resource_selector_changes():
     execute_inspection_run(run)
 
     assert run.item_runs.get(inspection_item=item).asset_scope["asset_ids"] == frozen_asset_ids
+
+
+@pytest.mark.django_db
+def test_topology_configuration_and_summary_scope_remain_frozen():
+    from apps.inspections.models import CheckResult
+    from apps.inspections.services.resource_summary import build_resource_summaries
+    environment = make_environment()
+    resource = ResourceType.objects.get(code='CONTROL_PLANE')
+    item = make_item('topology.control_plane_anti_affinity')
+    InspectionItemResourceType.objects.create(resource_type=resource,inspection_item=item)
+    run = create_manual_inspection_run(environment=environment,resource_type_codes=['CONTROL_PLANE'])
+    total = len(run.config_snapshot['resolved_scope']['asset_ids'])
+    # A later input refresh changes the mutable inventory, not this dataset.
+    host = Asset.objects.get(environment=environment,external_key='host-worker-0')
+    Asset.objects.filter(environment=environment,external_key='control-plane-1').update(parent=host,topology={'host':host.external_key})
+    resource.asset_selector = {'asset_types':['GPU']}
+    resource.save()
+    execute_inspection_run(run)
+    assert CheckResult.objects.filter(inspection_run=run,status='FAIL').count() == 2
+    summary = build_resource_summaries(run)[0]
+    assert summary.assets_total == total
+    assert summary.assets_covered == total

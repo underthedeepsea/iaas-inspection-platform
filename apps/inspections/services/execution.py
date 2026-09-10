@@ -38,7 +38,7 @@ def execute_inspection_item(inspection_run, inspection_item, dataset=None, *, re
         item_run.ai_admission_status = 'NO_AI'
         item_run.save()
         try:
-            results = get_rule(inspection_item.code)(reader=reader, assets=assets, config=inspection_item.rule_config)
+            results = get_rule(inspection_item.code)(reader=reader, assets=assets, config=item_run.asset_scope.get("rule_config", inspection_item.rule_config))
             result_ids = [r.asset.pk for r in results]
             if set(result_ids) != {a.pk for a in assets} or len(result_ids) != len(assets):
                 raise ValueError('Rule must return exactly one result for each scoped asset')
@@ -51,11 +51,11 @@ def execute_inspection_item(inspection_run, inspection_item, dataset=None, *, re
             item_run.error_message = str(error)[:4000]
             results = [CheckResultSpec(a, 'ERROR', '规则执行失败', evidence={'error_code': item_run.error_code}) for a in assets]
         item_run.finished_at = timezone.now()
-        CheckResult.objects.bulk_create([CheckResult(inspection_run=inspection_run, inspection_item_run=item_run, asset=r.asset, status=r.status, summary=r.summary, observed_value=r.observed_value, expected_value=r.expected_value, evidence=r.evidence, checked_at=item_run.finished_at) for r in results])
+        CheckResult.objects.bulk_create([CheckResult(inspection_run=inspection_run, inspection_item_run=item_run, asset=r.asset, status=r.status, summary=r.summary, observed_value=r.observed_value, expected_value=r.expected_value, evidence={**r.evidence, 'asset_name':r.asset.name}, checked_at=item_run.finished_at) for r in results])
         failures = [r for r in results if r.status == 'FAIL']
         persist_findings(item_run, [FindingSpec(finding_code=inspection_item.code, title=r.summary, category=inspection_item.domain, severity=inspection_item.default_severity, observed_at=item_run.finished_at, asset=r.asset, materiality=1, value={'observed':r.observed_value, 'expected':r.expected_value, 'evidence':r.evidence}, source_type=Finding.SourceType.RULE) for r in failures])
         counts = dict(Counter(r.status for r in results))
-        item_run.summary = {'result_counts':counts, 'finding_count':len(failures), 'data_valid':bool(results) and not any(r.status in {'UNKNOWN','ERROR'} for r in results), 'rule_config':dict(inspection_item.rule_config), 'data_source':'MOCK'}
+        item_run.summary = {'result_counts':counts, 'finding_count':len(failures), 'data_valid':bool(results) and not any(r.status in {'UNKNOWN','ERROR'} for r in results), 'rule_config':dict(item_run.asset_scope.get('rule_config', inspection_item.rule_config)), 'data_source':'MOCK'}
         item_run.save()
         _update_run_counts(inspection_run)
         return item_run
