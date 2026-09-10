@@ -1,8 +1,9 @@
-from collections import Counter
+from collections import Counter, defaultdict
 from decimal import Decimal
 
 from apps.assets.models import Asset
 from apps.inspections.models import (
+    CheckResult,
     Finding,
     InspectionItemResourceType,
     InspectionItemRun,
@@ -56,6 +57,18 @@ def _build_summary(run, resource_type):
     total_asset_ids = {str(value) for value in _asset_ids_for_type(run, resource_type)}
     covered_asset_ids = _covered_asset_ids(run, item_runs)
     covered_asset_ids &= total_asset_ids
+    checks = CheckResult.objects.filter(inspection_run=run, inspection_item_run__in=item_runs, asset_id__in=total_asset_ids)
+    statuses = defaultdict(set)
+    counts = Counter()
+    for asset_id, status in checks.values_list('asset_id', 'status'):
+        statuses[str(asset_id)].add(status)
+        counts[status] += 1
+    confidence = {
+        'conclusive_assets': sum(bool(values & {'PASS','FAIL'}) for values in statuses.values()),
+        'unknown_assets': sum(values == {'UNKNOWN'} for values in statuses.values()),
+        'error_assets': sum('ERROR' in values for values in statuses.values()),
+        'pass_count': counts['PASS'], 'fail_count': counts['FAIL'],
+    }
     findings = Finding.objects.filter(inspection_item_run_id__in=[row.pk for row in item_runs])
     observations = RiskObservation.objects.filter(
         inspection_run=run,
@@ -97,6 +110,9 @@ def _build_summary(run, resource_type):
         coverage_penalty = None
         health_score = None
         data_state = "NO_DATA"
+    if assets_total and confidence['conclusive_assets'] == 0:
+        health_score = None
+        data_state = 'UNKNOWN'
     breakdown = {
         "penalty": penalty,
         "coverage_penalty": coverage_penalty,
@@ -125,6 +141,9 @@ def _build_summary(run, resource_type):
         "started_at": run.started_at,
         "finished_at": run.finished_at,
         "summary": {
+            **confidence,
+            "assets_total": assets_total,
+            "assets_covered": assets_covered,
             "resource_type": resource_type.code,
             "coverage_rate": coverage_rate,
             "data_state": data_state,
@@ -152,21 +171,7 @@ def _asset_ids_for_type(run, resource_type):
 
 
 def _covered_asset_ids(run, item_runs):
-    ids = set()
-    keys = set()
-    for item_run in item_runs:
-        scope = item_run.asset_scope or {}
-        ids.update(str(value) for value in scope.get("asset_ids") or [])
-        keys.update(value for value in scope.get("asset_keys") or [] if isinstance(value, str))
-    if keys:
-        ids.update(
-            str(value)
-            for value in Asset.objects.filter(
-                environment_id=run.environment_id,
-                external_key__in=keys,
-            ).values_list("id", flat=True)
-        )
-    return {value for value in ids}
+    return {str(value) for value in CheckResult.objects.filter(inspection_run=run, inspection_item_run__in=item_runs).values_list('asset_id', flat=True)}
 
 
 __all__ = ["build_resource_summaries"]

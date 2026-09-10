@@ -7,7 +7,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.assets.models import Asset
-from apps.inspections.models import DailySnapshot, InspectionItemRun, InspectionRun
+from apps.inspections.models import CheckResult, DailySnapshot, InspectionItemRun, InspectionRun
 from apps.risks.models import Risk, RiskObservation, RiskStatusHistory
 from apps.risks.services.lifecycle import TERMINAL_RISK_STATUSES
 
@@ -157,11 +157,16 @@ def _snapshot_stats(run, item_runs, *, boundary=None):
         len(_summary_claims(item_run, "resolved_claims"))
         for item_run in valid_item_runs
     )
-    covered_asset_keys = _covered_asset_keys(run, item_runs)
+    planned = (run.config_snapshot or {}).get('resolved_scope', {}).get('asset_ids')
+    if planned is None:
+        planned = {str(pk) for item_run in item_runs for pk in (item_run.asset_scope or {}).get('asset_ids', [])}
+    planned = {str(pk) for pk in planned}
+    checks = CheckResult.objects.filter(inspection_run=run, inspection_item_run__in=item_runs, asset_id__in=planned)
+    covered_asset_keys = set(checks.values_list('asset_id', flat=True))
     risk_counts = _risk_counts_at_boundary(run, boundary=boundary)
 
     return {
-        "assets_total": Asset.objects.filter(environment_id=run.environment_id).count(),
+        "assets_total": len(planned),
         "assets_covered": len(covered_asset_keys),
         "inspection_item_count": len(item_runs),
         "risk_total": risk_counts["risk_total"],
@@ -180,7 +185,7 @@ def _snapshot_stats(run, item_runs, *, boundary=None):
             code_only_cases,
             code_only_cases + ai_dependent_cases,
         ),
-        "data_completeness_rate": _rate(len(valid_item_runs), len(item_runs)),
+        "data_completeness_rate": _rate(len(covered_asset_keys), len(planned)),
         "summary": {},
     }
 
