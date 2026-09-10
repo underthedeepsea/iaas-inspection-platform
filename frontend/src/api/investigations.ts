@@ -56,7 +56,7 @@ export const investigationKeys = {
 
 export async function createResourceInvestigation(code: string, input: CreateInvestigationInput) {
   const response = await apiClient.post<Investigation>(
-    `/resource-types/${encodeURIComponent(code)}/investigations`,
+    `/resource-types/${encodeURIComponent(code)}/analysis`,
     {
       context_type: input.contextType,
       environment_id: input.environmentId,

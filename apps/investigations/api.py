@@ -12,11 +12,11 @@ from apps.api.http import APIRequestError, api_error, parse_json_object
 from apps.api.pagination import paginate
 from apps.core.models import Environment
 from apps.inspections.models import InspectionRun, ResourceType
-from apps.investigations.services.context_builder import (
+from apps.investigations.services.explanation import (
+    explain,
     build_resource_run_context,
     build_resource_type_context,
 )
-from apps.investigations.services.worker import enqueue_resource_investigation
 from services.model_gateway.base import configured_value
 
 from .models import Conversation, Investigation, InvestigationEvent
@@ -136,17 +136,15 @@ def create_resource_investigation(request, resource_type_code):
             investigation=investigation,
             title=f"{resource_type.name} AI 分析",
         )
-    transaction.on_commit(
-        lambda investigation_id=investigation.pk, runtime_context=context: enqueue_resource_investigation(
-            investigation_id,
-            runtime_context,
-        )
-    )
+    investigation = explain(investigation, context)
     return JsonResponse(
         {
             "investigation_id": str(investigation.pk),
             "id": str(investigation.pk),
-            "status": Investigation.Status.CREATED,
+            "status": investigation.status,
+            "conclusion": investigation.conclusion,
+            "result": investigation.result,
+            "confidence": float(investigation.confidence) if investigation.confidence is not None else None,
             "context_type": context_type,
             "conversation_id": str(conversation.pk),
             "events_url": f"/api/v1/investigations/{investigation.pk}/events/stream",

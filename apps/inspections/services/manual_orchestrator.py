@@ -33,7 +33,6 @@ STAGE_ORDER = (
     "execute",
     "correlate_risks",
     "reverify",
-    "ai_admission",
     "resource_summaries",
     "snapshot",
     "complete",
@@ -50,7 +49,6 @@ def start_manual_inspection_run(run_id):
         _execute(run)
         _correlate(run)
         _reverify(run)
-        _admit(run)
         _summarize(run)
         _snapshot(run)
         _complete(run)

@@ -90,3 +90,40 @@ def test_fabricated_finding_without_failed_check_cannot_create_risk(launch_conte
     item_run = execute(launch_context)
     Finding.objects.create(inspection_item_run=item_run, asset=launch_context[3][0], finding_code='fabricated', title='AI said risk', category='llm', severity='P2', source_type='RULE', observed_at=timezone.now())
     assert correlate_run(item_run.inspection_run) == []
+
+
+def test_ai_receives_scoped_facts_and_cannot_mutate_inspection(launch_context):
+    from apps.inspections.models import InspectionItemResourceType, ResourceType
+    from apps.inspections.services.resource_summary import build_resource_summaries
+    from apps.investigations.models import Investigation
+    from apps.investigations.services.explanation import build_resource_run_context, explain
+    from apps.risks.services.correlation import correlate_run
+    from apps.risks.models import Risk
+    from services.model_gateway.base import ModelResponse, FinalAction
+    from unittest.mock import Mock
+
+    item_run = execute(launch_context)
+    resource = ResourceType.objects.get(code='LLM_RUNTIME')
+    InspectionItemResourceType.objects.create(inspection_item=launch_context[2], resource_type=resource)
+    item_run.asset_scope['resource_types'] = ['LLM_RUNTIME']
+    item_run.save()
+    run = item_run.inspection_run
+    build_resource_summaries(run)
+    correlate_run(run)
+    context = build_resource_run_context(resource_type_code='LLM_RUNTIME', inspection_run_id=run.pk)
+    assert {r['asset_id'] for r in context['check_results']} == {str(launch_context[3][0].pk)}
+    before = list(CheckResult.objects.values())
+    risks = list(Risk.objects.values())
+    for failed in [False, True]:
+        gateway = Mock(spec=['invoke'])
+        if failed:
+            gateway.invoke.side_effect = RuntimeError('provider unavailable')
+        else:
+            gateway.invoke.return_value = ModelResponse(action=FinalAction(summary='llm.ttft_slo 超阈值；不能确认根因',confidence=.5),model='test',provider='fake')
+        inv = Investigation.objects.create(trigger_type='HUMAN',entry_reason='USER_QUESTION',model_name='test',model_provider='fake')
+        result = explain(inv, context, gateway=gateway)
+        assert result.status == ('FAILED' if failed else 'RESOLVED')
+        assert gateway.invoke.call_count == 1
+        assert result.max_rounds == 1 and result.tool_calls_used == 0
+        assert list(CheckResult.objects.values()) == before
+        assert list(Risk.objects.values()) == risks

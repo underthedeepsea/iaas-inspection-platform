@@ -6,6 +6,7 @@ from apps.investigations import public_views as investigation_public_views
 
 
 urlpatterns = [
+    path("resource-types/<str:resource_type_code>/analysis", investigation_api.create_resource_investigation, name="resource-analysis"),
     path("resource-types", api.resource_types, name="resource-types"),
     path("resource-types/", api.resource_types, name="resource-types-slash"),
     path(
