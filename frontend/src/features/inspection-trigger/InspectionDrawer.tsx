@@ -33,6 +33,10 @@ export function InspectionDrawer({
     setValidationError('')
     setRequestError('')
     setRun(null)
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose()
     }

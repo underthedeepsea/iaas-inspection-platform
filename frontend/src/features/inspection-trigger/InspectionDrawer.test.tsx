@@ -48,7 +48,7 @@ describe('InspectionDrawer', () => {
       },
     } as never)
 
-    render(<InspectionDrawer environmentId="env-1" open onClose={vi.fn()} resourceTypes={resources} />)
+    const { rerender } = render(<InspectionDrawer environmentId="env-1" open onClose={vi.fn()} resourceTypes={resources} />)
 
     expect(screen.getByLabelText('本次巡检环境')).toBeInTheDocument()
     expect(screen.getByRole('dialog')).toHaveClass('inspection-drawer')
@@ -71,6 +71,14 @@ describe('InspectionDrawer', () => {
       trigger_options: { ai_mode: 'DEFERRED' },
     }))
     expect(screen.getByText('巡检任务已创建')).toBeInTheDocument()
+
+    // A dashboard refresh supplies a new callback and refreshed resources.
+    const refreshedOnClose = vi.fn()
+    rerender(<InspectionDrawer environmentId="env-1" open onClose={refreshedOnClose} resourceTypes={[...resources]} />)
+    expect(screen.getByText('巡检任务已创建')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '开始巡检' })).not.toBeInTheDocument()
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(refreshedOnClose).toHaveBeenCalled()
   })
 
   it('blocks an empty selection with inline validation', () => {
