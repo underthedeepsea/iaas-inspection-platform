@@ -35,6 +35,7 @@ class InspectionItem(EditableModel):
     default_severity = models.CharField(max_length=8, choices=Severity.choices, default=Severity.P3)
     enabled = models.BooleanField(default=True, db_index=True)
     schedule_policy = models.JSONField(default=dict)
+    rule_config = models.JSONField(default=dict)
     required_claims = models.JSONField(default=list)
     resolved_claims = models.JSONField(default=list)
     llm_responsibilities = models.JSONField(default=list)
