@@ -130,6 +130,44 @@ def test_resource_investigation_event_stream_returns_sse():
 
 
 @pytest.mark.django_db
+def test_resource_investigation_event_stream_redacts_payload_with_public_history_policy():
+    environment = make_environment()
+    resource_type = make_resource_type("REDACTED_STREAM_RESOURCE")
+    run = make_run(environment, resource_type)
+    user = make_user()
+    investigation = make_owned_investigation(environment, run, user)
+    InvestigationEvent.objects.create(
+        investigation=investigation,
+        sequence=1,
+        event_type="analysis.completed",
+        status=InvestigationEvent.Status.COMPLETED,
+        payload={
+            "summary": "safe summary",
+            "api_key": "do-not-return",
+            "details": {
+                "note": "safe note",
+                "authorization": "Bearer do-not-return",
+                "message": "token=do-not-return",
+            },
+        },
+    )
+    client = Client()
+    client.force_login(user)
+
+    response = client.get(f"/api/v1/investigations/{investigation.pk}/events/stream")
+
+    assert response.status_code == 200
+    raw = b"".join(response.streaming_content).decode()
+    envelope = json.loads(
+        next(line[6:] for line in raw.splitlines() if line.startswith("data: "))
+    )
+    assert envelope["payload"] == {
+        "details": {"message": "[redacted]", "note": "safe note"},
+        "summary": "safe summary",
+    }
+
+
+@pytest.mark.django_db
 def test_resource_investigation_rejects_cross_environment_and_out_of_scope_runs():
     environment = make_environment()
     other_environment = make_environment("Other")

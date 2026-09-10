@@ -20,6 +20,7 @@ from apps.investigations.services.worker import enqueue_resource_investigation
 from services.model_gateway.base import configured_value
 
 from .models import Conversation, Investigation, InvestigationEvent
+from .public_views import _public_json
 
 
 class ResourceInvestigationError(Exception):
@@ -203,7 +204,7 @@ def investigation_event_stream(request, investigation_id):
                     "sequence": row.sequence,
                     "event_type": row.event_type,
                     "status": row.status,
-                    "payload": row.payload or {},
+                    "payload": _public_json(row.payload or {}),
                 }
                 yield f"id: {row.sequence}\nevent: {row.event_type}\ndata: {json.dumps(envelope, ensure_ascii=False)}\n\n"
                 if row.event_type in {"analysis.completed", "analysis.failed"}:
