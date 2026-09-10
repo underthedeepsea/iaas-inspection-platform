@@ -1,6 +1,7 @@
+import { isLaunchResource } from '../../features/resource-health/resourceRoutes'
 import type { CSSProperties } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Alert, Button, Progress, Skeleton, Tag } from 'antd'
+import { Alert, Button, Skeleton, Tag } from 'antd'
 import { Link } from 'react-router-dom'
 
 import { getApiError } from '../../api/http'
@@ -88,7 +89,7 @@ export function DashboardPage({
     return <section className="view"><div className="empty-state"><Alert description={<>{error?.message ?? '资源健康度加载失败'}{error?.trace_id ? <small className="alert-trace">追踪 ID：{error.trace_id}</small> : null}</>} message="每日巡检暂时无法加载" showIcon type="error" /><Button autoInsertSpace={false} onClick={() => void resourcesQuery.refetch()} type="default">重试</Button></div></section>
   }
 
-  const resources = resourcesQuery.data?.items ?? []
+  const resources = (resourcesQuery.data?.items ?? []).filter(isLaunchResource)
   if (resources.length === 0) {
     return <section className="view"><div className="empty-state"><strong>还没有可展示的资源巡检数据</strong><p>请选择其他环境或先执行一次巡检。</p>{onOpenInspection ? <button className="button button-primary" onClick={onOpenInspection} type="button">立即巡检</button> : <InspectionTriggerButton environmentId={environmentId} resourceTypes={resources} />}</div></section>
   }
@@ -100,7 +101,6 @@ export function DashboardPage({
   const overallHealth = averageHealth(resources)
   const coverage = snapshot && snapshot.assets_total ? Math.round((snapshot.assets_covered / snapshot.assets_total) * 100) : '—'
   const coverageDetail = snapshot && snapshot.assets_total ? `${snapshot.assets_covered} / ${snapshot.assets_total} 个对象` : '等待本轮快照'
-  const aiCount = snapshot?.ai_dependent_cases ?? 0
   const completeness = snapshot ? asPercent(snapshot.data_completeness_rate) : 0
   const maturity = dashboardQuery.data?.capability_maturity ?? { enabled_items: 0, coded_items: 0 }
   const topRisks = dashboardQuery.data?.top_risks?.length ? dashboardQuery.data.top_risks : fallbackRisks(resources)
@@ -126,7 +126,7 @@ export function DashboardPage({
         <ResourceKPI label="整体健康度" value={overallHealth} detail={newDiff == null ? '资源类型平均值' : `${newDiff >= 0 ? '↑' : '↓'} ${Math.abs(newDiff)} vs 昨日`} />
         <ResourceKPI label="当前风险" value={riskCount} detail={`P1/P2 ${p1Count} / ${p2Count}`} tone={p1Count ? 'critical' : p2Count ? 'warn' : undefined} />
         <ResourceKPI label="巡检覆盖率" value={typeof coverage === 'number' ? `${coverage}%` : coverage} detail={coverageDetail} />
-        <ResourceKPI label="AI 介入" value={aiCount} detail="Code-first / 按需介入" />
+        <ResourceKPI label="最近巡检" value={formatDate(snapshot?.snapshot_date)} detail="数据来源：模拟巡检数据" />
       </div>
 
       <div className="dashboard-workspace-grid">
@@ -173,26 +173,7 @@ export function DashboardPage({
         <div className="resource-grid">{resources.map((resource) => <ResourceHealthCard key={resource.code} resource={resource} />)}</div>
       </section>
 
-      <div className="dashboard-lower-grid">
-        <section className="panel dashboard-ai-panel">
-          <div className="section-heading"><div><span className="panel-kicker">运行边界</span><h3>AI 按需介入</h3><p className="panel-lede">先代码，后调查</p></div><span className="mode-badge">只读</span></div>
-          <p className="body-copy">确定性的规则由代码完成。AI 只在证据不足或需要分类判断时介入，所有工具调用保持只读。</p>
-          <div className="dashboard-ai-rule"><strong>当前运行边界</strong><span>最大调查 3 轮，最多 5 次 Tool Call，不执行写操作。</span></div>
-          <div className="dashboard-ai-event">
-            {topRisks[0] ? <span><strong>{topRisks[0].title}</strong><small>已完成证据收集，等待人工确认原因。</small></span> : <span><strong>暂无待调查案例</strong><small>当前没有需要 AI 介入的风险。</small></span>}
-          </div>
-          <Link className="text-link" to="/ai-runtime">查看 AI 运行情况 →</Link>
-        </section>
 
-        <section className="panel dashboard-maturity-panel">
-          <div className="section-heading"><div><span className="panel-kicker">能力演进</span><h3>能力成熟度</h3></div><Link className="text-link" to="/evolution">看演进 →</Link></div>
-          <div className="maturity-list">
-            <div className="maturity-row"><span>代码化能力</span><strong>{maturity.coded_items}/{maturity.enabled_items || '—'}</strong><Progress percent={maturity.enabled_items ? Math.round((maturity.coded_items / maturity.enabled_items) * 100) : 0} showInfo={false} size="small" /></div>
-            <div className="maturity-row"><span>资源对象覆盖</span><strong>{total(resources, 'asset_count')}</strong><Progress percent={completeness} showInfo={false} size="small" /></div>
-            <div className="maturity-row"><span>AI 介入案例</span><strong>{snapshot?.ai_dependent_cases ?? 0}</strong><Progress percent={snapshot ? Math.min(100, snapshot.ai_dependent_cases * 10) : 0} showInfo={false} size="small" /></div>
-          </div>
-        </section>
-      </div>
     </section>
   )
 }

@@ -1,3 +1,4 @@
+import { isLaunchResource } from '../../features/resource-health/resourceRoutes'
 import { useQuery } from '@tanstack/react-query'
 
 import { getResourceTypes, resourceKeys } from '../../api/resources'
@@ -32,7 +33,7 @@ export function ResourcesPage({ environmentId: providedEnvironmentId }: { enviro
   if (query.isLoading) return <section className="view"><div className="empty-state"><strong>正在加载资源类型</strong><p>正在读取当前环境的资源巡检状态。</p></div></section>
   if (query.isError) return <section className="view" role="alert"><div className="empty-state"><strong>资源类型加载失败</strong><p>暂时无法读取当前环境的资源状态。</p><button className="button button-secondary" onClick={() => void query.refetch()} type="button">重试</button></div></section>
 
-  const resources = query.data?.items ?? []
+  const resources = (query.data?.items ?? []).filter(isLaunchResource)
   const coverage = averageCoverage(resources)
   return (
     <section aria-labelledby="resources-title" className="view">

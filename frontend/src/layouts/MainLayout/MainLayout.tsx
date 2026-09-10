@@ -10,17 +10,7 @@ const primaryNavigation = [
   ['总览', '/'],
   ['资源巡检', '/resources'],
   ['风险中心', '/risks'],
-  ['巡检能力', '/capabilities'],
-  ['能力演进', '/evolution'],
-  ['AI运行', '/ai-runtime'],
   ['产品说明', '/about'],
-] as const
-
-const secondaryNavigation = [
-  ['历史趋势', '/history'],
-  ['待处置', '/pending'],
-  ['规则与经验', '/experiences'],
-  ['系统设置', '/settings'],
 ] as const
 
 const pageTitles: Array<[string, string]> = [
@@ -123,19 +113,12 @@ export function MainLayout({ children }: { children?: ReactNode }) {
               <NavLink data-short-label={label.slice(0, 1)} className={({ isActive }) => (isActive ? 'is-active' : undefined)} end={to === '/'} key={to} onClick={closeMobileNav} to={to}>{label}</NavLink>
             ))}
           </div>
-          <details className="nav-more">
-            <summary>更多</summary>
-            <div className="nav-group">
-              {secondaryNavigation.map(([label, to]) => (
-                <NavLink data-short-label={label.slice(0, 1)} className={({ isActive }) => (isActive ? 'is-active' : undefined)} key={to} onClick={closeMobileNav} to={to}>{label}</NavLink>
-              ))}
-            </div>
-          </details>
+
         </nav>
 
         <div className="sidebar-footer">
           <span className="status-dot" aria-hidden="true" />
-          <span>环境数据由 API 提供</span>
+          <span>数据来源：模拟巡检数据</span>
         </div>
       </aside>
       {mobileNavOpen ? <button aria-label="关闭主导航遮罩" className="mobile-nav-backdrop" onClick={closeMobileNav} type="button" /> : null}
@@ -164,9 +147,9 @@ export function MainLayout({ children }: { children?: ReactNode }) {
                 value={environmentId ?? ''}
               />
             </label>
-            <span className="runtime-status"><span className="status-dot" aria-hidden="true" />AI 运行正常</span>
+            <span className="runtime-status"><span className="status-dot" aria-hidden="true" />AI 按需分析</span>
             <span className="topbar-user"><strong>{username}</strong><small>{roles}</small></span>
-            <NavLink className="avatar" to="/settings" aria-label="打开系统设置">{avatarInitial}</NavLink>
+            <span className="avatar">{avatarInitial}</span>
           </div>
         </header>
 

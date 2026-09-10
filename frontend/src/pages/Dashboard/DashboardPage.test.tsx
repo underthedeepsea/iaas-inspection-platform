@@ -34,6 +34,7 @@ describe('DashboardPage', () => {
     vi.spyOn(apiClient, 'get').mockResolvedValue({
       data: {
         items: [
+          { code: 'HOST', name: '规划主机', asset_count: 999, health_score: 100, risk_count: 99, p1_count: 0, p2_count: 0 },
           {
             code: 'LLM_RUNTIME',
             name: '大模型运行时',
@@ -57,13 +58,14 @@ describe('DashboardPage', () => {
     renderDashboard()
 
     expect((await screen.findAllByText('大模型运行时')).length).toBeGreaterThan(0)
+    expect(screen.queryByText('规划主机')).not.toBeInTheDocument()
     expect(screen.getByText('整体健康度')).toBeInTheDocument()
     expect(screen.getByText('当前风险')).toBeInTheDocument()
     expect(screen.getByText('巡检覆盖率')).toBeInTheDocument()
-    expect(screen.getByText('AI 介入')).toBeInTheDocument()
+    expect(screen.getByText('最近巡检')).toBeInTheDocument()
     expect(screen.getByText('重点风险')).toBeInTheDocument()
     expect(screen.getByText('巡检完整性')).toBeInTheDocument()
-    expect(screen.getByText('能力成熟度')).toBeInTheDocument()
+    expect(screen.queryByText('能力成熟度')).not.toBeInTheDocument()
     expect(screen.getAllByText('92').length).toBeGreaterThan(0)
     expect(screen.getByText('12 个对象')).toBeInTheDocument()
     expect(screen.getByText('风险 2')).toBeInTheDocument()
@@ -79,7 +81,7 @@ describe('DashboardPage', () => {
   it('renders the completeness rate as a bounded percentage', async () => {
     vi.spyOn(apiClient, 'get').mockImplementation((url) => {
       if (String(url) === '/resource-types') {
-        return Promise.resolve({ data: { items: [{ code: 'HOST', name: '主机基础环境', description: '基础设施资源', icon: 'host', asset_count: 1, inspection_item_count: 1, health_score: 96, risk_count: 0, p1_count: 0, p2_count: 0, last_inspection_at: null }], total: 1 } }) as never
+        return Promise.resolve({ data: { items: [{ code: 'CONTROL_PLANE', name: '主机基础环境', description: '基础设施资源', icon: 'host', asset_count: 1, inspection_item_count: 1, health_score: 96, risk_count: 0, p1_count: 0, p2_count: 0, last_inspection_at: null }], total: 1 } }) as never
       }
       return Promise.resolve({
         data: {
