@@ -361,3 +361,25 @@ class DailySnapshot(CreatedModel):
     class Meta:
         db_table = "daily_snapshots"
         constraints = [models.UniqueConstraint(fields=["environment", "snapshot_date"], name="daily_snapshot_environment_date_unique")]
+
+
+class CheckResult(CreatedModel):
+    class Status(models.TextChoices):
+        PASS = 'PASS', 'Pass'
+        FAIL = 'FAIL', 'Fail'
+        UNKNOWN = 'UNKNOWN', 'Unknown'
+        ERROR = 'ERROR', 'Error'
+        NOT_APPLICABLE = 'NOT_APPLICABLE', 'Not applicable'
+
+    inspection_run = models.ForeignKey(InspectionRun, on_delete=models.CASCADE, related_name='check_results')
+    inspection_item_run = models.ForeignKey(InspectionItemRun, on_delete=models.CASCADE, related_name='check_results')
+    asset = models.ForeignKey('assets.Asset', on_delete=models.CASCADE, related_name='check_results')
+    status = models.CharField(max_length=24, choices=Status.choices, db_index=True)
+    summary = models.CharField(max_length=512, default='')
+    observed_value = models.JSONField(default=dict)
+    expected_value = models.JSONField(default=dict)
+    evidence = models.JSONField(default=dict)
+    checked_at = models.DateTimeField(db_index=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['inspection_item_run', 'asset'], name='uq_item_run_asset_check_result')]
