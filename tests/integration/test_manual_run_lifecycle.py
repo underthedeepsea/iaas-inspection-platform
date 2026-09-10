@@ -25,7 +25,7 @@ def make_environment():
 
 def make_item():
     return InspectionItem.objects.create(
-        code=f"manual.lifecycle.{uuid.uuid4().hex}",
+        code="topology.control_plane_anti_affinity",
         name="Manual lifecycle item",
         domain="CONTROL_PLANE",
         execution_mode=InspectionItem.ExecutionMode.CODE_ONLY,
@@ -89,8 +89,8 @@ def test_manual_run_uses_production_orchestrator_and_publishes_resource_summary(
     )
     assert event_types.index("inspection.started") < event_types.index("inspection.completed")
     assert event_types.index("inspection.completed") < event_types.index("risk.correlation.started")
-    assert event_types.index("risk.correlation.completed") < event_types.index("ai.admission.started")
-    assert event_types.index("ai.admission.completed") < event_types.index("summary.started")
+    assert "ai.admission.started" not in event_types
+    assert event_types.index("risk.correlation.completed") < event_types.index("summary.started")
     summary = ResourceInspectionSummary.objects.get(inspection_run=run, resource_type=resource_type)
     assert summary.health_score is not None
 

@@ -33,7 +33,7 @@ def _environment():
 
 def _item():
     return InspectionItem.objects.create(
-        code=f"internal.batch.item.{uuid.uuid4().hex}",
+        code="topology.control_plane_anti_affinity",
         name="Internal batch item",
         domain="TEST",
         execution_mode=InspectionItem.ExecutionMode.CODE_ONLY,
@@ -109,7 +109,7 @@ def test_every_batch_stage_is_retry_safe_and_returns_same_resources():
     execute_retry = _post(client, execute_path)
     assert execute_first.status_code == execute_retry.status_code == 200
     assert InspectionItemRun.objects.count() == 1
-    assert Finding.objects.count() == 1
+    assert Finding.objects.count() == 2
     run = InspectionRun.objects.get(pk=run_id)
     assert run.status == InspectionRun.Status.RUNNING
     assert run.finished_at is None
@@ -123,15 +123,15 @@ def test_every_batch_stage_is_retry_safe_and_returns_same_resources():
     correlate_first = _post(client, correlate_path)
     correlate_retry = _post(client, correlate_path)
     assert correlate_first.status_code == correlate_retry.status_code == 200
-    assert Risk.objects.count() == 1
-    assert RiskObservation.objects.count() == 1
-    assert RiskStatusHistory.objects.count() == 1
+    assert Risk.objects.count() == 2
+    assert RiskObservation.objects.count() == 2
+    assert RiskStatusHistory.objects.count() == 2
     reverify_path = f"/inspection-runs/{run_id}/reverify/"
     reverify_first = _post(client, reverify_path)
     reverify_retry = _post(client, reverify_path)
     assert reverify_first.status_code == reverify_retry.status_code == 200
-    assert RiskObservation.objects.count() == 1
-    assert RiskStatusHistory.objects.count() == 1
+    assert RiskObservation.objects.count() == 2
+    assert RiskStatusHistory.objects.count() == 2
     run.refresh_from_db()
     assert run.status == InspectionRun.Status.RUNNING
     assert run.finished_at is None
@@ -160,7 +160,7 @@ def test_every_batch_stage_is_retry_safe_and_returns_same_resources():
     assert complete_first.status_code == complete_retry.status_code == 200
     assert complete_first.json()["inspection_run_id"] == complete_retry.json()["inspection_run_id"]
     assert InspectionRun.objects.get(pk=run_id).status == InspectionRun.Status.SUCCEEDED
-    assert RiskStatusHistory.objects.count() == 1
+    assert RiskStatusHistory.objects.count() == 2
 
 
 @pytest.mark.django_db(transaction=True)

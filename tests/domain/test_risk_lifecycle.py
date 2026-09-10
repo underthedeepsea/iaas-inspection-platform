@@ -7,7 +7,7 @@ from django.utils import timezone
 
 from apps.assets.models import Asset
 from apps.core.models import Environment
-from apps.inspections.models import Finding, InspectionItem, InspectionItemRun, InspectionRun
+from apps.inspections.models import CheckResult, Finding, InspectionItem, InspectionItemRun, InspectionRun
 from apps.risks.models import Risk, RiskObservation, RiskStatusHistory
 
 
@@ -64,10 +64,15 @@ def make_run(
         summary={"data_valid": True} if summary is None else summary,
         finished_at=item_finished_at,
     )
+    if item_run.status == 'SUCCEEDED' and item_finished_at:
+        for asset in Asset.objects.filter(environment=environment):
+            CheckResult.objects.create(inspection_run=run, inspection_item_run=item_run, asset=asset, status='PASS' if (item_run.summary or {}).get('data_valid') else 'UNKNOWN', checked_at=item_finished_at)
     return run, item_run
 
 
 def make_finding(item_run, asset, *, severity="P2", status=Finding.Status.ACTIVE):
+    if asset is not None:
+        CheckResult.objects.update_or_create(inspection_run=item_run.inspection_run, inspection_item_run=item_run, asset=asset, defaults={'status':'FAIL' if status == Finding.Status.ACTIVE else 'UNKNOWN','checked_at':item_run.finished_at})
     return Finding.objects.create(
         inspection_item_run=item_run,
         asset=asset,
@@ -77,7 +82,7 @@ def make_finding(item_run, asset, *, severity="P2", status=Finding.Status.ACTIVE
         severity=severity,
         status=status,
         value={"queue_depth": 10},
-        source_type=Finding.SourceType.METRIC,
+        source_type=Finding.SourceType.RULE,
         observed_at=item_run.finished_at,
     )
 

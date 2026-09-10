@@ -8,6 +8,7 @@ from django.utils import timezone
 from apps.assets.models import Asset
 from apps.core.models import Environment
 from apps.inspections.models import (
+    CheckResult,
     DailySnapshot,
     InspectionItem,
     InspectionItemRun,
@@ -53,6 +54,7 @@ def make_run(
         else None
     )
     return InspectionRun.objects.create(
+        config_snapshot={"resolved_scope":{"asset_ids":[str(pk) for pk in Asset.objects.filter(environment=environment).values_list("pk",flat=True)]}},
         environment=environment,
         run_date=run_date,
         trigger_type=InspectionRun.TriggerType.MANUAL,
@@ -75,7 +77,11 @@ def make_item_run(
     status=None,
 ):
     inspection_item = inspection_item or make_item()
-    return InspectionItemRun.objects.create(
+    assets = [Asset.objects.get_or_create(environment=inspection_run.environment, external_key=key, defaults={'name':key,'asset_type':'HOST'})[0] for key in asset_keys]
+    scope = inspection_run.config_snapshot['resolved_scope']
+    scope['asset_ids'] = sorted(set(scope['asset_ids']) | {str(a.pk) for a in assets})
+    inspection_run.save(update_fields=['config_snapshot'])
+    item_run = InspectionItemRun.objects.create(
         inspection_run=inspection_run,
         inspection_item=inspection_item,
         status=status
@@ -86,9 +92,14 @@ def make_item_run(
             "required_claims": list(required_claims or []),
             "resolved_claims": list(resolved_claims or []),
         },
-        asset_scope={"asset_keys": list(asset_keys)},
+        asset_scope={"asset_keys": list(asset_keys), "asset_ids":[str(a.pk) for a in assets]},
         finished_at=inspection_run.finished_at if finished else None,
     )
+
+    if finished and item_run.finished_at:
+        for asset in assets:
+            CheckResult.objects.create(inspection_run=inspection_run,inspection_item_run=item_run,asset=asset,status='PASS' if data_valid else 'UNKNOWN',checked_at=item_run.finished_at)
+    return item_run
 
 
 def make_observation(
@@ -304,11 +315,11 @@ def test_daily_snapshot_counts_valid_code_ai_cases_and_decimal_rates():
     assert snapshot.code_coverage_rate == Decimal("75.000")
     assert snapshot.deterministic_deflection_rate == Decimal("40.000")
     assert snapshot.ai_displacement_rate == Decimal("66.667")
-    assert snapshot.data_completeness_rate == Decimal("80.000")
+    assert snapshot.data_completeness_rate == Decimal("75.000")
 
 
 @pytest.mark.django_db
-def test_daily_snapshot_retry_updates_same_persisted_row_from_item_scope():
+def test_daily_snapshot_retry_does_not_count_new_planned_assets_as_checked():
     from apps.inspections.services.snapshot import build_daily_snapshot
 
     environment = make_environment()
@@ -326,7 +337,7 @@ def test_daily_snapshot_retry_updates_same_persisted_row_from_item_scope():
         snapshot_date=SNAPSHOT_DATE,
     ).count() == 1
     assert second.inspection_run_id == run.id
-    assert second.assets_covered == 2
+    assert second.assets_covered == 1
 
 
 @pytest.mark.django_db
@@ -609,7 +620,7 @@ def test_daily_snapshot_accepts_partial_run_and_counts_failed_terminal_items_in_
     assert snapshot.ai_dependent_cases == 0
     assert snapshot.code_coverage_rate == Decimal("100.000")
     assert snapshot.deterministic_deflection_rate == Decimal("33.333")
-    assert snapshot.data_completeness_rate == Decimal("33.333")
+    assert snapshot.data_completeness_rate == Decimal("0.000")
     assert snapshot.ai_displacement_rate == Decimal("100.000")
 
 

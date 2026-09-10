@@ -7,6 +7,7 @@ from django.db import IntegrityError, transaction
 from apps.assets.models import Asset
 from apps.core.models import Environment
 from apps.inspections.models import (
+    CheckResult,
     Finding,
     InspectionItem,
     InspectionItemResourceType,
@@ -108,6 +109,7 @@ def test_build_resource_summaries_aggregates_counts_and_explainable_health_score
         )
         item_runs.append(item_run)
 
+    CheckResult.objects.bulk_create([CheckResult(inspection_run=run, inspection_item_run=item_runs[0], asset=asset, status='PASS', checked_at=run.finished_at) for asset in assets[:35]])
     for index in range(8):
         Finding.objects.create(
             inspection_item_run=item_runs[index % 6],

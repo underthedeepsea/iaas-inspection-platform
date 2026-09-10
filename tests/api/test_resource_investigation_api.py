@@ -206,16 +206,11 @@ def test_resource_investigation_rejects_cross_environment_and_out_of_scope_runs(
 
 
 @pytest.mark.django_db(transaction=True)
-def test_resource_investigation_creates_owner_scoped_investigation_and_replayable_sse(monkeypatch):
+def test_resource_investigation_creates_owner_scoped_final_explanation(monkeypatch):
     environment = make_environment()
     resource_type = make_resource_type()
     run = make_run(environment, resource_type)
     user = make_user()
-    queued = []
-    monkeypatch.setattr(
-        "apps.investigations.api.enqueue_resource_investigation",
-        lambda investigation_id, context: queued.append((investigation_id, context)),
-    )
     client = Client()
     client.force_login(user)
 
@@ -234,36 +229,15 @@ def test_resource_investigation_creates_owner_scoped_investigation_and_replayabl
     assert response.status_code == 201
     investigation_id = response.json()["investigation_id"]
     investigation = Investigation.objects.get(pk=investigation_id)
-    assert investigation.status == Investigation.Status.CREATED
-    runtime.run_resource_investigation(
-        investigation,
-        queued[0][1],
-        failed_tools=["change_history"],
-    )
-    investigation.refresh_from_db()
-    assert investigation.status == Investigation.Status.RESOLVED
-    history = client.get(
-        f"/api/v1/investigations/{investigation_id}/events?page=1&page_size=100",
-    )
-    assert history.status_code == 200
-    assert history["Content-Type"].startswith("application/json")
-    assert history.json()["items"]
-
-    events = client.get(
-        f"/api/v1/investigations/{investigation_id}/events/stream",
-        HTTP_LAST_EVENT_ID="1",
-    )
-    assert events.status_code == 200
-    assert events["Content-Type"] == "text/event-stream"
-    raw = b"".join(events.streaming_content).decode()
-    payloads = [json.loads(line[6:]) for line in raw.splitlines() if line.startswith("data: ")]
-    assert payloads
-    assert all(payload["sequence"] > 1 for payload in payloads)
-    assert payloads[-1]["event_type"] == "analysis.completed"
+    assert investigation.status == Investigation.Status.UNRESOLVED
+    assert investigation.finished_at is not None
+    conversation = Conversation.objects.get(investigation=investigation)
+    assert conversation.user_id == user.pk
+    assert response.json()['conclusion'] == '证据不足，无法解释确定性结论'
 
 
 @pytest.mark.django_db(transaction=True)
-def test_resource_investigation_returns_created_and_enqueues_background_runtime(monkeypatch):
+def test_resource_investigation_returns_final_result_without_background_runtime(monkeypatch):
     environment = make_environment()
     resource_type = make_resource_type("ASYNC_RESOURCE")
     run = make_run(environment, resource_type)
@@ -293,10 +267,10 @@ def test_resource_investigation_returns_created_and_enqueues_background_runtime(
     body = response.json()
     investigation = Investigation.objects.get(pk=body["investigation_id"])
     conversation = Conversation.objects.get(investigation=investigation)
-    assert body["status"] == Investigation.Status.CREATED
+    assert body["status"] == Investigation.Status.UNRESOLVED
     assert body["conversation_id"] == str(conversation.id)
-    assert investigation.status == Investigation.Status.CREATED
-    assert enqueued and enqueued[0][0] == str(investigation.id)
+    assert investigation.status == Investigation.Status.UNRESOLVED
+    assert enqueued == []
 
 
 @pytest.mark.django_db
@@ -377,11 +351,6 @@ def test_resource_conversation_question_reuses_resource_context(monkeypatch):
     resource_type = make_resource_type("QUESTION_RESOURCE")
     run = make_run(environment, resource_type)
     user = make_user()
-    queued = []
-    monkeypatch.setattr(
-        "apps.investigations.api.enqueue_resource_investigation",
-        lambda investigation_id, context: queued.append((investigation_id, context)),
-    )
     client = Client()
     client.force_login(user)
     created = client.post(

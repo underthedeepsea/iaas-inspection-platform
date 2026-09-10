@@ -41,7 +41,7 @@ def make_environment():
 
 def make_item():
     return InspectionItem.objects.create(
-        code=f"trigger.item.{uuid.uuid4().hex}",
+        code="llm.ttft_slo",
         name="Trigger item",
         domain="LLM",
         execution_mode=InspectionItem.ExecutionMode.CODE_ONLY,
