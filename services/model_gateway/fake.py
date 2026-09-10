@@ -41,6 +41,10 @@ class FakeProvider(ModelGateway):
         envelope = _request_envelope(request)
         context = envelope.get("context") if isinstance(envelope.get("context"), Mapping) else {}
         evidence = envelope.get("evidence") if isinstance(envelope.get("evidence"), list) else []
+        if request.metadata.get('purpose') == 'inspection_explanation':
+            checks = envelope.get('check_results', [])
+            text = '；'.join(f"{row['check']}：{row['status']}，观测 {json.dumps(row['observed'],ensure_ascii=False)}，期望 {json.dumps(row['expected'],ensure_ascii=False)}" for row in checks if row['status'] in {'PASS','FAIL'})
+            return ModelResponse(action=FinalAction(summary='模拟 AI 解释：'+text+'。候选原因需补充证据确认。',confidence=.5),model=self.model,provider=self.provider_name)
         claim = context.get("missing_claim")
 
         if claim and not evidence:

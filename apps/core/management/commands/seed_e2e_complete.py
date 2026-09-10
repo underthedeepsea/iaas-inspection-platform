@@ -17,79 +17,11 @@ from apps.inspections.services.manual_orchestrator import start_manual_inspectio
 from apps.inspections.services.trigger import create_manual_inspection_run
 
 
-ITEMS = {
-    "CONTROL_PLANE": {
-        "code": "topology.control_plane_anti_affinity",
-        "name": "控制面反亲和",
-        "domain": "topology",
-        "description": "检查控制面工作负载是否分散到不同主机。",
-        "required_claims": ["topology.control_plane_anti_affinity"],
-        "execution_mode": InspectionItem.ExecutionMode.CODE_ONLY,
-        "code_status": InspectionItem.CodeStatus.CODE_ACTIVE,
-        "default_severity": "P2",
-    },
-    "KVM_CLUSTER": {
-        "code": "e2e.kvm.cluster_baseline",
-        "name": "KVM 集群基线",
-        "domain": "kvm",
-        "description": "检查 KVM 集群的基础资源指标。",
-        "required_claims": [],
-        "execution_mode": InspectionItem.ExecutionMode.CODE_ONLY,
-        "code_status": InspectionItem.CodeStatus.CODE_ACTIVE,
-        "default_severity": "P3",
-    },
-    "K8S_CLUSTER": {
-        "code": "e2e.k8s.cluster_baseline",
-        "name": "Kubernetes 集群基线",
-        "domain": "kubernetes",
-        "description": "检查 Kubernetes 集群的基础资源指标。",
-        "required_claims": [],
-        "execution_mode": InspectionItem.ExecutionMode.CODE_ONLY,
-        "code_status": InspectionItem.CodeStatus.CODE_ACTIVE,
-        "default_severity": "P3",
-    },
-    "LLM_RUNTIME": {
-        "code": "e2e.llm.scheduler",
-        "name": "LLM 调度压力",
-        "domain": "LLM",
-        "description": "检查推理延迟、队列深度和 GPU 利用率变化。",
-        "required_claims": ["llm.performance.root_cause"],
-        "execution_mode": InspectionItem.ExecutionMode.AI_INVESTIGATION,
-        "code_status": InspectionItem.CodeStatus.NOT_CODED,
-        "default_severity": "P2",
-    },
-    "GPU_POOL": {
-        "code": "e2e.gpu.pool_baseline",
-        "name": "GPU 资源基线",
-        "domain": "gpu",
-        "description": "检查 GPU 资源的利用率和容量基线。",
-        "required_claims": [],
-        "execution_mode": InspectionItem.ExecutionMode.CODE_ONLY,
-        "code_status": InspectionItem.CodeStatus.CODE_ACTIVE,
-        "default_severity": "P3",
-    },
-    "HOST": {
-        "code": "e2e.host.baseline",
-        "name": "主机基础环境",
-        "domain": "host",
-        "description": "检查主机 CPU、内存、网络和容量基线。",
-        "required_claims": [],
-        "execution_mode": InspectionItem.ExecutionMode.CODE_ONLY,
-        "code_status": InspectionItem.CodeStatus.CODE_ACTIVE,
-        "default_severity": "P3",
-    },
-}
-
-
 RUN_PLAN = (
-    ("CONTROL_PLANE",),
-    ("KVM_CLUSTER",),
-    ("K8S_CLUSTER",),
-    ("GPU_POOL",),
-    ("HOST",),
-    ("CONTROL_PLANE", "LLM_RUNTIME"),
+    ('CONTROL_PLANE',),
+    ('LLM_RUNTIME',),
+    ('CONTROL_PLANE', 'LLM_RUNTIME'),
 )
-
 
 class Command(BaseCommand):
     help = "Populate a complete deterministic inspection demo for an E2E environment."
@@ -102,7 +34,7 @@ class Command(BaseCommand):
         )
         parser.add_argument(
             "--base-date",
-            help="First demo snapshot date in YYYY-MM-DD format (default: tomorrow).",
+            help="First demo snapshot date in YYYY-MM-DD format (default: two days ago).",
         )
 
     def handle(self, *args, **options):
@@ -140,31 +72,14 @@ class Command(BaseCommand):
 
     def _base_date(self, value):
         if not value:
-            return timezone.localdate() + timedelta(days=1)
+            return timezone.localdate() - timedelta(days=2)
         try:
             return date.fromisoformat(value)
         except (TypeError, ValueError) as error:
             raise CommandError("base-date must be YYYY-MM-DD") from error
 
     def _ensure_items(self):
-        for resource_type_code, config in ITEMS.items():
-            resource_type = ResourceType.objects.get(code=resource_type_code, enabled=True)
-            defaults = {
-                **config,
-                "enabled": True,
-                "resolved_claims": [],
-                "llm_responsibilities": [],
-                "code_coverage_percent": 0,
-            }
-            item, _ = InspectionItem.objects.update_or_create(
-                code=config["code"],
-                defaults=defaults,
-            )
-            InspectionItemResourceType.objects.update_or_create(
-                resource_type=resource_type,
-                inspection_item=item,
-                defaults={"enabled": True},
-            )
+        call_command('seed_launch')
 
     def _run(self, environment, run_date, resource_types):
         resource_types = tuple(resource_types)

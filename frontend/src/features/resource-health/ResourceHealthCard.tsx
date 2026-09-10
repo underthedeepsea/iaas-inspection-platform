@@ -31,7 +31,7 @@ function resourceVisual(code: string): ResourceVisual {
 export function ResourceHealthCard({ resource }: { resource: ResourceType }) {
   const visual = resourceVisual(resource.code)
   const health = resource.health_score == null ? '—' : String(Math.round(resource.health_score))
-  const severity = resource.p1_count ? 'P1' : resource.p2_count ? 'P2' : resource.risk_count ? 'P3' : '正常'
+  const severity = resource.p1_count ? 'P1' : resource.p2_count ? 'P2' : resource.risk_count ? 'P3' : resource.health_score == null ? '未知' : '正常'
   const coverage = resource.coverage_rate == null ? '—' : `${Math.round(resource.coverage_rate * 100)}%`
   const coverageDetail = resource.assets_covered == null || resource.assets_total == null
     ? '等待本轮快照'
@@ -48,12 +48,13 @@ export function ResourceHealthCard({ resource }: { resource: ResourceType }) {
             <small>{resource.description || '资源对象健康状态'}</small>
           </Link>
         </div>
-        <Tag className={`severity-badge severity-${severity.toLowerCase()}`} color={severity === 'P1' ? 'red' : severity === 'P2' ? 'orange' : severity === 'P3' ? 'blue' : 'green'}>{severity}</Tag>
+        <Tag className={`severity-badge severity-${severity.toLowerCase()}`} color={severity === 'P1' ? 'red' : severity === 'P2' ? 'orange' : severity === 'P3' ? 'blue' : resource.health_score == null ? 'default' : 'green'}>{severity}</Tag>
       </div>
       <div className="resource-card-health">
         <strong>{health}</strong>
         <span>健康度</span>
       </div>
+      {resource.data_state === 'UNKNOWN' ? <p className="resource-card-no-data">证据不足</p> : null}
       {resource.data_state === 'NO_DATA' ? <p className="resource-card-no-data">无可用资源数据</p> : null}
       <div className="resource-card-meta">
         <span>{resource.asset_count} 个对象</span>

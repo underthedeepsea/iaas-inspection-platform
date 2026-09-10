@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 
 const executablePath = process.env.E2E_BROWSER_EXECUTABLE_PATH
-const baseURL = process.env.E2E_BASE_URL ?? 'http://127.0.0.1:5173'
+const baseURL = process.env.E2E_BASE_URL ?? 'http://127.0.0.1:5176'
 
 export default defineConfig({
   testDir: './e2e',
@@ -14,8 +14,8 @@ export default defineConfig({
     ...devices['Desktop Chrome'],
   },
   webServer: process.env.E2E_BASE_URL ? undefined : {
-    command: 'npm run dev -- --host 127.0.0.1',
+    command: 'npm run dev -- --host 127.0.0.1 --port 5176 --strictPort',
     url: baseURL,
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: false,
   },
 })

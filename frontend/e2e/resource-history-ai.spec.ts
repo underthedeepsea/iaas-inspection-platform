@@ -6,14 +6,7 @@ const resource = {
   last_inspection_at: '2026-08-25T08:00:00Z',
 }
 
-test('restores resource run AI analysis after refresh', async ({ page }) => {
-  const eventStream = [
-    'id: 1\nevent: context.ready\ndata: {"sequence":1,"event_type":"context.ready","status":"COMPLETED","payload":{}}\n\n',
-    'id: 2\nevent: history.loaded\ndata: {"sequence":2,"event_type":"history.loaded","status":"COMPLETED","payload":{}}\n\n',
-    'id: 3\nevent: tool.completed\ndata: {"sequence":3,"event_type":"tool.completed","status":"COMPLETED","payload":{"tool":"summary"}}\n\n',
-    'id: 4\nevent: analysis.completed\ndata: {"sequence":4,"event_type":"analysis.completed","status":"COMPLETED","payload":{"summary":"基于成功证据完成分析。"}}\n\n',
-  ].join('')
-
+test('explains a resource run synchronously on demand', async ({ page }) => {
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request()
     const url = new URL(request.url())
@@ -47,16 +40,12 @@ test('restores resource run AI analysis after refresh', async ({ page }) => {
       } })
       return
     }
-    if (request.method() === 'POST' && url.pathname.endsWith('/investigations')) {
-      await route.fulfill({ status: 201, json: { id: 'investigation-1', investigation_id: 'investigation-1', status: 'RESOLVED' } })
+    if (request.method() === 'POST' && url.pathname.endsWith('/analysis')) {
+      await route.fulfill({ status: 201, json: { id: 'investigation-1', investigation_id: 'investigation-1', status: 'RESOLVED', conclusion: '资源运行稳定。' } })
       return
     }
     if (request.method() === 'GET' && url.pathname === '/api/v1/investigations/investigation-1') {
       await route.fulfill({ json: { id: 'investigation-1', investigation_id: 'investigation-1', status: 'RESOLVED', conclusion: '资源运行稳定。', confidence: 0.8 } })
-      return
-    }
-    if (request.method() === 'GET' && url.pathname === '/api/v1/investigations/investigation-1/events') {
-      await route.fulfill({ contentType: 'text/event-stream', body: eventStream })
       return
     }
     await route.continue()
@@ -73,6 +62,6 @@ test('restores resource run AI analysis after refresh', async ({ page }) => {
   await page.reload()
   await page.getByLabel('巡检环境').click()
   await page.locator('.ant-select-dropdown .ant-select-item-option').filter({ hasText: '测试环境' }).click()
-  await expect(page.getByText('资源运行稳定。')).toBeVisible()
-  await expect(page.getByText('分析已完成')).toBeVisible()
+  await expect(page.getByRole('button',{name:'开始 AI 分析'})).toBeVisible()
+  await expect(page.getByText('资源运行稳定。')).toHaveCount(0)
 })
