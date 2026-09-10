@@ -8,7 +8,7 @@ from django.utils import timezone
 
 from apps.assets.models import Asset
 from apps.inspections.models import CheckResult, Finding, InspectionItemRun, InspectionRun
-from apps.risks.models import Risk, RiskObservation, RiskStatusHistory
+from apps.risks.models import Evidence, Risk, RiskObservation, RiskStatusHistory
 from apps.risks.services.lifecycle import (
     observation_status,
     record_observation,
@@ -244,6 +244,12 @@ def _correlate_run_in_transaction(
                 correlated.append(risk)
                 continue
 
+            check = CheckResult.objects.get(inspection_run=inspection_run, inspection_item_run=item_run, asset=representative.asset, status='FAIL')
+            Evidence.objects.get_or_create(
+                risk=risk, inspection_run=inspection_run, inspection_item_run=item_run,
+                evidence_key=f'check-result:{check.pk}',
+                defaults={'asset':check.asset, 'evidence_type':'TOPOLOGY' if item_run.inspection_item.code.startswith('topology.') else 'METRIC', 'source':'deterministic_rule', 'summary':check.summary, 'payload':{'check_result_id':str(check.pk), 'observed':check.observed_value, 'expected':check.expected_value, 'evidence':check.evidence}, 'window_end':check.checked_at},
+            )
             from_status = None if created else risk.status
             status_after = (
                 Risk.Status.NEW

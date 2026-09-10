@@ -72,6 +72,8 @@ def test_risks_require_failed_checks_and_pass_reverifies_same_risk(launch_contex
 
     first = execute(launch_context)
     risk = correlate_run(first.inspection_run)[0]
+    from apps.risks.models import Evidence
+    assert Evidence.objects.get(risk=risk).payload['observed']['p95_ms'] == 220
     second = execute(launch_context)
     assert correlate_run(second.inspection_run)[0].pk == risk.pk
     mark_handled(risk)
