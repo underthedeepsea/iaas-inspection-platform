@@ -7,7 +7,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.assets.models import Asset
-from apps.inspections.models import Finding, InspectionItemRun, InspectionRun
+from apps.inspections.models import CheckResult, Finding, InspectionItemRun, InspectionRun
 from apps.risks.models import Risk, RiskObservation, RiskStatusHistory
 from apps.risks.services.lifecycle import (
     observation_status,
@@ -202,6 +202,8 @@ def _correlate_run_in_transaction(
             .select_related("asset")
             .order_by("finding_code", "pk")
         )
+        failed_asset_ids = set(CheckResult.objects.filter(inspection_run=inspection_run, inspection_item_run=item_run, status='FAIL').values_list('asset_id', flat=True))
+        findings = [finding for finding in findings if finding.asset_id in failed_asset_ids and finding.source_type == Finding.SourceType.RULE]
         grouped = defaultdict(list)
         for finding in findings:
             fingerprint = fingerprint_for_finding(

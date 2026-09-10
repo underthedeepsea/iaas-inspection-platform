@@ -3,7 +3,7 @@
 from django.db import transaction
 from django.utils import timezone
 
-from apps.inspections.models import Finding, InspectionItemRun, InspectionRun
+from apps.inspections.models import CheckResult, Finding, InspectionItemRun, InspectionRun
 from apps.risks.models import Risk, RiskObservation, RiskStatusHistory
 from apps.risks.services.correlation import (
     _correlate_run_in_transaction,
@@ -227,6 +227,8 @@ def reverify_pending_risks(inspection_run, *, allow_nonterminal=False, as_of=Non
                 item_run,
                 as_of=as_of if allow_nonterminal else None,
             ):
+                continue
+            if not CheckResult.objects.filter(inspection_run=locked_run, inspection_item_run=item_run, asset_id=risk.primary_asset_id, status='PASS').exists():
                 continue
             matching_finding = _matching_non_active_finding(
                 risk,

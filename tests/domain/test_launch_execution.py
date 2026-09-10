@@ -62,3 +62,31 @@ def test_invalid_rule_config_persists_error_and_retry_is_idempotent(launch_conte
     execute_inspection_item(result.inspection_run, item)
     assert result.check_results.count() == 1
     assert not Finding.objects.filter(inspection_item_run=result).exists()
+
+
+def test_risks_require_failed_checks_and_pass_reverifies_same_risk(launch_context):
+    from apps.risks.models import Risk
+    from apps.risks.services.correlation import correlate_run
+    from apps.risks.services.lifecycle import mark_handled
+    from apps.risks.services.reverify import reverify_pending_risks
+
+    first = execute(launch_context)
+    risk = correlate_run(first.inspection_run)[0]
+    second = execute(launch_context)
+    assert correlate_run(second.inspection_run)[0].pk == risk.pk
+    mark_handled(risk)
+    MockMetric.objects.update(value=100)
+    third = execute(launch_context)
+    run = third.inspection_run
+    run.status, run.finished_at = 'SUCCEEDED', timezone.now()
+    run.save()
+    assert [r.pk for r in reverify_pending_risks(run)] == [risk.pk]
+    assert Risk.objects.get(pk=risk.pk).status == 'RECOVERED'
+
+
+def test_fabricated_finding_without_failed_check_cannot_create_risk(launch_context):
+    from apps.risks.services.correlation import correlate_run
+    MockMetric.objects.all().delete()
+    item_run = execute(launch_context)
+    Finding.objects.create(inspection_item_run=item_run, asset=launch_context[3][0], finding_code='fabricated', title='AI said risk', category='llm', severity='P2', source_type='RULE', observed_at=timezone.now())
+    assert correlate_run(item_run.inspection_run) == []
