@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:14
+    container_name: iaas-inspection-postgres
+    environment:
+      POSTGRES_USER: inspection
+      POSTGRES_PASSWORD: inspection_dev
+      POSTGRES_DB: inspection
+      POSTGRES_MULTIPLE_DATABASES: airflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - inspection_pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/init-multiple-dbs.sh:/docker-entrypoint-initdb.d/init-multiple-dbs.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U inspection -d inspection"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  inspection_pgdata:

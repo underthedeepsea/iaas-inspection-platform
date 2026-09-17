@@ -3,8 +3,15 @@
 .airflow/
 .pytest_cache/
 .superpowers/
+.codex-workflow/
 .venv-airflow/
 .venv-web/
 .worktrees/
+frontend/node_modules/
+frontend/dist/
+frontend/test-results/
+frontend/*.tsbuildinfo
+.airflow-task*/
+docs/v0.2/
 __pycache__/
 *.py[cod]
