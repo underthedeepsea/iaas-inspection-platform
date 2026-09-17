@@ -3,7 +3,6 @@ import uuid
 from datetime import timedelta
 
 import pytest
-from django.contrib.auth import get_user_model
 from django.db import close_old_connections
 from django.test import TransactionTestCase
 from django.utils import timezone
@@ -46,13 +45,9 @@ class ConversationClaimConcurrencyTests(TransactionTestCase):
 
     def test_same_idempotency_key_has_one_graph_leader_and_fast_follower(self):
         risk = _risk_for_concurrency()
-        user = get_user_model().objects.create_user(
-            username=f"concurrent-{uuid.uuid4().hex}",
-            password="password",
-        )
         conversation = Conversation.objects.create(
             environment=risk.environment,
-            user=user,
+
             context_type=Conversation.ContextType.RISK,
             context_id=risk.pk,
             risk=risk,
@@ -88,7 +83,7 @@ class ConversationClaimConcurrencyTests(TransactionTestCase):
             try:
                 responses.append(
                     create_turn(
-                        user,
+
                         conversation.pk,
                         {"message": "Investigate", "idempotency_key": "same-key"},
                         graph_runner=graph_runner,
@@ -119,13 +114,9 @@ class ConversationClaimConcurrencyTests(TransactionTestCase):
 
     def test_old_nonterminal_claim_is_not_auto_stolen_by_a_retry(self):
         risk = _risk_for_concurrency()
-        user = get_user_model().objects.create_user(
-            username=f"stale-{uuid.uuid4().hex}",
-            password="password",
-        )
         conversation = Conversation.objects.create(
             environment=risk.environment,
-            user=user,
+
             context_type=Conversation.ContextType.RISK,
             context_id=risk.pk,
             risk=risk,
@@ -156,7 +147,7 @@ class ConversationClaimConcurrencyTests(TransactionTestCase):
             raise AssertionError("old nonterminal claim must not be stolen")
 
         response = create_turn(
-            user,
+
             conversation.pk,
             {"message": "Investigate", "idempotency_key": key},
             graph_runner=graph_runner,

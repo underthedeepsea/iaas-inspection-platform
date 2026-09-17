@@ -1,11 +1,11 @@
 import { expect, test } from '@playwright/test'
 
 test('AI transport unavailable leaves persisted inspection results visible', async ({page}) => {
-  await page.goto('/login')
-  await page.getByLabel('用户名').fill(process.env.E2E_USERNAME ?? 'e2e')
-  await page.getByLabel('密码').fill(process.env.E2E_PASSWORD ?? 'e2e-password')
-  await page.getByRole('button',{name:'登录'}).click()
+  const authRequests: string[] = []
+  page.on('request', request => { if (request.url().includes('/api/v1/auth/')) authRequests.push(request.url()) })
+  await page.goto('/')
   await expect(page.getByRole('heading',{name:'租户区智能巡检'})).toBeVisible()
+  expect(authRequests).toEqual([])
   const env = (await (await page.request.get('/api/v1/environments')).json()).items.find((r:{slug:string}) => r.slug === 'e2e')
   const created = await page.request.post('/api/v1/inspection-runs/trigger',{data:{environment_id:env.id,scope:{resource_types:['LLM_RUNTIME']},trigger_options:{ai_mode:'DISABLED'}}})
   expect(created.ok()).toBeTruthy()

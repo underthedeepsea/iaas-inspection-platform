@@ -277,7 +277,6 @@ def serialize_history(history):
         "label": _status_label(history.to_status),
         "source": history.source,
         "reason": _text(history.reason, 1000),
-        "actor_user_id": str(history.actor_user_id) if history.actor_user_id else None,
     }
 
 

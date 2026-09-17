@@ -148,7 +148,18 @@ export async function getResourceRisks(code: string, environmentId: string) {
   return response.data
 }
 
+export interface AnalysisSource {
+  type: 'CODE' | 'AI'
+  engine?: string
+  plugin_id?: string | null
+  plugin_name?: string | null
+  plugin_version?: string | null
+  provider?: string
+  model?: string
+}
+
 export interface CheckResult {
+  source?: AnalysisSource
   id: string
   inspection_item_code: string
   inspection_item_name: string

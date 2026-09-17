@@ -172,6 +172,35 @@ def test_ollama_response_model_is_always_the_configured_model(monkeypatch):
     assert "secret" not in repr(result)
 
 
+@pytest.mark.parametrize("purpose", ["dashboard_explanation", "inspection_explanation"])
+@pytest.mark.parametrize("fence", ["```json", "```"])
+def test_ollama_local_explanation_accepts_fenced_json_and_disables_thinking(monkeypatch, purpose, fence):
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
+    monkeypatch.setenv("OLLAMA_MODEL", "qwen3.5:9b-mlx")
+    monkeypatch.setenv("LLM_TIMEOUT_SECONDS", "120")
+    response = Mock()
+    response.json.return_value = {"message": {"content": f"{fence}\n{json.dumps(_final_payload())}\n```"}}
+    client = Mock()
+    client.post.return_value = response
+
+    from services.model_gateway.base import ModelRequest, StructuredOutputInvalidError
+    from services.model_gateway.ollama import OllamaProvider
+
+    provider = OllamaProvider(http_client=client)
+    request = ModelRequest(messages=[], metadata={"purpose": purpose})
+    result = provider.invoke(request)
+
+    assert result.action.summary == "queue is healthy"
+    assert result.provider == "ollama"
+    assert result.model == "qwen3.5:9b-mlx"
+    assert client.post.call_args.kwargs["json"]["think"] is False
+    assert client.post.call_args.kwargs["timeout"] == 120.0
+
+    response.json.return_value = {"message": {"content": '```json\n{"action":"WRITE_DATABASE"}\n```'}}
+    with pytest.raises(StructuredOutputInvalidError):
+        provider.invoke(request)
+
+
 def test_ollama_request_cannot_override_configured_model_or_base_url(monkeypatch):
     monkeypatch.setenv("OLLAMA_BASE_URL", "http://ollama.internal:11434")
     monkeypatch.setenv("OLLAMA_MODEL", "qwen3:8b")

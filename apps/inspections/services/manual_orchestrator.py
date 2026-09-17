@@ -188,33 +188,6 @@ def _reverify(run):
         _mark_stage(run, "reverify")
 
 
-def _admit(run):
-    if _stage_done(run, "ai_admission"):
-        return
-    with transaction.atomic():
-        run = _locked_run(run.pk)
-        if _stage_done(run, "ai_admission"):
-            return
-        item_runs = list(
-            InspectionItemRun.objects.filter(inspection_run=run)
-            .select_related("inspection_item")
-            .order_by("inspection_item__code", "pk")
-        )
-        append_run_event(run, "ai.admission.started", InspectionRun.Status.RUNNING, {})
-        for item_run in item_runs:
-            append_run_event(
-                run,
-                "ai.admission.completed",
-                InspectionRun.Status.SUCCEEDED,
-                {
-                    "inspection_item_id": str(item_run.inspection_item_id),
-                    "inspection_item_code": item_run.inspection_item.code,
-                    "status": item_run.ai_admission_status,
-                },
-            )
-        _mark_stage(run, "ai_admission")
-
-
 def _summarize(run):
     if _stage_done(run, "resource_summaries"):
         return

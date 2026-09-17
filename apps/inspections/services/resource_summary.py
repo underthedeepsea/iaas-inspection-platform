@@ -66,10 +66,15 @@ def _build_summary(run, resource_type):
     for asset_id, status in checks.values_list('asset_id', 'status'):
         statuses[str(asset_id)].add(status)
         counts[status] += 1
+    applicable_assets = sum(bool(values - {'NOT_APPLICABLE'}) for values in statuses.values())
+    conclusive_assets = sum(bool(values & {'PASS','FAIL'}) for values in statuses.values())
     confidence = {
-        'conclusive_assets': sum(bool(values & {'PASS','FAIL'}) for values in statuses.values()),
-        'unknown_assets': sum(values == {'UNKNOWN'} for values in statuses.values()),
+        'applicable_assets': applicable_assets,
+        'conclusive_assets': conclusive_assets,
+        'conclusive_rate': conclusive_assets / applicable_assets if applicable_assets else None,
+        'unknown_assets': sum('UNKNOWN' in values for values in statuses.values()),
         'error_assets': sum('ERROR' in values for values in statuses.values()),
+        'not_applicable_assets': sum(bool(values) and not (values - {'NOT_APPLICABLE'}) for values in statuses.values()),
         'pass_count': counts['PASS'], 'fail_count': counts['FAIL'],
     }
     findings = Finding.objects.filter(inspection_item_run_id__in=[row.pk for row in item_runs])

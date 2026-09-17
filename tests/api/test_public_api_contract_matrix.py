@@ -1,7 +1,7 @@
 """Route-level contracts for the documented public REST surface.
 
 The matrix deliberately uses empty/missing resources: it checks that the
-documented URL reaches the right view and crosses its auth/method boundary,
+documented URL reaches the right view and crosses its method and validation boundary,
 without coupling the route test to domain fixture shape.
 """
 
@@ -9,8 +9,6 @@ import json
 import uuid
 
 import pytest
-from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Group
 from django.test import Client, override_settings
 
 
@@ -22,13 +20,6 @@ EXPERIENCE_ID = uuid.uuid4()
 TASK_ID = uuid.uuid4()
 
 
-def _user(role):
-    user = get_user_model().objects.create_user(
-        username=f"contract-matrix-{role}-{uuid.uuid4().hex}", password="password"
-    )
-    group, _ = Group.objects.get_or_create(name=role)
-    user.groups.add(group)
-    return user
 
 
 def _request(client, method, path):
@@ -42,149 +33,121 @@ def _request(client, method, path):
     )
 
 
-# Sections 38-49.  ``expected`` is the response from an authenticated user
-# with the minimum role for the endpoint.  Collection/detail distinctions make
+# Sections 38-49.  ``expected`` is the response from an anonymous request
+# Collection/detail distinctions make
 # an unmounted route fail RED even when the fallback returns a 404.
 ROUTES = (
-    ("GET", "/api/v1/health", None, 200),
-    ("GET", "/api/v1/product-info", None, 200),
-    ("GET", "/api/v1/dashboard/today", "viewer", 404),
-    ("GET", "/api/v1/daily-snapshots", "viewer", 200),
-    ("GET", f"/api/v1/daily-snapshots/{RESOURCE_ID}", "viewer", 404),
-    ("GET", "/api/v1/inspection-items", "viewer", 200),
-    ("GET", f"/api/v1/inspection-items/{RESOURCE_ID}", "viewer", 404),
-    ("POST", f"/api/v1/inspection-items/{RESOURCE_ID}/ask", "viewer", 400),
-    ("POST", "/api/v1/inspection-runs/trigger", "operator", 400),
-    ("GET", "/api/v1/inspection-runs", "viewer", 200),
-    ("GET", f"/api/v1/inspection-runs/{RUN_ID}", "viewer", 404),
-    ("GET", f"/api/v1/inspection-item-runs/{ITEM_RUN_ID}", "viewer", 404),
-    ("GET", "/api/v1/findings", "viewer", 200),
-    ("GET", "/api/v1/risks", "viewer", 200),
-    ("GET", f"/api/v1/risks/{RESOURCE_ID}", "viewer", 404),
-    ("GET", f"/api/v1/risks/{RESOURCE_ID}/timeline", "viewer", 404),
-    ("GET", f"/api/v1/risks/{RESOURCE_ID}/evidence", "viewer", 404),
-    ("POST", f"/api/v1/risks/{RESOURCE_ID}/mark-handled", "operator", 404),
-    ("POST", f"/api/v1/risks/{RESOURCE_ID}/ignore", "operator", 400),
-    ("POST", f"/api/v1/risks/{RESOURCE_ID}/reverify", "operator", 404),
-    ("POST", f"/api/v1/risks/{RESOURCE_ID}/investigations", "viewer", 400),
-    ("GET", "/api/v1/capabilities", "viewer", 200),
-    ("GET", f"/api/v1/capabilities/matrix-{RESOURCE_ID}", "viewer", 404),
-    ("POST", "/api/v1/capabilities", "platform_admin", 400),
-    ("POST", f"/api/v1/capabilities/matrix-{RESOURCE_ID}/versions", "platform_admin", 404),
+    ("GET", "/api/v1/health", 200),
+    ("GET", "/api/v1/product-info", 200),
+    ("GET", "/api/v1/dashboard/today", 404),
+    ("GET", "/api/v1/daily-snapshots", 200),
+    ("GET", f"/api/v1/daily-snapshots/{RESOURCE_ID}", 404),
+    ("GET", "/api/v1/inspection-items", 200),
+    ("GET", f"/api/v1/inspection-items/{RESOURCE_ID}", 404),
+    ("POST", f"/api/v1/inspection-items/{RESOURCE_ID}/ask", 400),
+    ("POST", "/api/v1/inspection-runs/trigger", 400),
+    ("GET", "/api/v1/inspection-runs", 200),
+    ("GET", f"/api/v1/inspection-runs/{RUN_ID}", 404),
+    ("GET", f"/api/v1/inspection-item-runs/{ITEM_RUN_ID}", 404),
+    ("GET", "/api/v1/findings", 200),
+    ("GET", "/api/v1/risks", 200),
+    ("GET", f"/api/v1/risks/{RESOURCE_ID}", 404),
+    ("GET", f"/api/v1/risks/{RESOURCE_ID}/timeline", 404),
+    ("GET", f"/api/v1/risks/{RESOURCE_ID}/evidence", 404),
+    ("POST", f"/api/v1/risks/{RESOURCE_ID}/mark-handled", 404),
+    ("POST", f"/api/v1/risks/{RESOURCE_ID}/ignore", 400),
+    ("POST", f"/api/v1/risks/{RESOURCE_ID}/reverify", 404),
+    ("POST", f"/api/v1/risks/{RESOURCE_ID}/investigations", 400),
+    ("GET", "/api/v1/capabilities", 200),
+    ("GET", f"/api/v1/capabilities/matrix-{RESOURCE_ID}", 404),
+    ("POST", "/api/v1/capabilities", 400),
+    ("POST", f"/api/v1/capabilities/matrix-{RESOURCE_ID}/versions", 404),
     (
         "POST",
         f"/api/v1/capabilities/matrix-{RESOURCE_ID}/versions/1.0.0/test",
-        "platform_admin",
         404,
     ),
     (
         "POST",
         f"/api/v1/capabilities/matrix-{RESOURCE_ID}/versions/1.0.0/shadow",
-        "platform_admin",
         404,
     ),
     (
         "POST",
         f"/api/v1/capabilities/matrix-{RESOURCE_ID}/versions/1.0.0/activate",
-        "platform_admin",
         404,
     ),
-    ("POST", "/api/v1/capabilities/resolve", "viewer", 400),
-    ("POST", "/api/v1/conversations", "viewer", 400),
-    ("GET", f"/api/v1/conversations/{RESOURCE_ID}", "viewer", 404),
-    ("GET", f"/api/v1/conversations/{RESOURCE_ID}/messages", "viewer", 404),
-    ("POST", f"/api/v1/conversations/{RESOURCE_ID}/turns", "viewer", 400),
+    ("POST", "/api/v1/capabilities/resolve", 400),
+    ("POST", "/api/v1/conversations", 400),
+    ("GET", f"/api/v1/conversations/{RESOURCE_ID}", 404),
+    ("GET", f"/api/v1/conversations/{RESOURCE_ID}/messages", 404),
+    ("POST", f"/api/v1/conversations/{RESOURCE_ID}/turns", 400),
     (
         "GET",
         f"/api/v1/conversations/{RESOURCE_ID}/turns/{RUN_ID}/events",
-        "viewer",
         404,
     ),
-    ("POST", f"/api/v1/conversations/{RESOURCE_ID}/close", "viewer", 404),
-    ("GET", f"/api/v1/investigations/{RESOURCE_ID}", "viewer", 404),
-    ("GET", f"/api/v1/investigations/{RESOURCE_ID}/events", "viewer", 404),
-    ("GET", f"/api/v1/investigations/{RESOURCE_ID}/tool-calls", "viewer", 404),
-    ("POST", f"/api/v1/investigations/{RESOURCE_ID}/cancel", "operator", 404),
-    ("POST", "/api/v1/feedback", "operator", 400),
-    ("GET", "/api/v1/feedback", "viewer", 200),
-    ("POST", f"/api/v1/feedback/{FEEDBACK_ID}/create-experience", "operator", 404),
-    ("GET", "/api/v1/experiences", "viewer", 200),
-    ("GET", f"/api/v1/experiences/{EXPERIENCE_ID}", "viewer", 404),
-    ("POST", f"/api/v1/experiences/{EXPERIENCE_ID}/confirm", "operator", 404),
+    ("POST", f"/api/v1/conversations/{RESOURCE_ID}/close", 404),
+    ("GET", f"/api/v1/investigations/{RESOURCE_ID}", 404),
+    ("GET", f"/api/v1/investigations/{RESOURCE_ID}/events", 404),
+    ("GET", f"/api/v1/investigations/{RESOURCE_ID}/tool-calls", 404),
+    ("POST", f"/api/v1/investigations/{RESOURCE_ID}/cancel", 404),
+    ("POST", "/api/v1/feedback", 400),
+    ("GET", "/api/v1/feedback", 200),
+    ("POST", f"/api/v1/feedback/{FEEDBACK_ID}/create-experience", 404),
+    ("GET", "/api/v1/experiences", 200),
+    ("GET", f"/api/v1/experiences/{EXPERIENCE_ID}", 404),
+    ("POST", f"/api/v1/experiences/{EXPERIENCE_ID}/confirm", 404),
     (
         "POST",
         f"/api/v1/experiences/{EXPERIENCE_ID}/codeization-tasks",
-        "operator",
         404,
     ),
-    ("GET", "/api/v1/codeization-tasks", "viewer", 200),
-    ("PATCH", f"/api/v1/codeization-tasks/{TASK_ID}", "operator", 404),
-    ("POST", "/api/v1/mock-datasets/generate", "operator", 400),
-    ("GET", "/api/v1/mock-datasets", "viewer", 200),
-    ("GET", f"/api/v1/mock-datasets/{RESOURCE_ID}", "viewer", 404),
+    ("GET", "/api/v1/codeization-tasks", 200),
+    ("PATCH", f"/api/v1/codeization-tasks/{TASK_ID}", 404),
+    ("POST", "/api/v1/mock-datasets/generate", 400),
+    ("GET", "/api/v1/mock-datasets", 200),
+    ("GET", f"/api/v1/mock-datasets/{RESOURCE_ID}", 404),
 )
 
 
 @pytest.mark.django_db
-def test_every_section_38_to_49_route_requires_expected_method_auth_and_role():
-    anonymous = Client()
-    users = {role: _user(role) for role in {row[2] for row in ROUTES if row[2]}}
-
-    for method, path, role, expected in ROUTES:
-        if role is None:
-            response = _request(anonymous, method, path)
-            assert response.status_code == expected, (method, path, response.content)
-            continue
-
-        response = _request(anonymous, method, path)
-        assert response.status_code == 401, (method, path, response.content)
-        body = response.json()
-        assert set(body) == {"error"}
-        assert set(body["error"]) == {"code", "message", "details", "trace_id"}
-        assert body["error"]["code"] == "AUTH_REQUIRED"
-
+def test_every_section_38_to_49_route_enforces_anonymous_method_and_validation_contract():
+    for method, path, expected in ROUTES:
         response = _request(Client(), method, path)
-        # A fresh client is anonymous too; keep this assertion close to the
-        # route loop so accidental session leakage cannot hide a route error.
-        assert response.status_code == 401
-
-        client = Client()
-        client.force_login(users[role])
-        response = _request(client, method, path)
         assert response.status_code == expected, (method, path, response.content)
 
 
 @pytest.mark.django_db
 @pytest.mark.parametrize(
-    "method,path,role",
+    "method,path",
     [
-        ("POST", "/api/v1/health", "viewer"),
-        ("POST", "/api/v1/product-info", "viewer"),
-        ("POST", "/api/v1/daily-snapshots", "viewer"),
-        ("POST", "/api/v1/inspection-items", "viewer"),
-        ("GET", f"/api/v1/inspection-items/{RESOURCE_ID}/ask", "viewer"),
-        ("GET", "/api/v1/inspection-runs/trigger", "operator"),
-        ("POST", "/api/v1/inspection-runs", "viewer"),
-        ("POST", "/api/v1/findings", "viewer"),
-        ("POST", "/api/v1/risks", "viewer"),
-        ("GET", f"/api/v1/risks/{RESOURCE_ID}/ignore", "operator"),
-        ("GET", "/api/v1/capabilities/resolve", "viewer"),
-        ("GET", "/api/v1/conversations", "viewer"),
-        ("POST", f"/api/v1/conversations/{RESOURCE_ID}/messages", "viewer"),
-        ("GET", f"/api/v1/conversations/{RESOURCE_ID}/close", "viewer"),
-        ("POST", f"/api/v1/conversations/{RESOURCE_ID}", "viewer"),
-        ("POST", f"/api/v1/investigations/{RESOURCE_ID}/events", "viewer"),
-        ("GET", f"/api/v1/feedback/{FEEDBACK_ID}/create-experience", "operator"),
-        ("POST", "/api/v1/experiences", "viewer"),
-        ("GET", f"/api/v1/experiences/{EXPERIENCE_ID}/confirm", "operator"),
-        ("POST", "/api/v1/codeization-tasks", "viewer"),
-        ("GET", f"/api/v1/codeization-tasks/{TASK_ID}", "operator"),
+        ("POST", "/api/v1/health"),
+        ("POST", "/api/v1/product-info"),
+        ("POST", "/api/v1/daily-snapshots"),
+        ("POST", "/api/v1/inspection-items"),
+        ("GET", f"/api/v1/inspection-items/{RESOURCE_ID}/ask"),
+        ("GET", "/api/v1/inspection-runs/trigger"),
+        ("POST", "/api/v1/inspection-runs"),
+        ("POST", "/api/v1/findings"),
+        ("POST", "/api/v1/risks"),
+        ("GET", f"/api/v1/risks/{RESOURCE_ID}/ignore"),
+        ("GET", "/api/v1/capabilities/resolve"),
+        ("GET", "/api/v1/conversations"),
+        ("POST", f"/api/v1/conversations/{RESOURCE_ID}/messages"),
+        ("GET", f"/api/v1/conversations/{RESOURCE_ID}/close"),
+        ("POST", f"/api/v1/conversations/{RESOURCE_ID}"),
+        ("POST", f"/api/v1/investigations/{RESOURCE_ID}/events"),
+        ("GET", f"/api/v1/feedback/{FEEDBACK_ID}/create-experience"),
+        ("POST", "/api/v1/experiences"),
+        ("GET", f"/api/v1/experiences/{EXPERIENCE_ID}/confirm"),
+        ("POST", "/api/v1/codeization-tasks"),
+        ("GET", f"/api/v1/codeization-tasks/{TASK_ID}"),
     ],
 )
-def test_documented_route_rejects_unsupported_method(method, path, role):
-    user = _user(role)
+def test_documented_route_rejects_unsupported_method(method, path):
     client = Client()
-    client.force_login(user)
+
     response = _request(client, method, path)
     assert response.status_code == 405, (method, path, response.content)
     assert set(response.json()["error"]) == {"code", "message", "details", "trace_id"}
@@ -193,24 +156,23 @@ def test_documented_route_rejects_unsupported_method(method, path, role):
 
 @pytest.mark.django_db
 @pytest.mark.parametrize(
-    "method,path,required_role",
+    "method,path",
     [
-        ("POST", "/api/v1/capabilities", "platform_admin"),
-        ("POST", "/api/v1/capabilities/matrix/versions", "platform_admin"),
-        ("POST", "/api/v1/inspection-runs/trigger", "operator"),
-        ("POST", f"/api/v1/risks/{RESOURCE_ID}/mark-handled", "operator"),
-        ("POST", f"/api/v1/investigations/{RESOURCE_ID}/cancel", "operator"),
-        ("POST", "/api/v1/feedback", "operator"),
-        ("POST", f"/api/v1/experiences/{RESOURCE_ID}/confirm", "operator"),
+        ("POST", "/api/v1/capabilities"),
+        ("POST", "/api/v1/capabilities/matrix/versions"),
+        ("POST", "/api/v1/inspection-runs/trigger"),
+        ("POST", f"/api/v1/risks/{RESOURCE_ID}/mark-handled"),
+        ("POST", f"/api/v1/investigations/{RESOURCE_ID}/cancel"),
+        ("POST", "/api/v1/feedback"),
+        ("POST", f"/api/v1/experiences/{RESOURCE_ID}/confirm"),
     ],
 )
-def test_role_bound_routes_reject_viewer_before_resource_lookup(path, method, required_role):
-    viewer = _user("viewer")
+def test_anonymous_mutations_validate_input_and_resource_lookup(path, method):
     client = Client()
-    client.force_login(viewer)
+
     response = _request(client, method, path)
-    assert response.status_code == 403, (method, path, response.content)
-    assert response.json()["error"]["code"] == "PERMISSION_DENIED"
+    assert response.status_code == (400 if path in {"/api/v1/capabilities", "/api/v1/inspection-runs/trigger", "/api/v1/feedback"} else 404), (method, path, response.content)
+    assert response.json()["error"]["code"] in {"VALIDATION_ERROR", "NOT_FOUND"}
 
 
 @pytest.mark.django_db
@@ -236,9 +198,8 @@ def test_internal_mock_routes_use_token_auth_without_session_auth():
 
 @pytest.mark.django_db
 def test_mounted_public_slices_accept_no_slash_prefixes():
-    viewer = _user("viewer")
     client = Client()
-    client.force_login(viewer)
+
     assert client.get("/api/v1/capabilities").status_code == 200
     assert client.get("/api/v1/feedback").status_code == 200
     assert client.get("/api/v1/mock-datasets").status_code == 200

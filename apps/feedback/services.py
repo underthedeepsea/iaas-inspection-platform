@@ -22,9 +22,7 @@ class FeedbackError(ValueError):
 
 
 def create_feedback(
-    actor=None,
     *,
-    actor_user=None,
     environment=None,
     risk=None,
     investigation=None,
@@ -41,13 +39,10 @@ def create_feedback(
 ):
     """Persist feedback and optionally create its idempotent Experience.
 
-    ``actor`` is deliberately explicit even though Task 14 will add the HTTP
-    authentication boundary.  All supplied context rows are checked before a
-    write, so a feedback row cannot join two environments or two risks.
+    All supplied context rows are checked before a write, so a feedback row
+    cannot join two environments or two risks.
     """
 
-    actor = actor or actor_user
-    _require_actor(actor)
     feedback_type = _choice_value(feedback_type, HumanFeedback.FeedbackType, "feedback_type")
     if rating is not None and (not isinstance(rating, int) or not 1 <= rating <= 5):
         raise FeedbackError("rating must be an integer from 1 to 5")
@@ -115,7 +110,6 @@ def create_feedback(
     with transaction.atomic():
         feedback = HumanFeedback.objects.create(
             environment=environment,
-            user=actor,
             risk=risk,
             investigation=investigation,
             conversation=conversation,
@@ -128,7 +122,6 @@ def create_feedback(
             create_experience=create_experience,
         )
         record_event(
-            actor=actor,
             environment=environment,
             event_type="feedback.created",
             object_type="HumanFeedback",
@@ -146,7 +139,6 @@ def create_feedback(
 
             create_experience_from_feedback(
                 feedback,
-                actor=actor,
                 evidence=evidences,
             )
     return feedback
@@ -256,11 +248,6 @@ def _choice_value(value, enum, label):
     if value not in enum.values:
         raise FeedbackError(f"invalid {label}")
     return value
-
-
-def _require_actor(actor):
-    if actor is None or not getattr(actor, "pk", None) or getattr(actor, "is_authenticated", True) is False:
-        raise FeedbackError("an explicit authenticated actor is required")
 
 
 submit_feedback = create_feedback

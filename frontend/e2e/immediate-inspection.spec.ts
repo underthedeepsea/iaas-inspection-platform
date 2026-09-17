@@ -16,13 +16,11 @@ const resources = {
 }
 
 test('completes the immediate inspection workflow', async ({ page }) => {
+  const authRequests: string[] = []
+  page.on('request', request => { if (request.url().includes('/api/v1/auth/')) authRequests.push(request.url()) })
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request()
     const url = new URL(request.url())
-    if (request.method() === 'GET' && url.pathname === '/api/v1/auth/me') {
-      await route.fulfill({ json: { user_id: 'user-1', username: 'e2e', roles: ['operator', 'viewer'] } })
-      return
-    }
     if (request.method() === 'GET' && url.pathname === '/api/v1/environments') {
       await route.fulfill({ json: { items: [{ id: 'env-1', slug: 'staging', name: '测试环境', environment_type: 'TEST', timezone: 'Asia/Shanghai', assets_count: 48, mock_dataset_count: 1, inspection_run_count: 0, has_mock_data: true }], page: 1, page_size: 1, total: 1 } })
       return
@@ -56,6 +54,7 @@ test('completes the immediate inspection workflow', async ({ page }) => {
   })
 
   await page.goto('/')
+  expect(authRequests).toEqual([])
   await page.getByLabel('巡检环境').click()
   await page.locator('.ant-select-dropdown .ant-select-item-option').filter({ hasText: '测试环境' }).click()
   await page.getByRole('button', { name: /立即巡检/ }).click()
@@ -64,7 +63,7 @@ test('completes the immediate inspection workflow', async ({ page }) => {
   await expect(page.getByText('范围预览：48 个资源对象 / 12 个巡检项')).toBeVisible()
   await page.getByRole('button', { name: '开始巡检' }).click()
 
-  await expect(page.getByText('巡检任务已创建')).toBeVisible()
-  await expect(page.getByText('巡检已完成')).toBeVisible()
+  await expect(page.getByRole('heading', {name: '本次巡检已完成', exact: true})).toBeVisible()
+  await expect(page.getByRole('button', {name: /查看本次巡检结果/})).toBeVisible()
   await expect(page.getByText('48 / 48 个资源对象')).toBeVisible()
 })

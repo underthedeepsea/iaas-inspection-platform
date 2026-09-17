@@ -18,7 +18,6 @@ from .services import (
     _experience_environment,
     _model,
     _normalized_required_claims,
-    _require_actor,
     _require_item_claim,
     canonical_claim,
 )
@@ -35,25 +34,20 @@ def move_to_shadow(
     second=None,
     third=None,
     *,
-    actor=None,
-    actor_user=None,
     task=None,
     capability_version=None,
     version=None,
 ):
     """Atomically move CODE_PENDING and its candidate version to SHADOW."""
 
-    actor, task, capability_version = _parse_transition_args(
+    task, capability_version = _parse_transition_args(
         first,
         second,
         third,
-        actor=actor,
-        actor_user=actor_user,
         task=task,
         capability_version=capability_version,
         version=version,
     )
-    _require_actor(actor)
     task = _model(task, CodeizationTask, "task")
     with transaction.atomic():
         task = CodeizationTask.objects.select_for_update().select_related("experience").get(pk=task.pk)
@@ -90,7 +84,7 @@ def move_to_shadow(
             item.code_status = InspectionItem.CodeStatus.SHADOW
             item.save(update_fields=["code_status", "updated_at"])
         record_event(
-            actor=actor,
+
             environment=_experience_environment(experience),
             event_type="codeization_task.shadow",
             object_type="CodeizationTask",
@@ -105,7 +99,7 @@ def move_to_shadow(
             },
         )
         record_event(
-            actor=actor,
+
             environment=_experience_environment(experience),
             event_type="capability_version.shadow",
             object_type="CapabilityVersion",
@@ -125,25 +119,20 @@ def activate_codeization_task(
     second=None,
     third=None,
     *,
-    actor=None,
-    actor_user=None,
     task=None,
     capability_version=None,
     version=None,
 ):
     """Atomically make one exact SHADOW capability the authoritative resolver."""
 
-    actor, task, capability_version = _parse_transition_args(
+    task, capability_version = _parse_transition_args(
         first,
         second,
         third,
-        actor=actor,
-        actor_user=actor_user,
         task=task,
         capability_version=capability_version,
         version=version,
     )
-    _require_actor(actor)
     task = _model(task, CodeizationTask, "task")
     with transaction.atomic():
         task = CodeizationTask.objects.select_for_update().get(pk=task.pk)
@@ -234,7 +223,7 @@ def activate_codeization_task(
         experience.code_status = Experience.CodeStatus.CODE_ACTIVE
         experience.save(update_fields=["status", "code_status", "updated_at"])
         record_event(
-            actor=actor,
+
             environment=_experience_environment(experience),
             event_type="codeization_task.active",
             object_type="CodeizationTask",
@@ -249,7 +238,7 @@ def activate_codeization_task(
             },
         )
         record_event(
-            actor=actor,
+
             environment=_experience_environment(experience),
             event_type="capability_version.active",
             object_type="CapabilityVersion",
@@ -269,8 +258,6 @@ def transition_codeization_task(
     second=None,
     third=None,
     *,
-    actor=None,
-    actor_user=None,
     task=None,
     to_status=None,
     capability_version=None,
@@ -278,12 +265,10 @@ def transition_codeization_task(
 ):
     """Dispatch only the legal CODE_PENDING -> SHADOW -> CODE_ACTIVE edges."""
 
-    actor, task, supplied_version, supplied_status = _parse_transition_args(
+    task, supplied_version, supplied_status = _parse_transition_args(
         first,
         second,
         third,
-        actor=actor,
-        actor_user=actor_user,
         task=task,
         capability_version=capability_version,
         version=version,
@@ -296,17 +281,13 @@ def transition_codeization_task(
     to_status = to_status.value if hasattr(to_status, "value") else to_status
     if to_status == CodeizationTask.Status.SHADOW:
         return move_to_shadow(
-            actor,
             task,
             capability_version or version,
-            actor_user=actor_user,
         )
     if to_status == CodeizationTask.Status.CODE_ACTIVE:
         return activate_codeization_task(
-            actor,
             task,
             capability_version or version,
-            actor_user=actor_user,
         )
     raise ExperienceError("illegal codeization task transition")
 
@@ -316,36 +297,23 @@ def _parse_transition_args(
     second,
     third,
     *,
-    actor,
-    actor_user,
     task,
     capability_version,
     version,
     include_status=False,
 ):
-    """Accept actor-first and task-first service call shapes."""
+    """Resolve task, capability version, and optional target status."""
 
     status = None
-    if isinstance(first, CodeizationTask):
-        task = task or first
-        if isinstance(second, CodeizationTask):
-            raise ExperienceError("task is supplied more than once")
-        if isinstance(second, (CodeizationTask.Status, str)):
-            status = second
-            capability_version = capability_version or third
-        else:
-            capability_version = capability_version or second or third
-    elif first is not None:
-        actor = actor or first
-        task = task or second
-        if isinstance(third, (CodeizationTask.Status, str)):
-            status = third
-        else:
-            capability_version = capability_version or third
+    task = task or first
+    if isinstance(second, CodeizationTask):
+        raise ExperienceError("task is supplied more than once")
+    if isinstance(second, str) and second in CodeizationTask.Status.values:
+        status = second
+        capability_version = capability_version or third
     else:
-        status = second if isinstance(second, (CodeizationTask.Status, str)) else None
-        capability_version = capability_version or (third if status is not None else second)
-    return_values = (actor or actor_user, task, capability_version or version)
+        capability_version = capability_version or second or third
+    return_values = (task, capability_version or version)
     return (*return_values, status) if include_status else return_values
 
 

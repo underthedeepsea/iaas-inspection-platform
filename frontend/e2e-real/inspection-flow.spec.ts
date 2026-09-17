@@ -3,11 +3,11 @@ import { expect, test, type Page } from '@playwright/test'
 test.setTimeout(120_000)
 
 async function inspect(page: Page, code: 'CONTROL_PLANE' | 'LLM_RUNTIME') {
-  await page.goto('/login?next=/')
-  await page.getByLabel('用户名').fill(process.env.E2E_USERNAME ?? 'e2e')
-  await page.getByLabel('密码').fill(process.env.E2E_PASSWORD ?? 'e2e-password')
-  await page.getByRole('button',{name:'登录'}).click()
+  const authRequests: string[] = []
+  page.on('request', request => { if (request.url().includes('/api/v1/auth/')) authRequests.push(request.url()) })
+  await page.goto('/')
   await expect(page.getByRole('heading',{name:'租户区智能巡检'})).toBeVisible()
+  expect(authRequests).toEqual([])
   const response = await page.request.get('/api/v1/environments')
   const env = (await response.json()).items.find((row: {slug:string}) => row.slug === 'e2e')
   expect(env).toBeTruthy()
@@ -25,7 +25,7 @@ async function inspect(page: Page, code: 'CONTROL_PLANE' | 'LLM_RUNTIME') {
   return {run,env,code,checks}
 }
 
-test('control plane: login → manual inspection → failed checks → stable risks and history',async ({page}) => {
+test('control plane: manual inspection → failed checks → stable risks and history',async ({page}) => {
   const {checks,run,env,code} = await inspect(page,'CONTROL_PLANE')
   await expect(checks.getByRole('row').filter({hasText:'FAIL'})).toHaveCount(2)
   const response = await page.request.get(`/api/v1/resource-types/${code}/inspection-history/${run.id}?environment_id=${env.id}`)

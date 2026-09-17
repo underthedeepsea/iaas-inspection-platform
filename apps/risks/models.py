@@ -1,4 +1,3 @@
-from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
@@ -73,7 +72,6 @@ class RiskStatusHistory(CreatedModel):
     to_status = models.CharField(max_length=32, choices=Risk.Status.choices, db_index=True)
     reason = models.TextField(default="")
     source = models.CharField(max_length=32, choices=Source.choices, db_index=True)
-    actor_user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
     inspection_run = models.ForeignKey("inspections.InspectionRun", null=True, blank=True, on_delete=models.SET_NULL)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 

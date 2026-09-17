@@ -25,8 +25,6 @@ export const INSPECTION_RUN_EVENT_TYPES = [
   'inspection.completed',
   'risk.correlation.started',
   'risk.correlation.completed',
-  'ai.admission.started',
-  'ai.admission.completed',
   'summary.started',
   'summary.completed',
   'run.completed',
@@ -41,19 +39,27 @@ export function useInspectionRunStream(runId: string) {
     let source: EventSource | null = null
     let pollTimer: number | undefined
     let disposed = false
+    let terminal = false
+    lastEventId.current = 0
+    setState(initialInspectionProgressState)
 
     const applyEvent = (event: InspectionRunEvent) => {
-      if (event.sequence <= lastEventId.current) return
+      if (disposed || terminal || event.sequence <= lastEventId.current) return
       lastEventId.current = Math.max(lastEventId.current, event.sequence)
       setState((current) => reduceInspectionRunEvent(current, event))
       if (event.event_type === 'run.completed' || event.event_type === 'run.failed') {
+        terminal = true
         source?.close()
         if (pollTimer !== undefined) window.clearInterval(pollTimer)
         void queryClient.invalidateQueries({ queryKey: inspectionKeys.detail(runId) })
+        void queryClient.invalidateQueries({ queryKey: ['resource-types'] })
+        void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+        void queryClient.invalidateQueries({ queryKey: ['inspection-result'] })
       }
     }
 
     const poll = async () => {
+      if (disposed || terminal) return
       setRecovering(true)
       try {
         const run = await getInspectionRun(runId)
@@ -74,7 +80,7 @@ export function useInspectionRunStream(runId: string) {
     }
 
     const startPolling = (immediate = true) => {
-      if (pollTimer === undefined) {
+      if (!disposed && !terminal && pollTimer === undefined) {
         if (immediate) void poll()
         pollTimer = window.setInterval(() => void poll(), 5000)
       }

@@ -4,8 +4,6 @@ import uuid
 from unittest.mock import patch
 
 import pytest
-from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Group
 from django.test import Client
 
 from apps.core.models import Environment
@@ -16,13 +14,6 @@ from apps.investigations.services import runtime
 from apps.investigations.services.runtime import run_resource_investigation
 
 
-def make_user():
-    user = get_user_model().objects.create_user(
-        username=f"resource-investigation-{uuid.uuid4().hex}", password="password"
-    )
-    group, _ = Group.objects.get_or_create(name="viewer")
-    user.groups.add(group)
-    return user
 
 
 def make_environment(name="Investigation"):
@@ -70,7 +61,7 @@ def make_owned_investigation(environment, run, user):
     )
     Conversation.objects.create(
         environment=environment,
-        user=user,
+
         context_type=Conversation.ContextType.RESOURCE_RUN,
         context_id=run.pk,
         investigation=investigation,
@@ -84,7 +75,7 @@ def test_resource_investigation_events_returns_json_history():
     environment = make_environment()
     resource_type = make_resource_type("HISTORY_RESOURCE")
     run = make_run(environment, resource_type)
-    user = make_user()
+    user = None
     investigation = make_owned_investigation(environment, run, user)
     InvestigationEvent.objects.create(
         investigation=investigation,
@@ -94,7 +85,7 @@ def test_resource_investigation_events_returns_json_history():
         payload={"summary": "completed"},
     )
     client = Client()
-    client.force_login(user)
+
 
     response = client.get(
         f"/api/v1/investigations/{investigation.pk}/events?page=1&page_size=100"
@@ -110,7 +101,7 @@ def test_resource_investigation_event_stream_returns_sse():
     environment = make_environment()
     resource_type = make_resource_type("STREAM_RESOURCE")
     run = make_run(environment, resource_type)
-    user = make_user()
+    user = None
     investigation = make_owned_investigation(environment, run, user)
     InvestigationEvent.objects.create(
         investigation=investigation,
@@ -120,7 +111,7 @@ def test_resource_investigation_event_stream_returns_sse():
         payload={"summary": "completed"},
     )
     client = Client()
-    client.force_login(user)
+
 
     response = client.get(f"/api/v1/investigations/{investigation.pk}/events/stream")
 
@@ -134,7 +125,7 @@ def test_resource_investigation_event_stream_redacts_payload_with_public_history
     environment = make_environment()
     resource_type = make_resource_type("REDACTED_STREAM_RESOURCE")
     run = make_run(environment, resource_type)
-    user = make_user()
+    user = None
     investigation = make_owned_investigation(environment, run, user)
     InvestigationEvent.objects.create(
         investigation=investigation,
@@ -152,7 +143,7 @@ def test_resource_investigation_event_stream_redacts_payload_with_public_history
         },
     )
     client = Client()
-    client.force_login(user)
+
 
     response = client.get(f"/api/v1/investigations/{investigation.pk}/events/stream")
 
@@ -174,7 +165,7 @@ def test_resource_investigation_rejects_cross_environment_and_out_of_scope_runs(
     resource_type = make_resource_type()
     run = make_run(other_environment, resource_type)
     client = Client()
-    client.force_login(make_user())
+
 
     cross_environment = client.post(
         f"/api/v1/resource-types/{resource_type.code}/investigations",
@@ -206,13 +197,13 @@ def test_resource_investigation_rejects_cross_environment_and_out_of_scope_runs(
 
 
 @pytest.mark.django_db(transaction=True)
-def test_resource_investigation_creates_owner_scoped_final_explanation(monkeypatch):
+def test_resource_investigation_creates_run_scoped_final_explanation(monkeypatch):
     environment = make_environment()
     resource_type = make_resource_type()
     run = make_run(environment, resource_type)
-    user = make_user()
+    user = None
     client = Client()
-    client.force_login(user)
+
 
     response = client.post(
         f"/api/v1/resource-types/{resource_type.code}/investigations",
@@ -232,7 +223,7 @@ def test_resource_investigation_creates_owner_scoped_final_explanation(monkeypat
     assert investigation.status == Investigation.Status.UNRESOLVED
     assert investigation.finished_at is not None
     conversation = Conversation.objects.get(investigation=investigation)
-    assert conversation.user_id == user.pk
+
     assert response.json()['conclusion'] == '证据不足，无法解释确定性结论'
 
 
@@ -241,7 +232,7 @@ def test_resource_investigation_returns_final_result_without_background_runtime(
     environment = make_environment()
     resource_type = make_resource_type("ASYNC_RESOURCE")
     run = make_run(environment, resource_type)
-    user = make_user()
+    user = None
     enqueued = []
     monkeypatch.setattr(
         "apps.investigations.api.enqueue_resource_investigation",
@@ -249,7 +240,7 @@ def test_resource_investigation_returns_final_result_without_background_runtime(
         raising=False,
     )
     client = Client()
-    client.force_login(user)
+
 
     response = client.post(
         f"/api/v1/resource-types/{resource_type.code}/investigations",
@@ -350,9 +341,9 @@ def test_resource_conversation_question_reuses_resource_context(monkeypatch):
     environment = make_environment("Question context")
     resource_type = make_resource_type("QUESTION_RESOURCE")
     run = make_run(environment, resource_type)
-    user = make_user()
+    user = None
     client = Client()
-    client.force_login(user)
+
     created = client.post(
         f"/api/v1/resource-types/{resource_type.code}/investigations",
         data=json.dumps(

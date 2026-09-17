@@ -19,7 +19,7 @@
 - Reuse existing Task 7–13 services; views must not duplicate lifecycle, registry, graph, feedback, or codeization state machines.
 - Error responses use `{"error":{"code","message","details","trace_id"}}` with the section 37 status mapping.
 - List endpoints use bounded pagination, default `page=1,page_size=50`, and never serialize unrestricted raw Evidence/tool/provider payloads.
-- Apply Ponytail full: no new dependency, router framework, generic repository, speculative async worker, or duplicate model layer.
+- Keep the implementation minimal: no new dependency, router framework, generic repository, speculative async worker, or duplicate model layer.
 
 ---
 

@@ -52,7 +52,18 @@ __all__ = ["serialize_manual_inspection_run", "serialize_resource_summary"]
 
 
 def serialize_check_result(result):
+    engine = (result.inspection_item_run.summary or {}).get('engine_snapshot') or {}
     return {
+        'source': {
+            'type': engine.get('source_type', 'CODE'),
+            'engine': engine.get('engine', 'PYTHON_RULE'),
+            'rule_code': engine.get('rule_code'),
+            'rule_version': engine.get('rule_version'),
+            'plugin_id': engine.get('plugin_id'),
+            'plugin_name': engine.get('plugin_name'),
+            'plugin_version': engine.get('plugin_version'),
+            'operation_key': engine.get('operation_key'),
+        },
         'id':str(result.pk), 'inspection_item_code':result.inspection_item_run.inspection_item.code,
         'inspection_item_name':result.inspection_item_run.inspection_item.name,
         'asset_id':str(result.asset_id), 'asset_name':result.evidence.get('asset_name', result.asset.name),

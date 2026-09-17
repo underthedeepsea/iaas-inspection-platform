@@ -143,3 +143,27 @@ def test_resource_check_history_exposes_only_scoped_results(launch_context):
     assert rows[0]['observed_value']['p95_ms'] == 220
     assert rows[0]['expected_value']['threshold_ms'] == 180
     assert rows[0]['evidence']['samples']
+
+
+def test_plugin_provenance_is_frozen_even_when_registry_changes(launch_context, monkeypatch):
+    from dataclasses import replace
+    from apps.inspections.rules import registry
+    from apps.inspections.serializers import serialize_check_result
+    item_run = execute(launch_context)
+    assert 'engine_snapshot' in item_run.summary
+    snapshot = item_run.summary['engine_snapshot']
+    assert snapshot == {
+        'source_type': 'CODE',
+        'engine': 'PYTHON_RULE',
+        'rule_code': 'llm.ttft_slo',
+        'rule_version': '1.0.0',
+        'plugin_id': 'llm-ttft-slo',
+        'plugin_name': 'LLM TTFT SLO',
+        'plugin_version': '1.0.0',
+        'operation_key': 'evaluate',
+    }
+    monkeypatch.setitem(registry.CODE_PLUGINS, 'llm.ttft_slo', replace(registry.get_code_plugin('llm.ttft_slo'), plugin_version='2.0.0'))
+    execute_inspection_item(item_run.inspection_run, launch_context[2])
+    item_run.refresh_from_db()
+    assert item_run.summary['engine_snapshot'] == snapshot
+    assert serialize_check_result(item_run.check_results.get())['source']['plugin_version'] == '1.0.0'

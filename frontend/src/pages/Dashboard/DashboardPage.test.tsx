@@ -62,7 +62,7 @@ describe('DashboardPage', () => {
     expect(screen.getByText('整体健康度')).toBeInTheDocument()
     expect(screen.getByText('当前风险')).toBeInTheDocument()
     expect(screen.getByText('巡检覆盖率')).toBeInTheDocument()
-    expect(screen.getByText('最近巡检')).toBeInTheDocument()
+    expect(screen.getByText('规则库')).toBeInTheDocument()
     expect(screen.getByText('重点风险')).toBeInTheDocument()
     expect(screen.getByText('巡检完整性')).toBeInTheDocument()
     expect(screen.queryByText('能力成熟度')).not.toBeInTheDocument()

@@ -2,8 +2,6 @@ import uuid
 from datetime import datetime, timezone
 
 import pytest
-from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Group
 from django.test import Client
 
 from apps.assets.models import Asset
@@ -14,12 +12,8 @@ from apps.risks.models import Risk
 
 @pytest.mark.django_db
 def test_resource_risks_returns_current_risks_for_selected_resource_type():
-    user = get_user_model().objects.create_user(
-        username=f"resource-risk-viewer-{uuid.uuid4().hex}",
-        password="password",
-    )
-    group, _ = Group.objects.get_or_create(name="viewer")
-    user.groups.add(group)
+
+
     environment = Environment.objects.create(name="Resource risks", slug=f"resource-risks-{uuid.uuid4().hex}")
     resource_type = ResourceType.objects.create(
         code="RESOURCE_RISK_TYPE",
@@ -55,7 +49,7 @@ def test_resource_risks_returns_current_risks_for_selected_resource_type():
     )
 
     client = Client()
-    client.force_login(user)
+
     response = client.get(
         f"/api/v1/resource-types/{resource_type.code}/risks",
         {"environment_id": str(environment.id)},

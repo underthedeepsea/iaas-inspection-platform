@@ -116,7 +116,6 @@ def _apply_transition(
     reason,
     source,
     inspection_run=None,
-    actor_user=None,
 ):
     from_status = risk.status
     risk.status = to_status
@@ -131,7 +130,6 @@ def _apply_transition(
         to_status=to_status,
         reason=reason,
         source=source,
-        actor_user=actor_user,
         inspection_run=inspection_run,
     )
     return risk
@@ -144,7 +142,6 @@ def transition_risk(
     reason,
     source=RiskStatusHistory.Source.SYSTEM,
     inspection_run=None,
-    actor_user=None,
 ):
     """Lock a risk, apply a lifecycle status, and write its history."""
 
@@ -157,21 +154,17 @@ def transition_risk(
             reason=reason,
             source=source,
             inspection_run=inspection_run,
-            actor_user=actor_user,
         )
 
 
 def mark_handled(
     risk,
     *,
-    actor_user=None,
-    actor=None,
     reason="Risk marked handled; awaiting reverification",
     inspection_run=None,
 ):
     """Move an active risk to PENDING_REVERIFY, never directly to RECOVERED."""
 
-    actor_user = actor_user or actor
     with transaction.atomic():
         locked = _locked_risk(risk)
         if locked.status not in ACTIVE_RISK_STATUSES:
@@ -182,7 +175,6 @@ def mark_handled(
             reason=reason,
             source=RiskStatusHistory.Source.HUMAN,
             inspection_run=inspection_run,
-            actor_user=actor_user,
         )
 
 

@@ -7,7 +7,6 @@ from functools import wraps
 from django.db import transaction
 from django.http import JsonResponse, StreamingHttpResponse
 
-from apps.api.auth import require_role
 from apps.api.http import APIRequestError, api_error, parse_json_object
 from apps.api.pagination import paginate
 from apps.core.models import Environment
@@ -51,9 +50,6 @@ def _endpoint(methods):
     def decorate(view):
         @wraps(view)
         def wrapped(request, *args, **kwargs):
-            auth_error = require_role(request, "viewer")
-            if auth_error is not None:
-                return auth_error
             if request.method not in methods:
                 return api_error("METHOD_NOT_ALLOWED", "unsupported method", status=405)
             return view(request, *args, **kwargs)
@@ -130,7 +126,6 @@ def create_resource_investigation(request, resource_type_code):
         )
         conversation = Conversation.objects.create(
             environment=environment,
-            user=request.user,
             context_type=context_type,
             context_id=context_id,
             investigation=investigation,
@@ -159,7 +154,6 @@ def resource_investigations(request, resource_type_code):
     resource_type = _resource_type(resource_type_code)
     rows = (
         Investigation.objects.filter(
-            conversation__user=request.user,
             conversation__context_type=Conversation.ContextType.RESOURCE_TYPE,
             conversation__context_id=resource_type.pk,
         )
@@ -234,7 +228,7 @@ def _owned_investigation(request, investigation_id):
     parsed = _uuid(investigation_id, "investigation_id")
     if parsed is None:
         return None
-    if not Conversation.objects.filter(investigation_id=parsed, user=request.user).exists():
+    if not Conversation.objects.filter(investigation_id=parsed).exists():
         return None
     return Investigation.objects.filter(pk=parsed).first()
 

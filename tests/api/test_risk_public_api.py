@@ -4,8 +4,6 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
-from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Group
 from django.test import RequestFactory
 
 from apps.audits.models import AuditEvent
@@ -14,14 +12,6 @@ from apps.inspections.models import InspectionItem, Severity
 from apps.risks.models import Evidence, Risk, RiskStatusHistory
 
 
-def _user(*roles):
-    user = get_user_model().objects.create_user(
-        username=f"risk-api-{uuid.uuid4().hex}", password="password"
-    )
-    for role in roles:
-        group, _ = Group.objects.get_or_create(name=role)
-        user.groups.add(group)
-    return user
 
 
 def _request(method, path, user, payload=None):
@@ -29,7 +19,7 @@ def _request(method, path, user, payload=None):
     request = getattr(RequestFactory(), method.lower())(
         path, data=body, content_type="application/json"
     )
-    request.user = user
+
     return request
 
 
@@ -72,7 +62,7 @@ def test_risk_list_filters_change_and_serializes_bounded_payloads():
         payload={"password": "must not be returned"},
         source="test",
     )
-    viewer = _user("viewer")
+    viewer = None
     response = views.risks(
         _request("GET", "/api/v1/risks?status=PENDING_ACTION&change=NEW&ai_involved=false", viewer)
     )
@@ -87,18 +77,13 @@ def test_risk_list_filters_change_and_serializes_bounded_payloads():
 
 
 @pytest.mark.django_db(transaction=True)
-def test_mark_handled_is_operator_only_audited_and_never_recovers_directly():
+def test_mark_handled_is_anonymous_audited_and_never_recovers_directly():
     from apps.operations_api import views
 
     risk = _risk()
-    viewer = _user("viewer")
-    denied = views.mark_handled(
-        _request("POST", f"/api/v1/risks/{risk.pk}/mark-handled", viewer, {"comment": "x"}),
-        str(risk.pk),
-    )
-    assert denied.status_code == 403
+    viewer = None
 
-    operator = _user("operator")
+    operator = None
     response = views.mark_handled(
         _request(
             "POST",
@@ -114,10 +99,10 @@ def test_mark_handled_is_operator_only_audited_and_never_recovers_directly():
     assert risk.status == Risk.Status.PENDING_REVERIFY
     assert risk.status != Risk.Status.RECOVERED
     assert RiskStatusHistory.objects.filter(
-        risk=risk, to_status=Risk.Status.PENDING_REVERIFY, actor_user=operator
+        risk=risk, to_status=Risk.Status.PENDING_REVERIFY,
     ).exists()
     assert AuditEvent.objects.filter(
-        object_type="Risk", object_id=str(risk.pk), user=operator
+        object_type="Risk", object_id=str(risk.pk)
     ).exists()
 
 
@@ -125,7 +110,7 @@ def test_mark_handled_is_operator_only_audited_and_never_recovers_directly():
 def test_ignore_requires_reason_and_rejects_terminal_or_illegal_transition():
     from apps.operations_api import views
 
-    operator = _user("operator")
+    operator = None
     risk = _risk()
     missing_reason = views.ignore(
         _request("POST", f"/api/v1/risks/{risk.pk}/ignore", operator, {}),
@@ -171,7 +156,7 @@ def test_timeline_and_evidence_are_bounded_and_do_not_expose_raw_payload():
         payload={"password": "do-not-return"},
         source="test",
     )
-    viewer = _user("viewer")
+    viewer = None
     timeline = views.risk_timeline(
         _request("GET", f"/api/v1/risks/{risk.pk}/timeline", viewer), str(risk.pk)
     )
@@ -190,7 +175,7 @@ def test_item_and_risk_detail_serializers_include_bounded_codeization_fields():
     from apps.operations_api import views
 
     risk = _risk()
-    viewer = _user("viewer")
+    viewer = None
     item_response = views.inspection_item_detail(
         _request("GET", f"/api/v1/inspection-items/{risk.inspection_item_id}", viewer),
         str(risk.inspection_item_id),
@@ -212,7 +197,7 @@ def test_mark_handled_rolls_back_lifecycle_when_audit_write_fails(monkeypatch):
     from apps.operations_api import views
 
     risk = _risk()
-    operator = _user("operator")
+    operator = None
 
     def fail_audit(**_kwargs):
         raise RuntimeError("audit unavailable")

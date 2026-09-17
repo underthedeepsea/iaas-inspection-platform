@@ -2,8 +2,6 @@ import json
 import uuid
 
 import pytest
-from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Group
 from django.test import RequestFactory
 
 from apps.audits.models import AuditEvent
@@ -19,18 +17,9 @@ from apps.investigations.models import (
 from apps.risks.models import Risk, Severity
 
 
-def _user(*groups):
-    user = get_user_model().objects.create_user(
-        username=f"investigation-api-{uuid.uuid4().hex}", password="password"
-    )
-    for name in groups:
-        group, _ = Group.objects.get_or_create(name=name)
-        user.groups.add(group)
-    return user
 
 
 def _context(*, owner=None):
-    owner = owner or _user("viewer")
     environment = Environment.objects.create(
         name="Investigation API", slug=f"investigation-api-{uuid.uuid4().hex}"
     )
@@ -63,7 +52,7 @@ def _context(*, owner=None):
     )
     conversation = Conversation.objects.create(
         environment=environment,
-        user=owner,
+
         context_type=Conversation.ContextType.RISK,
         context_id=risk.pk,
         risk=risk,
@@ -77,7 +66,6 @@ def _context(*, owner=None):
         payload={"summary": "bounded", "api_key": "do-not-return"},
     )
     return {
-        "owner": owner,
         "environment": environment,
         "risk": risk,
         "item": item,
@@ -91,17 +79,17 @@ def _request(method, path, user, payload=None):
     request = getattr(RequestFactory(), method.lower())(
         path, data=body, content_type="application/json"
     )
-    request.user = user
+
     return request
 
 
 @pytest.mark.django_db
-def test_investigation_detail_is_owner_scoped_and_hides_provider_fields():
+def test_investigation_detail_is_anonymous_and_hides_provider_fields():
     from apps.investigations import public_views
 
     context = _context()
     response = public_views.detail(
-        _request("GET", "/investigations", context["owner"]),
+        _request("GET", "/investigations", None),
         context["investigation"].pk,
     )
 
@@ -112,11 +100,11 @@ def test_investigation_detail_is_owner_scoped_and_hides_provider_fields():
     assert "model_provider" not in body
     assert "model_name" not in body
 
-    stranger = _user("viewer")
+    stranger = None
     response = public_views.detail(
         _request("GET", "/investigations", stranger), context["investigation"].pk
     )
-    assert response.status_code == 404
+    assert response.status_code == 200
 
 
 @pytest.mark.django_db
@@ -150,14 +138,14 @@ def test_investigation_events_and_tool_calls_are_bounded_public_projections():
     )
 
     events = public_views.events(
-        _request("GET", "/investigations/events", context["owner"]),
+        _request("GET", "/investigations/events", None),
         context["investigation"].pk,
     )
     assert events.status_code == 200
     assert "do-not-return" not in events.content.decode()
 
     calls = public_views.tool_calls(
-        _request("GET", "/investigations/tool-calls", context["owner"]),
+        _request("GET", "/investigations/tool-calls", None),
         context["investigation"].pk,
     )
     assert calls.status_code == 200
@@ -169,19 +157,14 @@ def test_investigation_events_and_tool_calls_are_bounded_public_projections():
 
 
 @pytest.mark.django_db
-def test_cancel_requires_operator_and_records_one_semantic_audit_event():
+def test_cancel_is_anonymous_and_records_one_semantic_audit_event():
     from apps.investigations import public_views
 
     context = _context()
-    viewer_response = public_views.cancel(
-        _request("POST", "/investigations/cancel", context["owner"]),
-        context["investigation"].pk,
-    )
-    assert viewer_response.status_code == 403
 
-    operator = _user("operator")
-    context["conversation"].user = operator
-    context["conversation"].save(update_fields=["user"])
+    operator = None
+
+    context["conversation"].save()
     response = public_views.cancel(
         _request("POST", "/investigations/cancel", operator),
         context["investigation"].pk,

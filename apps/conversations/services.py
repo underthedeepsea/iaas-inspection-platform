@@ -71,11 +71,9 @@ class _NoToolsRegistry:
         return None
 
 
-def create_conversation(user: Any, payload: Mapping[str, Any]) -> Conversation:
+def create_conversation(payload: Mapping[str, Any]) -> Conversation:
     """Create a Risk-bound conversation using the Risk's environment."""
 
-    if not getattr(user, "is_authenticated", False):
-        raise ConversationError("authentication_required", "authentication is required", 401)
     if not isinstance(payload, Mapping):
         raise ConversationError("invalid_json", "request body must be a JSON object")
     context_type = payload.get("context_type")
@@ -100,7 +98,6 @@ def create_conversation(user: Any, payload: Mapping[str, Any]) -> Conversation:
         raise ConversationError("invalid_field", "title must be a non-empty string of at most 255 characters")
     return Conversation.objects.create(
         environment=risk.environment,
-        user=user,
         context_type=Conversation.ContextType.RISK,
         context_id=risk.pk,
         risk=risk,
@@ -108,15 +105,15 @@ def create_conversation(user: Any, payload: Mapping[str, Any]) -> Conversation:
     )
 
 
-def get_conversation(user: Any, conversation_id: Any, *, lock: bool = False) -> Conversation:
-    """Return only a conversation owned by ``user``."""
+def get_conversation(conversation_id: Any, *, lock: bool = False) -> Conversation:
+    """Return a conversation by its identity."""
 
     parsed = _uuid(conversation_id, "conversation_id")
     query = Conversation.objects.select_related("environment", "risk", "investigation")
     if lock:
         query = query.select_for_update(of=("self",))
     try:
-        return query.get(pk=parsed, user=user)
+        return query.get(pk=parsed)
     except Conversation.DoesNotExist:
         raise ConversationError("not_found", "conversation does not exist", 404) from None
 
@@ -136,15 +133,15 @@ def serialize_conversation(conversation: Conversation) -> dict[str, Any]:
     }
 
 
-def list_messages(user: Any, conversation_id: Any) -> list[dict[str, Any]]:
-    conversation = get_conversation(user, conversation_id)
+def list_messages(conversation_id: Any) -> list[dict[str, Any]]:
+    conversation = get_conversation(conversation_id)
     messages = conversation.conversationmessage_set.order_by("created_at", "pk")[:MAX_PUBLIC_MESSAGES]
     return [_serialize_message(message) for message in messages]
 
 
-def close_conversation(user: Any, conversation_id: Any) -> Conversation:
+def close_conversation(conversation_id: Any) -> Conversation:
     with transaction.atomic():
-        conversation = get_conversation(user, conversation_id, lock=True)
+        conversation = get_conversation(conversation_id, lock=True)
         if conversation.status != Conversation.Status.CLOSED:
             conversation.status = Conversation.Status.CLOSED
             conversation.save(update_fields=["status", "updated_at"])
@@ -152,7 +149,6 @@ def close_conversation(user: Any, conversation_id: Any) -> Conversation:
 
 
 def create_turn(
-    user: Any,
     conversation_id: Any,
     payload: Mapping[str, Any],
     *,
@@ -167,8 +163,6 @@ def create_turn(
     writes, so no DB lock spans model or tool execution.
     """
 
-    if not getattr(user, "is_authenticated", False):
-        raise ConversationError("authentication_required", "authentication is required", 401)
     if not isinstance(payload, Mapping):
         raise ConversationError("invalid_json", "request body must be a JSON object")
     message = payload.get("message")
@@ -180,7 +174,7 @@ def create_turn(
     idempotency_key = _idempotency_key(payload)
 
     with transaction.atomic():
-        conversation = get_conversation(user, conversation_id, lock=True)
+        conversation = get_conversation(conversation_id, lock=True)
         if conversation.status != Conversation.Status.ACTIVE:
             raise ConversationError("conversation_closed", "conversation is closed", 409)
         investigation, user_message, turn_state = _start_turn(
@@ -250,21 +244,20 @@ def run_graph(
     return graph.invoke(dict(values))
 
 
-def events_for_turn(user: Any, conversation_id: Any, turn_id: Any) -> list[InvestigationEvent]:
-    conversation = get_conversation(user, conversation_id)
+def events_for_turn(conversation_id: Any, turn_id: Any) -> list[InvestigationEvent]:
+    conversation = get_conversation(conversation_id)
     investigation_id = _turn_uuid(turn_id)
-    # Investigation has no owner column.  Every Task 12 event carries the
-    # conversation id; checking it here keeps historical turns owner-scoped.
+    # Historical turn events must belong to the requested conversation.
     events = InvestigationEvent.objects.filter(investigation_id=investigation_id).order_by("sequence", "pk")
-    owned = [
+    linked = [
         event
         for event in events
         if investigation_id == conversation.investigation_id
         or _conversation_id_from_payload(event.payload) == str(conversation.pk)
     ]
-    if not owned:
+    if not linked:
         raise ConversationError("not_found", "turn does not exist", 404)
-    return owned
+    return linked
 
 
 def sanitize_result(value: Any) -> dict[str, Any]:
@@ -579,7 +572,6 @@ def _persist_turn(
         )
         _append_events(investigation, events)
         record_event(
-            actor=conversation.user,
             environment=conversation.environment,
             event_type="conversation.turn.created",
             object_type="Investigation",

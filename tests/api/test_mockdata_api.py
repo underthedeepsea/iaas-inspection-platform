@@ -4,8 +4,6 @@ from datetime import date
 from types import SimpleNamespace
 
 import pytest
-from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Group
 from django.test import RequestFactory, override_settings
 
 from apps.core.models import Environment
@@ -14,14 +12,6 @@ from apps.inspections.models import MockDataset, MockEvent, MockLog
 from apps.mockdata import internal_views, public_views
 
 
-def _user(*roles):
-    user = get_user_model().objects.create_user(
-        username=f"mock-api-{uuid.uuid4().hex}", password="password"
-    )
-    for role in roles:
-        group, _ = Group.objects.get_or_create(name=role)
-        user.groups.add(group)
-    return user
 
 
 def _request(method, path, *, user=None, payload=None, token=None, query=None):
@@ -33,7 +23,7 @@ def _request(method, path, *, user=None, payload=None, token=None, query=None):
         content_type="application/json",
         **({"HTTP_X_INTERNAL_TOKEN": token} if token else {}),
     )
-    request.user = user or SimpleNamespace(is_authenticated=False)
+
     return request
 
 
@@ -42,10 +32,9 @@ def _body(response):
 
 
 @pytest.mark.django_db
-def test_authenticated_operator_can_generate_and_bounded_dataset_detail_has_no_raw_rows():
+def test_anonymous_requests_can_generate_and_bounded_dataset_detail_has_no_raw_rows():
     from apps.audits.models import AuditEvent
 
-    operator = _user("operator")
     environment = Environment.objects.create(name="Mock", slug=f"mock-{uuid.uuid4().hex}")
     payload = {
         "environment_id": str(environment.pk),
@@ -53,12 +42,12 @@ def test_authenticated_operator_can_generate_and_bounded_dataset_detail_has_no_r
         "dataset_date": "2026-08-23",
         "seed": 1729,
     }
-    response = public_views.generate(_request("POST", "/mock-datasets/generate/", user=operator, payload=payload))
+    response = public_views.generate(_request("POST", "/mock-datasets/generate/", payload=payload))
     assert response.status_code == 201
     dataset_id = _body(response)["dataset_id"]
     assert AuditEvent.objects.filter(object_type="MockDataset", object_id=dataset_id).exists()
 
-    detail = public_views.detail(_request("GET", "/mock-datasets/x/", user=operator), dataset_id)
+    detail = public_views.detail(_request("GET", "/mock-datasets/x/"), dataset_id)
     assert detail.status_code == 200
     body = _body(detail)
     assert body["metric_count"] > 0
@@ -66,7 +55,7 @@ def test_authenticated_operator_can_generate_and_bounded_dataset_detail_has_no_r
 
 
 @pytest.mark.django_db
-def test_mock_dataset_generation_rejects_unauthorized_and_invalid_scenario():
+def test_mock_dataset_generation_accepts_anonymous_and_rejects_invalid_scenario():
     environment = Environment.objects.create(name="Mock", slug=f"mock-{uuid.uuid4().hex}")
     payload = {
         "environment_id": str(environment.pk),
@@ -74,24 +63,23 @@ def test_mock_dataset_generation_rejects_unauthorized_and_invalid_scenario():
         "dataset_date": "2026-08-23",
         "seed": 1729,
     }
-    assert public_views.generate(_request("POST", "/mock-datasets/generate/", payload=payload)).status_code == 401
+    assert public_views.generate(_request("POST", "/mock-datasets/generate/", payload=payload)).status_code == 201
     assert public_views.generate(
-        _request("POST", "/mock-datasets/generate/", user=_user("viewer"), payload=payload)
-    ).status_code == 403
+        _request("POST", "/mock-datasets/generate/", user=None, payload=payload)
+    ).status_code == 201
     payload["scenario"] = "run-arbitrary-script"
     assert public_views.generate(
-        _request("POST", "/mock-datasets/generate/", user=_user("operator"), payload=payload)
+        _request("POST", "/mock-datasets/generate/", user=None, payload=payload)
     ).status_code == 400
 
 
 @pytest.mark.django_db
 @override_settings(MOCK_INTERNAL_TOKEN="test-token")
 def test_internal_mock_queries_require_token_and_return_bounded_rows():
-    operator = _user("operator")
     environment = Environment.objects.create(name="Mock", slug=f"mock-{uuid.uuid4().hex}")
     generated = public_views.generate(
         _request(
-            "POST", "/mock-datasets/generate/", user=operator,
+            "POST", "/mock-datasets/generate/",
             payload={
                 "environment_id": str(environment.pk),
                 "scenario": "llm_scheduler_pressure",
@@ -120,11 +108,10 @@ def test_internal_mock_queries_require_token_and_return_bounded_rows():
 @pytest.mark.django_db
 @override_settings(MOCK_INTERNAL_TOKEN="test-token")
 def test_internal_mock_rows_redact_secret_like_text_and_nested_metadata():
-    operator = _user("operator")
     environment = Environment.objects.create(name="Mock", slug=f"mock-{uuid.uuid4().hex}")
     generated = public_views.generate(
         _request(
-            "POST", "/mock-datasets/generate/", user=operator,
+            "POST", "/mock-datasets/generate/",
             payload={
                 "environment_id": str(environment.pk),
                 "scenario": "llm_scheduler_pressure",

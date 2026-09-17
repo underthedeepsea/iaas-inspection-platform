@@ -1,3 +1,7 @@
+import { DashboardAIBar } from '../../features/dashboard-ai/DashboardAIBar'
+import { LatestRunBanner } from '../../features/inspection-history/LatestRunBanner'
+import { useInspectionSessionStore } from '../../stores/inspectionSessionStore'
+import { getRules } from '../../api/codePlugins'
 import { isLaunchResource } from '../../features/resource-health/resourceRoutes'
 import type { CSSProperties } from 'react'
 import { useQuery } from '@tanstack/react-query'
@@ -51,6 +55,7 @@ function fallbackRisks(resources: ResourceType[]): DashboardRisk[] {
 function statusLabel(status: string) {
   return ({
     ACTIVE: '持续中',
+    PERSISTING: '持续中',
     NEW: '新增',
     PENDING_ACTION: '待处置',
     PENDING_REVERIFY: '待复验',
@@ -67,6 +72,8 @@ export function DashboardPage({
 }) {
   const storeEnvironmentId = useUiStore((state) => state.environmentId)
   const environmentId = providedEnvironmentId ?? storeEnvironmentId
+  const lastCompleted = useInspectionSessionStore(state => state.lastCompleted)
+  const rulesQuery = useQuery({queryKey:['rules'],queryFn:getRules})
   const resourcesQuery = useQuery({
     queryKey: resourceKeys.list(environmentId ?? 'none'),
     queryFn: () => getResourceTypes(environmentId as string),
@@ -90,9 +97,7 @@ export function DashboardPage({
   }
 
   const resources = (resourcesQuery.data?.items ?? []).filter(isLaunchResource)
-  if (resources.length === 0) {
-    return <section className="view"><div className="empty-state"><strong>还没有可展示的资源巡检数据</strong><p>请选择其他环境或先执行一次巡检。</p>{onOpenInspection ? <button className="button button-primary" onClick={onOpenInspection} type="button">立即巡检</button> : <InspectionTriggerButton environmentId={environmentId} resourceTypes={resources} />}</div></section>
-  }
+
 
   const snapshot = dashboardQuery.data?.snapshot
   const riskCount = snapshot?.risk_total ?? total(resources, 'risk_count')
@@ -104,7 +109,6 @@ export function DashboardPage({
   const completeness = snapshot ? asPercent(snapshot.data_completeness_rate) : 0
   const topRisks = dashboardQuery.data?.top_risks?.length ? dashboardQuery.data.top_risks : fallbackRisks(resources)
   const trend = dashboardQuery.data?.trend_7d ?? []
-  const newDiff = dashboardQuery.data?.yesterday_diff?.new_count
   const freshness = snapshot ? `最后完成：${formatDate(snapshot.snapshot_date)}` : '等待今日快照'
 
   return (
@@ -113,7 +117,7 @@ export function DashboardPage({
         <div>
           <span className="eyebrow">DAILY INSPECTION · {formatDate(snapshot?.snapshot_date)}</span>
           <h2 id="dashboard-title">租户区智能巡检</h2>
-          <p className="lede">先看整体状态，再进入资源、风险和证据详情。内部执行细节只在需要时展开。</p>
+          <p className="lede">掌握资源状态，定位异常，让每一次巡检有据可循。</p>
         </div>
         <div className="heading-actions">
           <span className="freshness">{freshness}</span>
@@ -121,16 +125,18 @@ export function DashboardPage({
         </div>
       </div>
 
+      <DashboardAIBar environmentId={environmentId} key={environmentId} runId={lastCompleted?.environmentId === environmentId ? lastCompleted.runId : undefined} />
+      <LatestRunBanner environmentId={environmentId} />
       <div className="metric-grid" data-dashboard-metrics data-dashboard-section="kpi">
-        <ResourceKPI label="整体健康度" value={overallHealth} detail={newDiff == null ? '资源类型平均值' : `${newDiff >= 0 ? '↑' : '↓'} ${Math.abs(newDiff)} vs 昨日`} />
+        <ResourceKPI label="整体健康度" value={overallHealth} detail="资源类型平均健康评分" />
         <ResourceKPI label="当前风险" value={riskCount} detail={`P1/P2 ${p1Count} / ${p2Count}`} tone={p1Count ? 'critical' : p2Count ? 'warn' : undefined} />
         <ResourceKPI label="巡检覆盖率" value={typeof coverage === 'number' ? `${coverage}%` : coverage} detail={coverageDetail} />
-        <ResourceKPI label="最近巡检" value={formatDate(snapshot?.snapshot_date)} detail="数据来源：模拟巡检数据" />
+        <ResourceKPI label="规则库" value={rulesQuery.data?.items?.length ?? '—'} detail="确定性检查 · 版本可追溯" />
       </div>
 
       <div className="dashboard-workspace-grid">
         <section className="panel dashboard-risk-panel" data-dashboard-section="trend-and-risks">
-          <div className="section-heading"><div><span className="panel-kicker">重点风险</span><h3>关注队列</h3><p className="panel-lede">按影响和生命周期排序</p></div><Link className="text-link" to="/risks">风险中心 →</Link></div>
+          <div className="section-heading"><div><h3>重点风险</h3><p className="panel-lede">按影响和生命周期排序</p></div><Link className="text-link" to="/risks">风险中心 →</Link></div>
           <div className="dashboard-risk-list">
             {topRisks.slice(0, 6).map((risk) => (
               <article className="dashboard-risk-item" key={risk.id}>
@@ -147,7 +153,7 @@ export function DashboardPage({
         </section>
 
         <section className="panel dashboard-completeness-panel" data-dashboard-section="auxiliary">
-          <div className="section-heading"><div><span className="panel-kicker">今日数据</span><h3>巡检完整性</h3><p className="panel-lede">完整数据让结论更稳定</p></div><span className="legend">当前 {completeness}%</span></div>
+          <div className="section-heading"><div><h3>巡检完整性</h3><p className="panel-lede">完整数据让结论更稳定</p></div><span className="legend">当前 {completeness}%</span></div>
           <div className="dashboard-health-layout">
             <div className="ring-stat" style={{ '--ring-progress': completeness } as CSSProperties}><div className="ring-content"><strong>{completeness}</strong><span>完整性</span></div></div>
             <div className="dashboard-health-copy">
@@ -168,8 +174,8 @@ export function DashboardPage({
       </div>
 
       <section className="panel dashboard-resource-panel" data-dashboard-section="resource-health">
-        <div className="section-heading"><div><span className="panel-kicker">资源概览</span><h3>资源健康状态</h3><p className="panel-lede">按资源类型查看覆盖、健康度和风险</p></div><Link className="text-link" to="/resources">资源巡检 →</Link></div>
-        <div className="resource-grid">{resources.map((resource) => <ResourceHealthCard key={resource.code} resource={resource} />)}</div>
+        <div className="section-heading"><div><h3>资源健康状态</h3><p className="panel-lede">按资源类型查看覆盖、健康度和风险</p></div><Link className="text-link" to="/resources">资源巡检 →</Link></div>
+        <div className="resource-grid">{resources.length ? resources.map((resource) => <ResourceHealthCard key={resource.code} resource={resource} />) : <div className="empty-state compact"><strong>还没有可展示的资源巡检数据</strong><p>请选择其他环境或先执行一次巡检。</p></div>}</div>
       </section>
 
 

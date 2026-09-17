@@ -2,7 +2,6 @@ import uuid
 
 import pytest
 from django.apps import apps
-from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.utils import timezone
@@ -202,12 +201,9 @@ def test_human_feedback_can_link_a_message_investigation_and_risk():
         model_provider="ollama",
         model_name="qwen",
     )
-    user = get_user_model().objects.create_user(
-        username=f"reviewer-{uuid.uuid4().hex}",
-    )
     conversation = conversation_model.objects.create(
         environment=environment,
-        user=user,
+
         context_type="RISK",
         context_id=risk.id,
         risk=risk,
@@ -222,7 +218,7 @@ def test_human_feedback_can_link_a_message_investigation_and_risk():
 
     feedback = feedback_model.objects.create(
         environment=environment,
-        user=user,
+
         risk=risk,
         investigation=investigation,
         conversation=conversation,

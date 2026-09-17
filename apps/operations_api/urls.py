@@ -6,6 +6,8 @@ from . import views
 
 
 urlpatterns = [
+    path("dashboard/ask", views.dashboard_ask, name="dashboard-ask"),
+    path("inspection-runs/<uuid:run_id>/result", views.inspection_run_result, name="inspection-run-result"),
     path("environments", views.environments, name="environments"),
     path("environments/", views.environments, name="environments-slash"),
     path("dashboard/today", views.dashboard_today, name="dashboard-today"),

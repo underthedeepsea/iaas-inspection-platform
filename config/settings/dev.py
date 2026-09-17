@@ -5,7 +5,7 @@ from .base import *  # noqa: F403
 
 
 DEBUG = True
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "fake")
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama")
 BACKGROUND_TASK_PROVIDER = os.getenv("BACKGROUND_TASK_PROVIDER", "local")
 AIRFLOW_BASE_URL = os.getenv("AIRFLOW_BASE_URL")
 AIRFLOW_USERNAME = os.getenv("AIRFLOW_USERNAME")
@@ -23,9 +23,6 @@ LOCAL_BACKGROUND_WORKER_ENABLED = os.getenv("LOCAL_BACKGROUND_WORKER_ENABLED", "
 ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
 
 INSTALLED_APPS = [
-    "django.contrib.auth",
-    "django.contrib.contenttypes",
-    "django.contrib.sessions",
     "django.contrib.postgres",
     "django.contrib.staticfiles",
     *INSTALLED_APPS,
@@ -39,10 +36,7 @@ INSTALLED_APPS = [
     "apps.audits",
 ]
 
-MIDDLEWARE = [
-    "django.contrib.sessions.middleware.SessionMiddleware",
-    "django.contrib.auth.middleware.AuthenticationMiddleware",
-]
+MIDDLEWARE = []
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",

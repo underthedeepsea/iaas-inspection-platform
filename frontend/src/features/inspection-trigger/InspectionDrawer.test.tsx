@@ -1,3 +1,5 @@
+import { MemoryRouter } from 'react-router-dom'
+import { useInspectionSessionStore } from '../../stores/inspectionSessionStore'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -34,7 +36,7 @@ const resources: ResourceType[] = [
   },
 ]
 
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => { vi.restoreAllMocks(); useInspectionSessionStore.setState({active:null,lastCompleted:null}) })
 
 describe('InspectionDrawer', () => {
   it('previews selected resource scope and submits both resource types', async () => {
@@ -48,7 +50,7 @@ describe('InspectionDrawer', () => {
       },
     } as never)
 
-    const { rerender } = render(<InspectionDrawer environmentId="env-1" open onClose={vi.fn()} resourceTypes={resources} />)
+    const { rerender } = render(<InspectionDrawer environmentId="env-1" open onClose={vi.fn()} resourceTypes={resources} />, {wrapper:MemoryRouter})
 
     expect(screen.getByLabelText('本次巡检环境')).toBeInTheDocument()
     expect(screen.getByRole('dialog')).toHaveClass('inspection-drawer')
@@ -82,7 +84,7 @@ describe('InspectionDrawer', () => {
   })
 
   it('blocks an empty selection with inline validation', () => {
-    render(<InspectionDrawer environmentId="env-1" open onClose={vi.fn()} resourceTypes={resources} />)
+    render(<InspectionDrawer environmentId="env-1" open onClose={vi.fn()} resourceTypes={resources} />, {wrapper:MemoryRouter})
 
     fireEvent.click(screen.getByRole('button', { name: '开始巡检' }))
 

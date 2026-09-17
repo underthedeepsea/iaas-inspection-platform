@@ -2,8 +2,6 @@ import uuid
 
 import pytest
 from django.test import Client, override_settings
-from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Group
 
 from apps.assets.models import Asset
 from apps.core.models import Environment
@@ -34,11 +32,6 @@ def make_item():
     )
 
 
-def make_viewer():
-    user = get_user_model().objects.create_user(username=f"manual-viewer-{uuid.uuid4().hex}", password="password")
-    group, _ = Group.objects.get_or_create(name="viewer")
-    user.groups.add(group)
-    return user
 
 
 @pytest.mark.django_db(transaction=True)
@@ -95,7 +88,7 @@ def test_manual_run_uses_production_orchestrator_and_publishes_resource_summary(
     assert summary.health_score is not None
 
     viewer = Client()
-    viewer.force_login(make_viewer())
+
     history = viewer.get(
         f"/api/v1/resource-types/{resource_type.code}/inspection-history",
         {"environment_id": str(environment.pk)},

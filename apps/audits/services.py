@@ -28,11 +28,9 @@ _SAFE_PAYLOAD_KEYS = frozenset(
 )
 
 
-def record_event(*, actor, environment, event_type, object_type, object_id, payload=None):
+def record_event(*, environment, event_type, object_type, object_id, payload=None):
     """Write a bounded, non-sensitive audit row inside the caller's transaction."""
 
-    if actor is None or not getattr(actor, "pk", None):
-        raise ValueError("an explicit actor is required for audit events")
     if not isinstance(event_type, str) or not event_type.strip():
         raise ValueError("audit event_type is required")
     if not isinstance(object_type, str) or not object_type.strip():
@@ -40,7 +38,6 @@ def record_event(*, actor, environment, event_type, object_type, object_id, payl
     safe_payload = _safe_payload(payload)
     return AuditEvent.objects.create(
         environment=environment,
-        user=actor,
         event_type=event_type.strip()[:64],
         object_type=object_type.strip()[:64],
         object_id=str(object_id),

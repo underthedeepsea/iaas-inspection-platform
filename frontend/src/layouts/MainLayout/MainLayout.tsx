@@ -4,26 +4,23 @@ import { NavLink, Outlet, useLocation, useSearchParams } from 'react-router-dom'
 
 import { getEnvironments, type Environment } from '../../api/environments'
 import { useUiStore } from '../../stores/uiStore'
-import { useAuthUser } from '../../app/AuthGuard'
 
 const primaryNavigation = [
   ['总览', '/'],
   ['资源巡检', '/resources'],
   ['风险中心', '/risks'],
+  ['规则库', '/rules'],
   ['产品说明', '/about'],
 ] as const
 
 const pageTitles: Array<[string, string]> = [
   ['/', '总览'],
+  ['/code-plugins', '代码插件'],
+  ['/rules', '规则库'],
+  ['/inspection-runs', '本次巡检结果'],
   ['/risks', '风险中心'],
-  ['/history', '历史趋势'],
-  ['/pending', '待处置'],
-  ['/capabilities', '巡检能力'],
-  ['/experiences', '规则与经验'],
-  ['/evolution', '能力演进'],
   ['/ai-runtime', 'AI 运行情况'],
   ['/about', '产品说明'],
-  ['/settings', '系统设置'],
   ['/resources', '资源巡检'],
 ]
 
@@ -40,6 +37,7 @@ export function resolveEnvironmentId<T extends { id: string }>(environments: T[]
 
 export function MainLayout({ children }: { children?: ReactNode }) {
   const environmentId = useUiStore((state) => state.environmentId)
+  const setEnvironmentName = useUiStore((state) => state.setEnvironmentName)
   const setEnvironmentId = useUiStore((state) => state.setEnvironmentId)
   const sidebarCollapsed = useUiStore((state) => state.sidebarCollapsed)
   const setSidebarCollapsed = useUiStore((state) => state.setSidebarCollapsed)
@@ -49,13 +47,14 @@ export function MainLayout({ children }: { children?: ReactNode }) {
   const [environments, setEnvironments] = useState<Environment[]>([])
   const [environmentsLoading, setEnvironmentsLoading] = useState(true)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
-  const user = useAuthUser()
 
   const urlEnvironmentId = searchParams.get('environment')
 
   useEffect(() => {
     if (environmentsLoading) return
     const resolved = resolveEnvironmentId(environments, urlEnvironmentId, environmentId)
+    const environment = environments.find(row => row.id === resolved)
+    setEnvironmentName(environment ? `${environment.name} · ${environment.slug}` : '当前环境')
     if (resolved !== environmentId) setEnvironmentId(resolved)
     if (resolved !== urlEnvironmentId) {
       const nextParams = new URLSearchParams(searchParams)
@@ -63,7 +62,7 @@ export function MainLayout({ children }: { children?: ReactNode }) {
       else nextParams.delete('environment')
       setSearchParams(nextParams, { replace: true })
     }
-  }, [environmentId, environments, environmentsLoading, searchParams, setEnvironmentId, setSearchParams, urlEnvironmentId])
+  }, [environmentId, environments, environmentsLoading, searchParams, setEnvironmentName, setEnvironmentId, setSearchParams, urlEnvironmentId])
 
   useEffect(() => {
     let active = true
@@ -86,19 +85,17 @@ export function MainLayout({ children }: { children?: ReactNode }) {
     setSearchParams(nextParams)
   }
 
-  const username = user?.username ?? '未登录'
-  const roles = user?.roles.length ? user.roles.join(' · ') : '未建立会话'
-  const avatarInitial = user?.username?.trim().slice(0, 1).toUpperCase() || '?'
   const closeMobileNav = () => setMobileNavOpen(false)
 
   return (
     <div className={`app-shell${sidebarCollapsed ? ' sidebar-collapsed' : ''}${mobileNavOpen ? ' mobile-nav-open' : ''}`}>
+      <a className="skip-link" href="#app-main">跳转到主要内容</a>
       <aside className={`sidebar${mobileNavOpen ? ' is-open' : ''}`} id="main-navigation" aria-label="主导航">
         <NavLink className="brand" onClick={closeMobileNav} to="/" aria-label="返回每日巡检">
           <span className="brand-mark" aria-hidden="true">巡</span>
           <span>
             <strong>IaaS 智能巡检</strong>
-            <small>控制面</small>
+            <small>Cloud operations</small>
           </span>
         </NavLink>
 
@@ -126,7 +123,7 @@ export function MainLayout({ children }: { children?: ReactNode }) {
       <div className="app-frame">
         <header className="topbar">
           <div className="topbar-title">
-            <span>今日工作区</span>
+            <span>工作台 /</span>
             <h1>{pageTitle}</h1>
           </div>
           <div className="topbar-actions">
@@ -141,15 +138,13 @@ export function MainLayout({ children }: { children?: ReactNode }) {
                   { value: '', label: '全部环境' },
                   ...environments.map((environment) => ({
                     value: environment.id,
-                    label: `${environment.name} · ${environment.slug}${environment.has_mock_data ? ' · 有模拟数据' : ''}`,
+                    label: `${environment.name} · ${environment.slug}`,
                   })),
                 ]}
                 value={environmentId ?? ''}
               />
             </label>
-            <span className="runtime-status"><span className="status-dot" aria-hidden="true" />AI 按需分析</span>
-            <span className="topbar-user"><strong>{username}</strong><small>{roles}</small></span>
-            <span className="avatar">{avatarInitial}</span>
+            <span className="runtime-status"><span className="status-dot" aria-hidden="true" />CODE 确定性巡检</span>
           </div>
         </header>
 

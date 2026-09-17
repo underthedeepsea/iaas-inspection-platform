@@ -54,7 +54,6 @@ describe('InspectionProgress', () => {
   it('maps the canonical backend stage events to every visible progress step', () => {
     const stageEvents: Array<[string, import('../../api/inspections').InspectionRunEvent]> = [
       ['risk-correlation', { sequence: 5, event_type: 'risk.correlation.started', status: 'RUNNING', payload: {} }],
-      ['ai', { sequence: 6, event_type: 'ai.admission.started', status: 'RUNNING', payload: {} }],
       ['summary', { sequence: 7, event_type: 'summary.started', status: 'RUNNING', payload: {} }],
     ]
 
@@ -67,9 +66,10 @@ describe('InspectionProgress', () => {
   it('continues an existing run from SSE events without creating a new run', async () => {
     vi.stubGlobal('EventSource', FakeEventSource)
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const onTerminal = vi.fn()
     render(
       <QueryClientProvider client={queryClient}>
-        <InspectionProgress runId="run-1" />
+        <InspectionProgress onTerminal={onTerminal} runId="run-1" />
       </QueryClientProvider>,
     )
 
@@ -82,9 +82,12 @@ describe('InspectionProgress', () => {
     })
 
     await waitFor(() => expect(screen.getByText('巡检已完成')).toBeInTheDocument())
+    await waitFor(() => expect(onTerminal).toHaveBeenCalledExactlyOnceWith({ runId: 'run-1', status: 'SUCCEEDED' }))
+    expect(screen.queryByText('AI 准入评估')).not.toBeInTheDocument()
+    expect(screen.getByText('执行代码插件')).toBeInTheDocument()
     expect(screen.getByText('4 / 4 个资源对象')).toBeInTheDocument()
     expect(screen.getByLabelText('巡检进度')).toHaveClass('inspection-progress')
-    expect(screen.getByText('解析资源范围')).toBeInTheDocument()
+    expect(screen.getByText('确认资源范围')).toBeInTheDocument()
     expect(FakeEventSource.instance.url).toContain('/inspection-runs/run-1/events')
   })
 
@@ -111,7 +114,7 @@ describe('InspectionProgress', () => {
     })
 
     await waitFor(() => expect(screen.getByText('巡检失败')).toBeInTheDocument())
-    expect(screen.getByText('生成摘要').closest('li')).toHaveClass('is-failed')
+    expect(screen.getByText('生成巡检摘要').closest('li')).toHaveClass('is-failed')
   })
 
   it('keeps progress monotonic for delayed events and maps PARTIAL to completed', () => {

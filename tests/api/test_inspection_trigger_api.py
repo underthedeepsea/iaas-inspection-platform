@@ -3,8 +3,6 @@ import uuid
 from types import SimpleNamespace
 
 import pytest
-from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Group
 from django.test import RequestFactory, override_settings
 
 from apps.assets.models import Asset
@@ -12,14 +10,6 @@ from apps.core.models import Environment
 from apps.inspections.models import InspectionItem, InspectionItemResourceType, InspectionRun, ResourceType
 
 
-def make_user():
-    user = get_user_model().objects.create_user(
-        username=f"trigger-{uuid.uuid4().hex}",
-        password="password",
-    )
-    group, _ = Group.objects.get_or_create(name="operator")
-    user.groups.add(group)
-    return user
 
 
 def make_request(user, payload):
@@ -28,7 +18,7 @@ def make_request(user, payload):
         data=json.dumps(payload),
         content_type="application/json",
     )
-    request.user = user
+
     return request
 
 
@@ -55,7 +45,7 @@ def test_empty_resource_types_returns_400():
 
     response = views.trigger_inspection_run(
         make_request(
-            make_user(),
+            None,
             {"environment_id": str(make_environment().id), "scope": {"resource_types": []}},
         )
     )
@@ -70,7 +60,7 @@ def test_unknown_resource_type_returns_structured_400():
 
     response = views.trigger_inspection_run(
         make_request(
-            make_user(),
+            None,
             {
                 "environment_id": str(make_environment().id),
                 "scope": {"resource_types": ["NO_SUCH_TYPE"]},
@@ -107,7 +97,7 @@ def test_valid_request_freezes_requested_and_resolved_scope():
 
     response = views.trigger_inspection_run(
         make_request(
-            make_user(),
+            None,
             {
                 "environment_id": str(environment.id),
                 "scope": {"resource_types": ["LLM_RUNTIME"]},
@@ -157,7 +147,7 @@ def test_valid_manual_trigger_binds_ready_dataset_and_enqueues_full_run(monkeypa
 
     response = views.trigger_inspection_run(
         make_request(
-            make_user(),
+            None,
             {
                 "environment_id": str(environment.id),
                 "scope": {"resource_types": ["LLM_RUNTIME"]},
@@ -207,7 +197,7 @@ def test_http_trigger_enters_the_full_manual_orchestrator(monkeypatch):
 
     response = views.trigger_inspection_run(
         make_request(
-            make_user(),
+            None,
             {
                 "environment_id": str(environment.id),
                 "scope": {"resource_types": ["LLM_RUNTIME"]},

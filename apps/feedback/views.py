@@ -9,7 +9,6 @@ from collections.abc import Mapping
 from django.db import transaction
 from django.http import JsonResponse
 
-from apps.api.auth import require_role
 from apps.api.http import APIRequestError, api_error, parse_bool, parse_json_object
 from apps.api.pagination import paginate
 from apps.audits.services import record_event
@@ -47,16 +46,13 @@ def collection(request):
         return _list(request)
     if request.method != "POST":
         return _error("METHOD_NOT_ALLOWED", "feedback only accepts GET or POST", 405)
-    auth_error = require_role(request, "operator")
-    if auth_error is not None:
-        return auth_error
     try:
         payload = parse_json_object(request)
         _reject_unknown(payload, _ALLOWED_CREATE_FIELDS)
-        context = _context(request.user, payload)
+        context = _context(payload)
         values = _create_values(payload)
         feedback = services.create_feedback(
-            actor=request.user,
+
             **context,
             **values,
         )
@@ -76,9 +72,6 @@ def collection(request):
 
 
 def convert(request, feedback_id):
-    auth_error = require_role(request, "operator")
-    if auth_error is not None:
-        return auth_error
     if request.method != "POST":
         return _error("METHOD_NOT_ALLOWED", "conversion only accepts POST", 405)
     try:
@@ -92,8 +85,6 @@ def convert(request, feedback_id):
             raise APIRequestError("VALIDATION_ERROR", "feedback_id must be a UUID")
         with transaction.atomic():
             feedback = HumanFeedback.objects.select_for_update().get(pk=parsed)
-            if feedback.user_id != request.user.pk and not _is_platform_admin(request.user):
-                return _not_found("feedback does not exist")
             if feedback.feedback_type != HumanFeedback.FeedbackType.CONFIRMED_ROOT_CAUSE:
                 return _error(
                     "VALIDATION_ERROR",
@@ -104,7 +95,7 @@ def convert(request, feedback_id):
                 feedback.create_experience = True
                 feedback.save(update_fields=["create_experience"])
                 record_event(
-                    actor=request.user,
+
                     environment=feedback.environment,
                     event_type="feedback.converted",
                     object_type="HumanFeedback",
@@ -116,7 +107,7 @@ def convert(request, feedback_id):
                 )
             from apps.experiences.services import create_experience_from_feedback
 
-            experience = create_experience_from_feedback(feedback, actor=request.user)
+            experience = create_experience_from_feedback(feedback)
     except HumanFeedback.DoesNotExist:
         return _not_found("feedback does not exist")
     except APIRequestError as error:
@@ -134,9 +125,6 @@ def convert(request, feedback_id):
 
 
 def _list(request):
-    auth_error = require_role(request, "viewer")
-    if auth_error is not None:
-        return auth_error
     queryset = HumanFeedback.objects.select_related(
         "risk", "investigation", "conversation", "message"
     ).order_by("-created_at", "-pk")
@@ -160,7 +148,7 @@ def _list(request):
     return paginate(queryset, request, _serialize_feedback)
 
 
-def _context(user, payload):
+def _context(payload):
     values = {
         "environment": _lookup(Environment, payload.get("environment_id"), "environment_id"),
         "risk": _lookup(Risk, payload.get("risk_id"), "risk_id"),
@@ -174,12 +162,6 @@ def _context(user, payload):
             ConversationMessage, payload.get("message_id"), "message_id"
         ),
     }
-    conversation = values["conversation"]
-    if conversation is not None and conversation.user_id != user.pk and not _is_platform_admin(user):
-        raise services.FeedbackError("conversation does not belong to the authenticated user")
-    message = values["message"]
-    if message is not None and message.conversation.user_id != user.pk and not _is_platform_admin(user):
-        raise services.FeedbackError("message does not belong to the authenticated user")
     return values
 
 
@@ -281,16 +263,6 @@ def _error(code, message, status, details=None):
 
 def _request_error_status(error):
     return 404 if error.code == "NOT_FOUND" else 400
-
-
-def _is_platform_admin(user):
-    if getattr(user, "is_superuser", False):
-        return True
-    groups = getattr(user, "groups", None)
-    if groups is None:
-        return False
-    names = groups.values_list("name", flat=True) if hasattr(groups, "values_list") else groups
-    return "platform_admin" in names
 
 
 __all__ = ["collection", "convert"]

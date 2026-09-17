@@ -3,8 +3,6 @@ import json
 import uuid
 
 import pytest
-from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Group
 from django.test import Client
 
 from apps.assets.models import Asset
@@ -21,13 +19,6 @@ from apps.inspections.models import (
 from apps.risks.models import Risk, RiskObservation
 
 
-def make_user():
-    user = get_user_model().objects.create_user(
-        username=f"resource-api-{uuid.uuid4().hex}", password="password"
-    )
-    group, _ = Group.objects.get_or_create(name="viewer")
-    user.groups.add(group)
-    return user
 
 
 def make_environment():
@@ -97,7 +88,7 @@ def test_resource_type_list_exposes_latest_summary_metrics():
     )
     make_run(environment, resource_type, date(2026, 8, 25))
     client = Client()
-    client.force_login(make_user())
+
 
     response = client.get("/api/v1/resource-types", {"environment_id": str(environment.id)})
 
@@ -121,7 +112,7 @@ def test_resource_type_list_exposes_latest_summary_metrics():
 def test_resource_type_endpoints_accept_environment_slug():
     environment = make_environment()
     client = Client()
-    client.force_login(make_user())
+
 
     response = client.get("/api/v1/resource-types", {"environment_id": environment.slug})
 
@@ -135,7 +126,7 @@ def test_resource_history_supports_date_filters_pagination_and_newest_first():
     older = make_run(environment, resource_type, date(2026, 8, 23))
     newer = make_run(environment, resource_type, date(2026, 8, 25))
     client = Client()
-    client.force_login(make_user())
+
 
     response = client.get(
         f"/api/v1/resource-types/{resource_type.code}/inspection-history",
@@ -207,7 +198,7 @@ def test_resource_run_detail_exposes_counts_major_risks_and_timing():
         status_after=Risk.Status.NEW,
     )
     client = Client()
-    client.force_login(make_user())
+
 
     response = client.get(
         f"/api/v1/resource-types/{resource_type.code}/inspection-history/{run.id}",

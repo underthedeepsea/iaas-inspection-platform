@@ -22,7 +22,7 @@ class ExperienceError(ValueError):
     """Invalid Experience or codeization request."""
 
 
-def create_experience_from_feedback(feedback, *, actor=None, evidence=None, evidences=None):
+def create_experience_from_feedback(feedback, *, evidence=None, evidences=None):
     """Create the one DISCOVERED Experience allowed by a root-cause feedback."""
 
     feedback = _model(feedback, HumanFeedback, "feedback")
@@ -32,7 +32,6 @@ def create_experience_from_feedback(feedback, *, actor=None, evidence=None, evid
         raise ExperienceError("only confirmed root-cause feedback can create an experience")
     if not feedback.create_experience:
         raise ExperienceError("feedback did not opt in to experience creation")
-    _require_actor(actor)
     if evidence is not None and evidences is not None:
         raise ExperienceError("supply evidence or evidences, not both")
     evidences = _evidence_rows(evidence if evidence is not None else evidences)
@@ -60,7 +59,7 @@ def create_experience_from_feedback(feedback, *, actor=None, evidence=None, evid
             raise ExperienceError("feedback identity is already bound to another experience")
         if _created:
             record_event(
-                actor=actor,
+
                 environment=feedback.environment,
                 event_type="experience.created",
                 object_type="Experience",
@@ -82,23 +81,14 @@ def create_experience_from_feedback(feedback, *, actor=None, evidence=None, evid
 
 def confirm_experience(
     first=None,
-    second=None,
     *,
-    actor=None,
-    actor_user=None,
     experience=None,
     human_summary,
     target_claim,
 ):
     """Confirm a discovered Experience using a legal locked transition."""
 
-    if isinstance(first, Experience):
-        experience = experience or first
-    elif first is not None:
-        actor = actor or first
-        experience = experience or second
-    actor = actor or actor_user
-    _require_actor(actor)
+    experience = experience or first
     experience = _model(experience, Experience, "experience")
     human_summary = _nonempty(human_summary, "human_summary")
     target_claim = canonical_claim(target_claim)
@@ -116,7 +106,7 @@ def confirm_experience(
         locked.confirmed_at = timezone.now()
         locked.save(update_fields=["status", "human_summary", "target_claim", "confirmed_at", "updated_at"])
         record_event(
-            actor=actor,
+
             environment=_experience_environment(locked),
             event_type="experience.confirmed",
             object_type="Experience",
@@ -132,10 +122,7 @@ def confirm_experience(
 
 def create_codeization_task(
     first=None,
-    second=None,
     *,
-    actor=None,
-    actor_user=None,
     experience=None,
     inspection_item,
     target_capability_id,
@@ -148,13 +135,7 @@ def create_codeization_task(
 ):
     """Persist a CODE_PENDING task after explicit Experience confirmation."""
 
-    if isinstance(first, Experience):
-        experience = experience or first
-    elif first is not None:
-        actor = actor or first
-        experience = experience or second
-    actor = actor or actor_user
-    _require_actor(actor)
+    experience = experience or first
     experience = _model(experience, Experience, "experience")
     inspection_item = _model(inspection_item, InspectionItem, "inspection_item")
     target_capability_id = _identifier(target_capability_id, "target_capability_id")
@@ -198,12 +179,12 @@ def create_codeization_task(
             target_claim=claim,
             implementation_type=implementation_type,
             specification=specification,
-            owner=owner or getattr(actor, "username", ""),
+            owner=owner,
             historical_support=locked_experience.support_count,
             precision=locked_experience.precision,
         )
         record_event(
-            actor=actor,
+
             environment=_experience_environment(locked_experience),
             event_type="codeization_task.created",
             object_type="CodeizationTask",
@@ -374,10 +355,6 @@ def _model(value, model, label):
     except (model.DoesNotExist, TypeError, ValueError):
         raise ExperienceError(f"{label} does not exist") from None
 
-
-def _require_actor(actor):
-    if actor is None or not getattr(actor, "pk", None) or getattr(actor, "is_authenticated", True) is False:
-        raise ExperienceError("an explicit authenticated actor is required")
 
 
 create_experience = create_experience_from_feedback

@@ -5,8 +5,6 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
-from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Group
 from django.db import connection
 from django.test import RequestFactory
 from django.test.utils import CaptureQueriesContext
@@ -23,14 +21,6 @@ from apps.inspections.models import (
 )
 
 
-def _user(*roles):
-    user = get_user_model().objects.create_user(
-        username=f"operations-{uuid.uuid4().hex}", password="password"
-    )
-    for role in roles:
-        group, _ = Group.objects.get_or_create(name=role)
-        user.groups.add(group)
-    return user
 
 
 def _request(method, path, user, payload=None):
@@ -41,7 +31,7 @@ def _request(method, path, user, payload=None):
         data=body,
         content_type="application/json",
     )
-    request.user = user
+
     return request
 
 
@@ -78,7 +68,7 @@ def _run(environment, run_date, *, status=InspectionRun.Status.SUCCEEDED):
 
 
 @pytest.mark.django_db
-def test_inspection_item_list_requires_session_and_applies_filters_and_page_size():
+def test_inspection_item_list_is_anonymous_and_applies_filters_and_page_size():
     from apps.operations_api import views
 
     _item()
@@ -86,10 +76,10 @@ def test_inspection_item_list_requires_session_and_applies_filters_and_page_size
     disabled.enabled = False
     disabled.save(update_fields=["enabled"])
 
-    anonymous = _request("GET", "/api/v1/inspection-items", SimpleNamespace(is_authenticated=False))
-    assert views.inspection_items(anonymous).status_code == 401
+    anonymous = _request("GET", "/api/v1/inspection-items", None)
+    assert views.inspection_items(anonymous).status_code == 200
 
-    viewer = _user("viewer")
+    viewer = None
     request = _request(
         "GET",
         "/api/v1/inspection-items?domain=LLM&enabled=true&page_size=1",
@@ -139,7 +129,7 @@ def test_dashboard_today_returns_latest_snapshot_yesterday_diff_and_bounded_seve
             )
         )
 
-    viewer = _user("viewer")
+    viewer = None
     response = views.dashboard_today(
         _request("GET", f"/api/v1/dashboard/today?environment={environment.slug}", viewer)
     )
@@ -178,7 +168,7 @@ def test_inspection_run_and_finding_lists_apply_context_filters():
         value={"token": "must not be returned as raw payload"},
     )
 
-    viewer = _user("viewer")
+    viewer = None
     runs = views.inspection_runs(
         _request("GET", f"/api/v1/inspection-runs?environment_id={environment.pk}&status=SUCCEEDED", viewer)
     )
@@ -204,7 +194,7 @@ def test_inspection_run_detail_bounds_nested_item_runs():
 
     with CaptureQueriesContext(connection) as queries:
         response = views.inspection_run_detail(
-            _request("GET", f"/api/v1/inspection-runs/{run.pk}", _user("viewer")),
+            _request("GET", f"/api/v1/inspection-runs/{run.pk}", None),
             run.pk,
         )
 
@@ -222,7 +212,7 @@ def test_item_ask_delegates_to_risk_conversation_contract():
 
     environment = _environment()
     item = _item()
-    operator = _user("operator")
+    operator = None
     fake_conversation = SimpleNamespace(pk=uuid.uuid4())
     with patch("apps.operations_api.views.create_conversation", return_value=fake_conversation) as create, patch(
         "apps.operations_api.views.create_turn",
@@ -240,8 +230,7 @@ def test_item_ask_delegates_to_risk_conversation_contract():
 
     assert response.status_code == 201
     assert json.loads(response.content)["conversation_id"] == str(fake_conversation.pk)
-    assert create.call_args.args[0] == operator
-    payload = create.call_args.args[1]
+    payload = create.call_args.args[0]
     assert payload["context_type"] == "INSPECTION_ITEM"
     assert payload["context_id"] == str(item.pk)
     assert payload["title"] == item.name
@@ -251,7 +240,7 @@ def test_item_ask_delegates_to_risk_conversation_contract():
 def test_manual_airflow_trigger_uses_injected_transport_and_stable_failure():
     from apps.operations_api import views
 
-    operator = _user("operator")
+    operator = None
     environment = _environment()
     payload = {
         "environment_id": str(environment.pk),

@@ -8,29 +8,22 @@ from django.test import Client
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 APP_ROUTES = (
     "/",
-    "/login",
     "/resources",
     "/resources/llm-runtime",
     "/resources/llm-runtime/runs/00000000-0000-0000-0000-000000000001",
     "/risks",
+    "/ai-runtime",
+    "/about",
+)
+REMOVED_ROUTES = (
+    "/login",
     "/history",
     "/pending",
     "/capabilities",
     "/evolution",
     "/experiences",
-    "/ai-runtime",
     "/settings",
-    "/about",
-)
-STATIC_MODULES = (
-    "static/js/api.js",
-    "static/js/app.js",
-    "static/js/dashboard.js",
-    "static/js/risks.js",
-    "static/js/capabilities.js",
-    "static/js/conversation.js",
-    "static/js/about.js",
-    "static/css/app.css",
+    "/product-about",
 )
 
 
@@ -78,9 +71,21 @@ def test_product_about_uses_the_react_shell():
     assert "LLM 本地开发使用 Ollama" not in body
 
 
-def test_task_15_static_modules_are_present():
-    for relative_path in STATIC_MODULES:
-        assert (PROJECT_ROOT / relative_path).is_file(), relative_path
+@pytest.mark.parametrize("route", REMOVED_ROUTES)
+def test_removed_placeholder_and_login_routes_return_not_found(route):
+    assert Client().get(route).status_code == 404
+
+
+def test_legacy_page_shell_files_are_removed():
+    removed = (
+        "templates/app.html",
+        "templates/product_about.html",
+        "static/js/app.js",
+        "static/js/conversation.js",
+        "static/css/app.css",
+    )
+    for relative_path in removed:
+        assert not (PROJECT_ROOT / relative_path).exists(), relative_path
 
 
 def test_built_frontend_assets_are_served_from_the_assets_directory(tmp_path, settings):

@@ -3,7 +3,6 @@ import uuid
 from unittest.mock import patch
 
 import pytest
-from django.contrib.auth import get_user_model
 from django.test import Client
 
 from apps.core.models import Environment
@@ -14,11 +13,6 @@ from apps.investigations.models import Conversation, ConversationMessage, Invest
 from apps.risks.models import Risk
 
 
-def _user(name=None):
-    return get_user_model().objects.create_user(
-        username=name or f"user-{uuid.uuid4().hex}",
-        password="password",
-    )
 
 
 def _risk(*, environment=None):
@@ -52,7 +46,7 @@ def _post(client, path, payload):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_create_risk_conversation_derives_environment_and_requires_authentication():
+def test_create_risk_conversation_derives_environment_and_is_anonymous():
     risk = _risk()
     other_environment = Environment.objects.create(
         name="Untrusted environment",
@@ -69,10 +63,9 @@ def test_create_risk_conversation_derives_environment_and_requires_authenticatio
             "title": "Risk analysis",
         },
     )
-    assert response.status_code == 401
+    assert response.status_code == 201
 
-    user = _user()
-    client.force_login(user)
+
     response = _post(
         client,
         "/api/v1/conversations/",
@@ -85,7 +78,7 @@ def test_create_risk_conversation_derives_environment_and_requires_authenticatio
     )
     assert response.status_code == 201
     conversation = Conversation.objects.get(pk=response.json()["conversation_id"])
-    assert conversation.user_id == user.pk
+
     assert conversation.risk_id == risk.pk
     assert conversation.environment_id == risk.environment_id
     assert conversation.environment_id != other_environment.pk
@@ -94,9 +87,8 @@ def test_create_risk_conversation_derives_environment_and_requires_authenticatio
 @pytest.mark.django_db(transaction=True)
 def test_conversation_create_emits_one_same_transaction_audit_event():
     risk = _risk()
-    user = _user()
     client = Client()
-    client.force_login(user)
+
 
     response = _post(
         client,
@@ -110,17 +102,16 @@ def test_conversation_create_emits_one_same_transaction_audit_event():
         object_type="Conversation",
         object_id=conversation_id,
         event_type="conversation.created",
-        user=user,
+
     ).count() == 1
 
 
 @pytest.mark.django_db(transaction=True)
 def test_conversation_create_rolls_back_when_audit_write_fails(monkeypatch):
     risk = _risk()
-    user = _user()
     client = Client()
     client.raise_request_exception = False
-    client.force_login(user)
+
     monkeypatch.setattr(
         "apps.conversations.views.record_event",
         lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("audit unavailable")),
@@ -134,15 +125,14 @@ def test_conversation_create_rolls_back_when_audit_write_fails(monkeypatch):
 
     assert response.status_code == 500
     assert response.json()["error"]["code"] == "INTERNAL_ERROR"
-    assert not Conversation.objects.filter(user=user, risk=risk).exists()
+    assert not Conversation.objects.filter(risk=risk).exists()
 
 
 @pytest.mark.django_db(transaction=True)
 def test_conversation_close_rolls_back_when_audit_write_fails(monkeypatch):
     risk = _risk()
-    user = _user()
     client = Client()
-    client.force_login(user)
+
     conversation_id = _post(
         client,
         "/api/v1/conversations/",
@@ -164,9 +154,8 @@ def test_conversation_close_rolls_back_when_audit_write_fails(monkeypatch):
 @pytest.mark.django_db(transaction=True)
 def test_turn_rejects_non_json_constants_with_the_shared_error_envelope():
     risk = _risk()
-    user = _user()
     client = Client()
-    client.force_login(user)
+
     conversation_id = _post(
         client,
         "/api/v1/conversations/",
@@ -187,9 +176,8 @@ def test_turn_rejects_non_json_constants_with_the_shared_error_envelope():
 @pytest.mark.django_db(transaction=True)
 def test_turn_persists_user_investigation_assistant_terminal_event_and_is_retry_safe():
     risk = _risk()
-    user = _user()
     client = Client()
-    client.force_login(user)
+
     conversation_response = _post(
         client,
         "/api/v1/conversations/",
@@ -234,7 +222,7 @@ def test_turn_persists_user_investigation_assistant_terminal_event_and_is_retry_
         object_type="Investigation",
         object_id=str(investigation.pk),
         event_type="conversation.turn.created",
-        user=user,
+
     ).count() == 1
     events = list(InvestigationEvent.objects.filter(investigation=investigation).order_by("sequence"))
     assert [event.sequence for event in events] == list(range(1, len(events) + 1))
@@ -244,9 +232,8 @@ def test_turn_persists_user_investigation_assistant_terminal_event_and_is_retry_
 @pytest.mark.django_db(transaction=True)
 def test_graph_error_is_persisted_as_failed_terminal_turn_without_leaking_exception():
     risk = _risk()
-    user = _user()
     client = Client()
-    client.force_login(user)
+
     conversation_id = _post(
         client,
         "/api/v1/conversations/",
@@ -273,12 +260,10 @@ def test_graph_error_is_persisted_as_failed_terminal_turn_without_leaking_except
 
 
 @pytest.mark.django_db(transaction=True)
-def test_conversation_reads_are_owner_isolated_and_messages_survive_refresh():
+def test_conversation_reads_are_shared_and_messages_survive_refresh():
     risk = _risk()
-    owner = _user("owner")
-    stranger = _user("stranger")
     owner_client = Client()
-    owner_client.force_login(owner)
+
     conversation_id = _post(
         owner_client,
         "/api/v1/conversations/",
@@ -312,17 +297,16 @@ def test_conversation_reads_are_owner_isolated_and_messages_survive_refresh():
     assert "model_name" not in refreshed.json()["messages"][1]
 
     stranger_client = Client()
-    stranger_client.force_login(stranger)
-    assert stranger_client.get(f"/api/v1/conversations/{conversation_id}/").status_code == 404
-    assert stranger_client.get(f"/api/v1/conversations/{conversation_id}/messages/").status_code == 404
+
+    assert stranger_client.get(f"/api/v1/conversations/{conversation_id}/").status_code == 200
+    assert stranger_client.get(f"/api/v1/conversations/{conversation_id}/messages/").status_code == 200
 
 
 @pytest.mark.django_db(transaction=True)
 def test_conversation_messages_are_bounded_at_the_public_boundary():
     risk = _risk()
-    user = _user()
     client = Client()
-    client.force_login(user)
+
     conversation_id = _post(
         client,
         "/api/v1/conversations/",
@@ -348,9 +332,8 @@ def test_conversation_messages_are_bounded_at_the_public_boundary():
 @pytest.mark.django_db(transaction=True)
 def test_assistant_final_projection_keeps_every_required_field_when_result_is_large():
     risk = _risk()
-    user = _user()
     client = Client()
-    client.force_login(user)
+
     conversation_id = _post(
         client,
         "/api/v1/conversations/",
@@ -407,9 +390,8 @@ def test_assistant_final_projection_keeps_every_required_field_when_result_is_la
 @pytest.mark.django_db(transaction=True)
 def test_structured_investigation_result_is_persisted_without_natural_language_parsing():
     risk = _risk()
-    user = _user()
     client = Client()
-    client.force_login(user)
+
     conversation_id = _post(
         client,
         "/api/v1/conversations/",
@@ -481,9 +463,8 @@ def _capability_version_fixture(*, capability_id="llm.scheduler.pressure"):
 @pytest.mark.django_db(transaction=True)
 def test_tool_call_persists_only_the_graph_validated_capability_version_id():
     risk = _risk()
-    user = _user()
     client = Client()
-    client.force_login(user)
+
     conversation_id = _post(
         client,
         "/api/v1/conversations/",
@@ -535,9 +516,8 @@ def test_tool_call_persists_only_the_graph_validated_capability_version_id():
 @pytest.mark.django_db(transaction=True)
 def test_tool_call_persistence_fails_closed_when_graph_has_no_capability_version_id():
     risk = _risk()
-    user = _user()
     client = Client()
-    client.force_login(user)
+
     conversation_id = _post(
         client,
         "/api/v1/conversations/",

@@ -1,4 +1,3 @@
-from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
@@ -87,7 +86,6 @@ class Conversation(EditableModel):
         CLOSED = "CLOSED", "Closed"
 
     environment = models.ForeignKey("core.Environment", on_delete=models.CASCADE)
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     context_type = models.CharField(max_length=32, choices=ContextType.choices, db_index=True)
     context_id = models.UUIDField(db_index=True)
     risk = models.ForeignKey("risks.Risk", null=True, blank=True, on_delete=models.SET_NULL)
@@ -166,7 +164,6 @@ class HumanFeedback(CreatedModel):
         CUSTOM = "CUSTOM", "Custom"
 
     environment = models.ForeignKey("core.Environment", on_delete=models.CASCADE)
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     risk = models.ForeignKey("risks.Risk", null=True, blank=True, on_delete=models.SET_NULL)
     investigation = models.ForeignKey(Investigation, null=True, blank=True, on_delete=models.SET_NULL)
     conversation = models.ForeignKey(Conversation, null=True, blank=True, on_delete=models.SET_NULL)

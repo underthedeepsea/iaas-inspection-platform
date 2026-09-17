@@ -3,6 +3,7 @@
 .airflow/
 .pytest_cache/
 .superpowers/
+.codex-workflow/
 .venv-airflow/
 .venv-web/
 .worktrees/

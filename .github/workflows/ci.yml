@@ -20,8 +20,6 @@ jobs:
       FAKE_CAPABILITY_ID: e2e.llm.scheduler.pressure
       FAKE_ASSET_ID: llm-0
       LLM_TIMEOUT_SECONDS: 1
-      E2E_USERNAME: e2e
-      E2E_PASSWORD: e2e-password
 
     services:
       postgres:
@@ -83,8 +81,6 @@ jobs:
       FAKE_CAPABILITY_ID: e2e.llm.scheduler.pressure
       FAKE_ASSET_ID: llm-0
       LLM_TIMEOUT_SECONDS: 1
-      E2E_USERNAME: e2e
-      E2E_PASSWORD: e2e-password
 
     services:
       postgres:

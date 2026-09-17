@@ -1,8 +1,6 @@
 import uuid
 
 import pytest
-from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Group
 from django.test import Client
 
 from apps.assets.models import Asset
@@ -11,12 +9,8 @@ from apps.core.models import Environment
 
 @pytest.mark.django_db
 def test_environment_catalog_returns_real_environment_ids_and_data_counts():
-    user = get_user_model().objects.create_user(
-        username=f"environment-viewer-{uuid.uuid4().hex}",
-        password="password",
-    )
-    group, _ = Group.objects.get_or_create(name="viewer")
-    user.groups.add(group)
+
+
     environment = Environment.objects.create(
         name="真实测试环境",
         slug=f"real-env-{uuid.uuid4().hex}",
@@ -30,7 +24,7 @@ def test_environment_catalog_returns_real_environment_ids_and_data_counts():
     )
 
     client = Client()
-    client.force_login(user)
+
     response = client.get("/api/v1/environments")
 
     assert response.status_code == 200

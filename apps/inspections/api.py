@@ -8,7 +8,6 @@ from functools import wraps
 
 from django.http import JsonResponse, StreamingHttpResponse
 
-from apps.api.auth import require_role
 from apps.api.http import APIRequestError, api_error
 from apps.api.pagination import paginate
 from apps.assets.models import Asset
@@ -57,9 +56,6 @@ def _endpoint(methods):
     def decorate(view):
         @wraps(view)
         def wrapped(request, *args, **kwargs):
-            auth_error = require_role(request, "viewer")
-            if auth_error is not None:
-                return auth_error
             if request.method not in methods:
                 return api_error("METHOD_NOT_ALLOWED", "unsupported method", status=405)
             return view(request, *args, **kwargs)
@@ -357,10 +353,59 @@ def _date(value, field):
 
 
 __all__ = [
+    "code_plugins",
     "inspection_run_events",
+    "rule_detail",
+    "rules",
     "resource_history",
     "resource_overview",
     "resource_risks",
     "resource_run_detail",
     "resource_types",
 ]
+
+
+@_boundary
+@_endpoint({'GET'})
+def code_plugins(request):
+    from .rules.registry import list_code_plugins
+    return JsonResponse({'items': [
+        {'plugin_id': p.plugin_id, 'name': p.name, 'version': p.version,
+         'rule_code': p.inspection_item_code, 'resource_types': list(p.resource_types),
+         'engine': p.engine, 'status': 'ACTIVE', 'deterministic': True, 'description': p.description}
+        for p in list_code_plugins()
+    ]})
+
+
+def _serialize_rule(rule):
+    return {
+        'rule_code': rule.rule_code,
+        'name': rule.name,
+        'rule_version': rule.rule_version,
+        'plugin_id': rule.plugin_id,
+        'plugin_version': rule.plugin_version,
+        'operation_key': rule.operation_key,
+        'resource_types': list(rule.resource_types),
+        'parameters': rule.parameters,
+        'status': rule.status,
+        'description': rule.description,
+        'deterministic': True,
+    }
+
+
+@_boundary
+@_endpoint({'GET'})
+def rules(request):
+    from .rules.registry import list_rules
+    return JsonResponse({'items': [_serialize_rule(rule) for rule in list_rules()]})
+
+
+@_boundary
+@_endpoint({'GET'})
+def rule_detail(request, rule_code):
+    from .rules.registry import UnsupportedInspectionRule, get_code_plugin
+    try:
+        rule = get_code_plugin(rule_code)
+    except UnsupportedInspectionRule:
+        raise ResourceAPIError('NOT_FOUND', 'rule does not exist', status=404) from None
+    return JsonResponse(_serialize_rule(rule))

@@ -1,4 +1,4 @@
-"""Bounded, session-authenticated projections for investigations."""
+"""Bounded, anonymous projections for investigations."""
 
 from __future__ import annotations
 
@@ -11,7 +11,6 @@ from django.db import transaction
 from django.http import JsonResponse
 from django.utils import timezone
 
-from apps.api.auth import require_role
 from apps.api.http import APIRequestError, api_error, parse_json_object
 from apps.api.pagination import paginate
 from apps.audits.services import record_event
@@ -33,24 +32,18 @@ _MAX_BYTES = 4096
 
 
 def detail(request, investigation_id):
-    auth_error = require_role(request, "viewer")
-    if auth_error is not None:
-        return auth_error
     if request.method != "GET":
         return _error("METHOD_NOT_ALLOWED", "investigation only accepts GET", 405)
-    investigation = _owned(request.user, investigation_id)
+    investigation = _lookup_investigation(investigation_id)
     if investigation is None:
         return _not_found("investigation does not exist")
     return JsonResponse(_serialize_investigation(investigation))
 
 
 def events(request, investigation_id):
-    auth_error = require_role(request, "viewer")
-    if auth_error is not None:
-        return auth_error
     if request.method != "GET":
         return _error("METHOD_NOT_ALLOWED", "events only accepts GET", 405)
-    investigation = _owned(request.user, investigation_id)
+    investigation = _lookup_investigation(investigation_id)
     if investigation is None:
         return _not_found("investigation does not exist")
     rows = InvestigationEvent.objects.filter(investigation=investigation).order_by(
@@ -60,12 +53,9 @@ def events(request, investigation_id):
 
 
 def tool_calls(request, investigation_id):
-    auth_error = require_role(request, "viewer")
-    if auth_error is not None:
-        return auth_error
     if request.method != "GET":
         return _error("METHOD_NOT_ALLOWED", "tool-calls only accepts GET", 405)
-    investigation = _owned(request.user, investigation_id)
+    investigation = _lookup_investigation(investigation_id)
     if investigation is None:
         return _not_found("investigation does not exist")
     rows = (
@@ -77,9 +67,6 @@ def tool_calls(request, investigation_id):
 
 
 def cancel(request, investigation_id):
-    auth_error = require_role(request, "operator")
-    if auth_error is not None:
-        return auth_error
     if request.method != "POST":
         return _error("METHOD_NOT_ALLOWED", "cancel only accepts POST", 405)
     try:
@@ -94,7 +81,7 @@ def cancel(request, investigation_id):
         return _error(error.code, error.message, 400, error.details)
 
     with transaction.atomic():
-        investigation = _owned(request.user, investigation_id, lock=True)
+        investigation = _lookup_investigation(investigation_id, lock=True)
         if investigation is None:
             return _not_found("investigation does not exist")
         if investigation.status not in {
@@ -122,7 +109,7 @@ def cancel(request, investigation_id):
             ]
         )
         record_event(
-            actor=request.user,
+
             environment=_investigation_environment(investigation),
             event_type="investigation.cancelled",
             object_type="Investigation",
@@ -132,14 +119,9 @@ def cancel(request, investigation_id):
     return JsonResponse(_serialize_investigation(investigation))
 
 
-def _owned(user, investigation_id, *, lock=False):
+def _lookup_investigation(investigation_id, *, lock=False):
     parsed = _uuid(investigation_id)
     if parsed is None:
-        return None
-    conversations = Conversation.objects.filter(
-        user=user, investigation_id=parsed
-    )
-    if not conversations.exists():
         return None
     query = Investigation.objects
     if lock:

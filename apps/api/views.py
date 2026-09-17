@@ -9,12 +9,10 @@ from pathlib import Path
 from typing import Any
 
 from django.conf import settings
-from django.contrib.auth import authenticate, login, logout
 from django.db import connection
 from django.http import JsonResponse
 
-from .auth import require_session
-from .http import APIRequestError, api_error, parse_json_object
+from .http import api_error
 
 
 _NUMERIC_VERSION = re.compile(r"\A\d+\.\d+\.\d+\Z")
@@ -59,63 +57,10 @@ def product_info(request):
     )
 
 
-def auth_login(request):
-    if request.method != "POST":
-        return api_error("METHOD_NOT_ALLOWED", "login only accepts POST", status=405)
-    try:
-        payload = parse_json_object(request)
-        unknown = sorted(set(payload) - {"username", "password"})
-        if unknown:
-            raise APIRequestError(
-                "VALIDATION_ERROR",
-                "request contains unsupported fields",
-                details={"fields": unknown},
-            )
-        username = payload.get("username")
-        password = payload.get("password")
-        if not isinstance(username, str) or not username.strip() or not isinstance(password, str) or not password:
-            raise APIRequestError(
-                "VALIDATION_ERROR",
-                "username and password are required",
-                details={"fields": ["username", "password"]},
-            )
-    except APIRequestError as error:
-        return api_error(error.code, error.message, status=400, details=error.details)
-    user = authenticate(request, username=username.strip(), password=password)
-    if user is None or not user.is_active:
-        return api_error("AUTH_INVALID_CREDENTIALS", "username or password is incorrect", status=401)
-    login(request, user)
-    return JsonResponse(_session_user(user))
+def not_found(request, resource=""):
+    """Return a normal anonymous 404 for unknown public API paths."""
 
-
-def auth_me(request):
-    session_error = require_session(request)
-    if session_error is not None:
-        return session_error
-    return JsonResponse(_session_user(request.user))
-
-
-def auth_logout(request):
-    if request.method != "POST":
-        return api_error("METHOD_NOT_ALLOWED", "logout only accepts POST", status=405)
-    logout(request)
-    return JsonResponse({}, status=204)
-
-
-def _session_user(user):
-    return {
-        "user_id": str(user.pk),
-        "username": user.get_username(),
-        "roles": sorted(user.groups.values_list("name", flat=True)),
-    }
-
-
-def authenticated_not_found(request, resource=""):
-    """Keep unknown public API paths behind the same session boundary."""
-
-    session_error = require_session(request)
-    if session_error is not None:
-        return session_error
+    del request, resource
     return api_error("NOT_FOUND", "the requested resource does not exist", status=404)
 
 
@@ -161,10 +106,7 @@ def _project_version() -> str:
 
 
 __all__ = [
-    "auth_login",
-    "auth_logout",
-    "auth_me",
-    "authenticated_not_found",
     "health",
+    "not_found",
     "product_info",
 ]

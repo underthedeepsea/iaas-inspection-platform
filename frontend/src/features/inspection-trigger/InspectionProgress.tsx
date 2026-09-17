@@ -1,3 +1,5 @@
+import { useEffect, useRef } from 'react'
+import type { TerminalStatus } from '../../stores/inspectionSessionStore'
 import { Progress } from 'antd'
 import type { InspectionRunEvent } from '../../api/inspections'
 
@@ -8,7 +10,6 @@ export type InspectionProgressStep =
   | 'assets'
   | 'items'
   | 'risk-correlation'
-  | 'ai'
   | 'summary'
   | 'completed'
   | 'failed'
@@ -48,8 +49,6 @@ const stepIndexByEventType: Record<string, number> = {
   'inspection.completed': 2,
   'risk.correlation.started': 3,
   'risk.correlation.completed': 3,
-  'ai.admission.started': 4,
-  'ai.admission.completed': 4,
   'summary.started': 5,
   'summary.completed': 5,
 }
@@ -59,7 +58,6 @@ const stepIndexByStep: Record<InspectionProgressStep, number> = {
   assets: 1,
   items: 2,
   'risk-correlation': 3,
-  ai: 4,
   summary: 5,
   completed: 6,
   failed: -1,
@@ -84,10 +82,6 @@ function eventProgress(state: InspectionProgressState, event: InspectionRunEvent
       return 70
     case 'risk.correlation.completed':
       return 80
-    case 'ai.admission.started':
-      return 80
-    case 'ai.admission.completed':
-      return 90
     case 'summary.started':
       return 90
     case 'summary.completed':
@@ -99,37 +93,25 @@ function eventProgress(state: InspectionProgressState, event: InspectionRunEvent
 }
 
 function getActiveStep(state: InspectionProgressState) {
-  if (state.currentStep === 'failed') {
-    const lastVisibleStep = [...state.events]
-      .reverse()
-      .map((event) => stepIndexByEventType[event.event_type])
-      .find((index) => index !== undefined)
-    return lastVisibleStep ?? 0
-  }
-  return {
-    scope: 0,
-    assets: 1,
-    items: 2,
-    'risk-correlation': 3,
-    ai: 4,
-    summary: 5,
-    completed: 6,
-    failed: 0,
-  }[state.currentStep]
+  const indices = { scope: 0, assets: 0, items: 1, 'risk-correlation': 2, summary: 3, completed: 4, failed: 0 }
+  if (state.currentStep !== 'failed') return indices[state.currentStep]
+  const last = [...state.events].reverse().find(event => stepIndexByEventType[event.event_type] !== undefined)
+  const index = last ? stepIndexByEventType[last.event_type] : 0
+  return index <= 1 ? 0 : index === 2 ? 1 : index === 3 ? 2 : 3
 }
 
 export function reduceInspectionRunEvent(
   state: InspectionProgressState,
   event: InspectionRunEvent,
 ): InspectionProgressState {
-  if (state.events.some((existing) => existing.sequence === event.sequence)) return state
+  if (state.events.some((existing) => existing.sequence === event.sequence) || state.currentStep === 'completed' || state.currentStep === 'failed') return state
   const payload = event.payload ?? {}
   const totalAssets = Math.max(state.totalAssets, Number(payload.asset_count ?? state.totalAssets) || 0)
   const totalItems = Math.max(state.totalItems, Number(payload.total_items ?? payload.inspection_item_count ?? state.totalItems) || 0)
   const completedAssets = Number(
     payload.completed_asset_count ?? payload.assets_covered ?? state.completedAssets,
   )
-  let currentStep = state.currentStep
+  let currentStep: InspectionProgressStep = state.currentStep
   let runStatus = state.runStatus
   let completedItems = state.completedItems
   if (event.event_type === 'scope.resolved' && stepIndexByStep[state.currentStep] <= 0) currentStep = 'scope'
@@ -142,9 +124,6 @@ export function reduceInspectionRunEvent(
   }
   if (event.event_type === 'risk.correlation.started' || event.event_type === 'risk.correlation.completed') {
     if (stepIndexByStep[state.currentStep] <= 3) currentStep = 'risk-correlation'
-  }
-  if (event.event_type === 'ai.admission.started' || event.event_type === 'ai.admission.completed') {
-    if (stepIndexByStep[state.currentStep] <= 4) currentStep = 'ai'
   }
   if (event.event_type === 'summary.started' || event.event_type === 'summary.completed') {
     if (stepIndexByStep[state.currentStep] <= 5) currentStep = 'summary'
@@ -176,8 +155,16 @@ export function progressForInspectionState(state: InspectionProgressState) {
   return state.progress
 }
 
-export function InspectionProgress({ runId }: { runId: string }) {
+export function InspectionProgress({ runId, onTerminal }: { runId: string; onTerminal?: (result: { runId: string; status: TerminalStatus }) => void }) {
   const state = useInspectionRunStream(runId)
+  const notified = useRef('')
+  useEffect(() => {
+    if (state.currentStep !== 'completed' && state.currentStep !== 'failed') return
+    if (notified.current === runId || !onTerminal) return
+    const status = state.runStatus === 'PARTIAL' ? 'PARTIAL' : state.runStatus === 'FAILED' ? 'FAILED' : 'SUCCEEDED'
+    notified.current = runId
+    onTerminal({ runId, status })
+  }, [runId, state.currentStep, state.runStatus, onTerminal])
   const statusLabel = state.currentStep === 'completed'
     ? state.runStatus === 'PARTIAL' ? '巡检部分完成' : '巡检已完成'
     : state.currentStep === 'failed'
@@ -186,12 +173,10 @@ export function InspectionProgress({ runId }: { runId: string }) {
   const activeStep = getActiveStep(state)
   const progress = progressForInspectionState(state)
   const steps = [
-    { label: '解析资源范围', detail: '确认本次巡检的资源类型与巡检项' },
-    { label: '发现资源对象', detail: '读取环境中的资源对象清单' },
-    { label: '执行巡检项', detail: '按资源类型执行规则检查' },
-    { label: '风险关联', detail: '归并检查结果并计算风险等级' },
-    { label: 'AI 准入评估', detail: '评估是否需要进入 AI 调查' },
-    { label: '生成摘要', detail: '形成可追溯的巡检结果摘要' },
+    { label: '确认资源范围', detail: '冻结本次资源对象与巡检项' },
+    { label: '执行代码插件', detail: '按资源类型执行规则检查' },
+    { label: '关联风险', detail: '归并检查结果并计算风险等级' },
+    { label: '生成巡检摘要', detail: '形成可追溯的巡检结果摘要' },
   ]
   return (
     <section aria-label="巡检进度" className="inspection-progress">
@@ -200,7 +185,7 @@ export function InspectionProgress({ runId }: { runId: string }) {
           <span className="eyebrow">RUN PROGRESS</span>
           <h3>{statusLabel}</h3>
         </div>
-        <strong>{progress}%</strong>
+        <strong>{Math.round(progress)}%</strong>
       </div>
       <Progress aria-label="巡检完成度" percent={progress} showInfo={false} />
       <div className="progress-counts">
@@ -228,7 +213,7 @@ export function InspectionProgress({ runId }: { runId: string }) {
       <details className="disclosure">
         <summary>查看事件流（{state.events.length}）</summary>
         <ol className="inspection-event-list">
-          {state.events.map((event) => <li key={event.sequence}>{event.event_type}</li>)}
+          {state.events.filter(event => !event.event_type.startsWith('ai.admission.')).map((event) => <li key={event.sequence}>{event.event_type}</li>)}
         </ol>
       </details>
     </section>

@@ -18,7 +18,6 @@ from django.db import IntegrityError, transaction
 from django.http import JsonResponse
 from django.utils import timezone
 
-from apps.api.auth import require_role
 from apps.api.http import APIRequestError, api_error, parse_json_object, parse_positive_int
 from apps.api.pagination import paginate
 from apps.audits.services import record_event
@@ -86,15 +85,12 @@ def _boundary(view):
     return wrapped
 
 
-def _endpoint(role, methods):
+def _endpoint(methods):
     methods = frozenset(methods)
 
     def decorate(view):
         @wraps(view)
         def wrapped(request, *args, **kwargs):
-            auth_error = require_role(request, role)
-            if auth_error is not None:
-                return auth_error
             if request.method not in methods:
                 return api_error(
                     "METHOD_NOT_ALLOWED",
@@ -243,13 +239,13 @@ def _item_queryset(request):
 
 
 @_boundary
-@_endpoint("viewer", {"GET"})
+@_endpoint({"GET"})
 def inspection_items(request):
     return _paginate(request, _item_queryset(request), serialize_inspection_item)
 
 
 @_boundary
-@_endpoint("viewer", {"GET"})
+@_endpoint({"GET"})
 def environments(request):
     """Return selectable environments from persisted data, never UI constants."""
 
@@ -275,7 +271,7 @@ def _serialize_environment(environment):
 
 
 @_boundary
-@_endpoint("viewer", {"GET"})
+@_endpoint({"GET"})
 def inspection_item_detail(request, item_id):
     item = _lookup(InspectionItem, item_id, "inspection_item_id")
     result = serialize_inspection_item(item, detail=True)
@@ -290,7 +286,7 @@ def inspection_item_detail(request, item_id):
     return JsonResponse(result)
 
 
-def _item_conversation(user, payload):
+def _item_conversation(payload):
     """Create an item-bound conversation for the shortcut endpoint.
 
     The existing conversation service intentionally accepts risk contexts only;
@@ -307,14 +303,13 @@ def _item_conversation(user, payload):
             raise PublicAPIError("NOT_FOUND", "an environment is required for this conversation", status=404)
         return Conversation.objects.create(
             environment=environment,
-            user=user,
             context_type=Conversation.ContextType.INSPECTION_ITEM,
             context_id=item.pk,
             title=payload.get("title") or item.name,
         )
     from apps.conversations.services import create_conversation as service_create_conversation
 
-    return service_create_conversation(user, payload)
+    return service_create_conversation(payload)
 
 
 create_conversation = _item_conversation
@@ -324,14 +319,13 @@ from apps.conversations.services import create_turn  # noqa: E402  (injection se
 
 
 @_boundary
-@_endpoint("viewer", {"POST"})
+@_endpoint({"POST"})
 def inspection_item_ask(request, item_id):
     payload = parse_json_object(request)
     message = _text(payload.get("message"), "message", required=True, limit=4000)
     item = _lookup(InspectionItem, item_id, "inspection_item_id")
     with transaction.atomic():
         conversation = create_conversation(
-            request.user,
             {
                 "context_type": Conversation.ContextType.INSPECTION_ITEM,
                 "context_id": str(_uuid(item_id, "inspection_item_id")),
@@ -341,7 +335,6 @@ def inspection_item_ask(request, item_id):
         )
         if getattr(conversation, "environment_id", None):
             record_event(
-                actor=request.user,
                 environment=conversation.environment,
                 event_type="inspection_item.asked",
                 object_type="Conversation",
@@ -349,7 +342,7 @@ def inspection_item_ask(request, item_id):
                 payload={},
             )
     try:
-        turn = create_turn(request.user, conversation.pk, {"message": message})
+        turn = create_turn(conversation.pk, {"message": message})
     except Exception as error:
         # The persisted conversation is still useful for retrying; expose only
         # the stable public error for expected conversation failures.
@@ -386,13 +379,13 @@ def _run_queryset(request):
 
 
 @_boundary
-@_endpoint("viewer", {"GET"})
+@_endpoint({"GET"})
 def inspection_runs(request):
     return _paginate(request, _run_queryset(request), serialize_run)
 
 
 @_boundary
-@_endpoint("viewer", {"GET"})
+@_endpoint({"GET"})
 def inspection_run_detail(request, run_id):
     run = _lookup(InspectionRun, run_id, "inspection_run_id")
     item_runs = list(
@@ -409,7 +402,7 @@ def inspection_run_detail(request, run_id):
 
 
 @_boundary
-@_endpoint("viewer", {"GET"})
+@_endpoint({"GET"})
 def inspection_item_run_detail(request, item_run_id):
     item_run = _lookup(InspectionItemRun, item_run_id, "inspection_item_run_id")
     item_run._public_findings = list(
@@ -443,7 +436,7 @@ def _finding_queryset(request):
 
 
 @_boundary
-@_endpoint("viewer", {"GET"})
+@_endpoint({"GET"})
 def findings(request):
     def serializer(finding):
         finding._public_risk_id = (
@@ -471,13 +464,13 @@ def _snapshot_queryset(request):
 
 
 @_boundary
-@_endpoint("viewer", {"GET"})
+@_endpoint({"GET"})
 def daily_snapshots(request):
     return _paginate(request, _snapshot_queryset(request), serialize_snapshot)
 
 
 @_boundary
-@_endpoint("viewer", {"GET"})
+@_endpoint({"GET"})
 def daily_snapshot_detail(request, snapshot_id):
     return JsonResponse(serialize_snapshot(_lookup(DailySnapshot, snapshot_id, "snapshot_id")))
 
@@ -498,7 +491,7 @@ _SNAPSHOT_DIFF_FIELDS = (
 
 
 @_boundary
-@_endpoint("viewer", {"GET"})
+@_endpoint({"GET"})
 def dashboard_today(request):
     environment = _environment_for_dashboard(request)
     queryset = DailySnapshot.objects.all().order_by("-snapshot_date", "-created_at", "-pk")
@@ -592,13 +585,13 @@ def _risk_change(risk):
 
 
 @_boundary
-@_endpoint("viewer", {"GET"})
+@_endpoint({"GET"})
 def risks(request):
     return _paginate(request, _risk_queryset(request), serialize_risk)
 
 
 @_boundary
-@_endpoint("viewer", {"GET"})
+@_endpoint({"GET"})
 def risk_detail(request, risk_id):
     risk = _lookup(Risk, risk_id, "risk_id")
     risk._public_investigation = (
@@ -608,7 +601,7 @@ def risk_detail(request, risk_id):
 
 
 @_boundary
-@_endpoint("viewer", {"GET"})
+@_endpoint({"GET"})
 def risk_timeline(request, risk_id):
     risk = _lookup(Risk, risk_id, "risk_id")
     events = list(RiskStatusHistory.objects.filter(risk=risk).order_by("created_at", "pk")[:256])
@@ -625,7 +618,6 @@ def risk_timeline(request, risk_id):
                         "label": "首次发现",
                         "source": "SYSTEM",
                         "reason": "",
-                        "actor_user_id": None,
                     }
                 ],
             }
@@ -634,7 +626,7 @@ def risk_timeline(request, risk_id):
 
 
 @_boundary
-@_endpoint("viewer", {"GET"})
+@_endpoint({"GET"})
 def risk_evidence(request, risk_id):
     risk = _lookup(Risk, risk_id, "risk_id")
     limit = _query_page_limit(request, default=50, maximum=100)
@@ -660,7 +652,7 @@ def _risk_for_mutation(risk_id):
 
 
 @_boundary
-@_endpoint("operator", {"POST"})
+@_endpoint({"POST"})
 def mark_handled(request, risk_id):
     payload = parse_json_object(request)
     _reject_unknown(payload, {"comment", "external_ticket"})
@@ -671,13 +663,11 @@ def mark_handled(request, risk_id):
         try:
             updated = lifecycle_mark_handled(
                 risk,
-                actor_user=request.user,
                 reason=comment or "Risk marked handled; awaiting reverification",
             )
         except ValueError as error:
             raise PublicAPIError("INVALID_RISK_TRANSITION", str(error), status=409) from None
         record_event(
-            actor=request.user,
             environment=risk.environment,
             event_type="risk.mark_handled",
             object_type="Risk",
@@ -687,7 +677,7 @@ def mark_handled(request, risk_id):
     return JsonResponse({"risk_id": str(updated.pk), "status": updated.status})
 
 
-@_endpoint("operator", {"POST"})
+@_endpoint({"POST"})
 @_boundary
 def ignore(request, risk_id):
     payload = parse_json_object(request)
@@ -704,12 +694,10 @@ def ignore(request, risk_id):
                 Risk.Status.IGNORED,
                 reason=reason,
                 source=RiskStatusHistory.Source.HUMAN,
-                actor_user=request.user,
             )
         except ValueError as error:
             raise PublicAPIError("INVALID_RISK_TRANSITION", str(error), status=409) from None
         record_event(
-            actor=request.user,
             environment=risk.environment,
             event_type="risk.ignored",
             object_type="Risk",
@@ -720,7 +708,7 @@ def ignore(request, risk_id):
 
 
 @_boundary
-@_endpoint("operator", {"POST"})
+@_endpoint({"POST"})
 def reverify(request, risk_id):
     payload = parse_json_object(request)
     if payload:
@@ -746,7 +734,6 @@ def reverify(request, risk_id):
         reverify_pending_risks(run)
         risk.refresh_from_db()
         record_event(
-            actor=request.user,
             environment=risk.environment,
             event_type="risk.reverified",
             object_type="Risk",
@@ -757,7 +744,7 @@ def reverify(request, risk_id):
 
 
 @_boundary
-@_endpoint("viewer", {"POST"})
+@_endpoint({"POST"})
 def risk_investigations(request, risk_id):
     payload = parse_json_object(request)
     question = _text(payload.get("question"), "question", required=True, limit=4000)
@@ -767,7 +754,6 @@ def risk_investigations(request, risk_id):
     risk = _lookup(Risk, risk_id, "risk_id")
     with transaction.atomic():
         conversation = create_conversation(
-            request.user,
             {
                 "context_type": Conversation.ContextType.RISK,
                 "context_id": str(risk.pk),
@@ -775,7 +761,6 @@ def risk_investigations(request, risk_id):
             },
         )
         record_event(
-            actor=request.user,
             environment=risk.environment,
             event_type="risk.investigation.created",
             object_type="Risk",
@@ -783,7 +768,7 @@ def risk_investigations(request, risk_id):
             payload={},
         )
     try:
-        turn = create_turn(request.user, conversation.pk, {"message": question})
+        turn = create_turn(conversation.pk, {"message": question})
     except Exception as error:
         from apps.conversations.services import ConversationError
 
@@ -812,7 +797,6 @@ def risk_investigations(request, risk_id):
 
 def _conversation_code(code):
     return {
-        "authentication_required": "AUTH_REQUIRED",
         "not_found": "NOT_FOUND",
         "invalid_json": "VALIDATION_ERROR",
         "invalid_field": "VALIDATION_ERROR",
@@ -837,7 +821,7 @@ def _call_airflow_transport(transport, payload):
 
 
 @_boundary
-@_endpoint("operator", {"POST"})
+@_endpoint({"POST"})
 def trigger_inspection_run(request):
     payload = parse_json_object(request)
     if "scope" in payload:
@@ -866,7 +850,6 @@ def trigger_inspection_run(request):
     status = str(result.get("status") or "QUEUED")[:32]
     with transaction.atomic():
         record_event(
-            actor=request.user,
             environment=environment,
             event_type="inspection_run.triggered",
             object_type="InspectionRun",
@@ -957,3 +940,35 @@ __all__ = [
     "risks",
     "trigger_inspection_run",
 ]
+
+
+@_boundary
+@_endpoint({'GET'})
+def inspection_run_result(request, run_id):
+    from apps.inspections.services.run_result import inspection_run_result as read_result
+    environment = _environment(request.GET.get('environment_id'), required=True)
+    run = InspectionRun.objects.get(pk=run_id, environment=environment)
+    return JsonResponse(read_result(run))
+
+
+@_boundary
+@_endpoint({'POST'})
+def dashboard_ask(request):
+    from apps.investigations.services.dashboard_explanation import COMPLETED_STATUSES, explain_dashboard, latest_completed_launch_run
+    from services.model_gateway.base import LLMUnavailableError
+    payload = parse_json_object(request)
+    _reject_unknown(payload, {'environment_id', 'question', 'inspection_run_id'})
+    environment = _environment(payload.get('environment_id'), required=True)
+    question = _text(payload.get('question'), 'question', required=True, limit=2000)
+    if payload.get('inspection_run_id') is not None:
+        run = InspectionRun.objects.get(pk=_uuid(payload['inspection_run_id'], 'inspection_run_id'), environment=environment)
+        if run.status not in COMPLETED_STATUSES or run.finished_at is None:
+            raise PublicAPIError('RUN_NOT_COMPLETED', '请等待本次巡检完成后再进行 AI 解读。', status=409)
+    else:
+        run = latest_completed_launch_run(environment)
+        if run is None:
+            raise PublicAPIError('NO_COMPLETED_RUN', '当前环境还没有已完成的巡检，请先执行一次巡检。', status=409)
+    try:
+        return JsonResponse(explain_dashboard(run, question))
+    except LLMUnavailableError as error:
+        raise PublicAPIError('LLM_UNAVAILABLE', str(error), status=503) from None

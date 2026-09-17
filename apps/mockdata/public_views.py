@@ -10,7 +10,6 @@ from collections.abc import Mapping
 from django.db import IntegrityError, transaction
 from django.http import JsonResponse
 
-from apps.api.auth import require_role
 from apps.api.http import APIRequestError, api_error, parse_json_object
 from apps.api.pagination import paginate
 from apps.audits.services import record_event
@@ -24,9 +23,6 @@ _MAX_CONFIG_KEYS = {"host_count", "duration_minutes"}
 
 
 def generate(request):
-    auth_error = require_role(request, "operator")
-    if auth_error is not None:
-        return auth_error
     if request.method != "POST":
         return _method("mock dataset generation")
     try:
@@ -49,7 +45,6 @@ def generate(request):
                 dataset.generator_config = stored
                 dataset.save(update_fields=["generator_config"])
             record_event(
-                actor=request.user,
                 environment=environment,
                 event_type="mock_dataset.generated",
                 object_type="MockDataset",
@@ -72,9 +67,6 @@ def generate(request):
 
 
 def collection(request):
-    auth_error = require_role(request, "viewer")
-    if auth_error is not None:
-        return auth_error
     if request.method != "GET":
         return _method("mock datasets")
     queryset = MockDataset.objects.select_related("environment").all()
@@ -93,9 +85,6 @@ def collection(request):
 
 
 def detail(request, dataset_id):
-    auth_error = require_role(request, "viewer")
-    if auth_error is not None:
-        return auth_error
     if request.method != "GET":
         return _method("mock dataset detail")
     try:

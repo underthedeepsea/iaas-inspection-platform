@@ -2,8 +2,6 @@ import json
 import uuid
 
 import pytest
-from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Group
 from django.test import RequestFactory
 
 from apps.audits.models import AuditEvent
@@ -15,18 +13,9 @@ from apps.learning.models import CodeizationTask, Experience
 from apps.risks.models import Risk, Severity
 
 
-def _user(*groups):
-    user = get_user_model().objects.create_user(
-        username=f"learning-api-{uuid.uuid4().hex}", password="password"
-    )
-    for name in groups:
-        group, _ = Group.objects.get_or_create(name=name)
-        user.groups.add(group)
-    return user
 
 
 def _context(*, user=None):
-    user = user or _user("operator")
     environment = Environment.objects.create(
         name="Learning API", slug=f"learning-api-{uuid.uuid4().hex}"
     )
@@ -59,7 +48,7 @@ def _context(*, user=None):
     )
     conversation = Conversation.objects.create(
         environment=environment,
-        user=user,
+
         context_type=Conversation.ContextType.RISK,
         context_id=risk.pk,
         risk=risk,
@@ -67,7 +56,6 @@ def _context(*, user=None):
         title="Learning review",
     )
     return {
-        "user": user,
         "environment": environment,
         "item": item,
         "risk": risk,
@@ -81,7 +69,7 @@ def _request(method, path, user, payload=None, query=""):
     request = getattr(RequestFactory(), method.lower())(
         f"{path}{query}", data=body, content_type="application/json"
     )
-    request.user = user
+
     return request
 
 
@@ -92,7 +80,7 @@ def test_conversation_close_is_atomic_and_audited():
 
     context = _context()
     response = views.close(
-        _request("POST", "/conversations/close", context["user"]),
+        _request("POST", "/conversations/close", None),
         context["conversation"].pk,
     )
 
@@ -122,7 +110,7 @@ def test_feedback_create_and_convert_to_experience_use_domain_services():
         "create_experience": False,
     }
     response = feedback_views.collection(
-        _request("POST", "/feedback", context["user"], payload)
+        _request("POST", "/feedback", None, payload)
     )
     assert response.status_code == 201
     feedback_id = json.loads(response.content)["feedback_id"]
@@ -130,7 +118,7 @@ def test_feedback_create_and_convert_to_experience_use_domain_services():
     assert AuditEvent.objects.filter(event_type="feedback.created").count() == 1
 
     response = feedback_views.convert(
-        _request("POST", "/feedback/convert", context["user"]), feedback_id
+        _request("POST", "/feedback/convert", None), feedback_id
     )
     assert response.status_code == 201
     assert json.loads(response.content)["experience_created"] is True
@@ -138,13 +126,13 @@ def test_feedback_create_and_convert_to_experience_use_domain_services():
 
 
 @pytest.mark.django_db
-def test_experience_confirm_and_task_creation_validate_roles_and_enums():
+def test_experience_confirm_and_task_creation_validate_state_and_enums():
     from apps.experiences import views as experience_views
     from apps.feedback.services import create_feedback
 
     context = _context()
     feedback = create_feedback(
-        actor=context["user"],
+
         environment=context["environment"],
         risk=context["risk"],
         investigation=context["investigation"],
@@ -157,7 +145,7 @@ def test_experience_confirm_and_task_creation_validate_roles_and_enums():
     experience = Experience.objects.get(experience_key=f"feedback:{feedback.pk}")
 
     response = experience_views.confirm(
-        _request("POST", "/experiences/confirm", context["user"], {
+        _request("POST", "/experiences/confirm", None, {
             "human_summary": "Reproducible",
             "target_claim": "network.packet_loss.cause_category",
         }),
@@ -166,7 +154,7 @@ def test_experience_confirm_and_task_creation_validate_roles_and_enums():
     assert response.status_code == 200
 
     response = experience_views.create_task(
-        _request("POST", "/experiences/tasks", context["user"], {
+        _request("POST", "/experiences/tasks", None, {
             "inspection_item_id": str(context["item"].pk),
             "target_capability_id": f"network.packet.pressure.{uuid.uuid4().hex}",
             "task_type": CodeizationTask.TaskType.PLUGIN,
@@ -178,7 +166,7 @@ def test_experience_confirm_and_task_creation_validate_roles_and_enums():
     assert response.status_code == 201
     assert json.loads(response.content)["status"] == CodeizationTask.Status.CODE_PENDING
 
-    viewer = _user("viewer")
+    viewer = None
     response = experience_views.confirm(
         _request("POST", "/experiences/confirm", viewer, {
             "human_summary": "No",
@@ -186,17 +174,17 @@ def test_experience_confirm_and_task_creation_validate_roles_and_enums():
         }),
         experience.pk,
     )
-    assert response.status_code == 403
+    assert response.status_code == 400
 
 
 @pytest.mark.django_db
-def test_codeization_status_progression_is_platform_admin_only_and_uses_exact_version():
+def test_codeization_status_progression_is_anonymous_and_uses_exact_version():
     from apps.experiences import views as experience_views
     from apps.feedback.services import create_feedback
 
     context = _context()
     feedback = create_feedback(
-        actor=context["user"],
+
         environment=context["environment"],
         risk=context["risk"],
         investigation=context["investigation"],
@@ -208,7 +196,7 @@ def test_codeization_status_progression_is_platform_admin_only_and_uses_exact_ve
     )
     experience = Experience.objects.get(experience_key=f"feedback:{feedback.pk}")
     experience_views.confirm(
-        _request("POST", "/experiences/confirm", context["user"], {
+        _request("POST", "/experiences/confirm", None, {
             "human_summary": "Reproducible",
             "target_claim": "network.packet_loss.cause_category",
         }),
@@ -229,7 +217,7 @@ def test_codeization_status_progression_is_platform_admin_only_and_uses_exact_ve
         manifest={"security": {"read_only": True}},
     )
     task = experience_views.create_task(
-        _request("POST", "/experiences/tasks", context["user"], {
+        _request("POST", "/experiences/tasks", None, {
             "inspection_item_id": str(context["item"].pk),
             "target_capability_id": capability.capability_id,
             "task_type": CodeizationTask.TaskType.PLUGIN,
@@ -240,15 +228,15 @@ def test_codeization_status_progression_is_platform_admin_only_and_uses_exact_ve
     )
     task_id = json.loads(task.content)["task_id"]
     denied = experience_views.task_detail(
-        _request("PATCH", "/codeization-tasks", context["user"], {
+        _request("PATCH", "/codeization-tasks", None, {
             "status": CodeizationTask.Status.SHADOW,
             "capability_version_id": str(version.pk),
         }),
         task_id,
     )
-    assert denied.status_code == 403
+    assert denied.status_code == 200
 
-    admin = _user("platform_admin")
+    admin = None
     shadow = experience_views.task_detail(
         _request("PATCH", "/codeization-tasks", admin, {
             "status": CodeizationTask.Status.SHADOW,

@@ -10,7 +10,6 @@ from decimal import Decimal, InvalidOperation
 from django.db import transaction
 from django.http import JsonResponse
 
-from apps.api.auth import require_role
 from apps.api.http import APIRequestError, api_error, parse_json_object
 from apps.api.pagination import paginate
 from apps.audits.services import record_event
@@ -51,9 +50,6 @@ _SENSITIVE_TEXT_RE = re.compile(
 
 
 def collection(request):
-    auth_error = require_role(request, "viewer")
-    if auth_error is not None:
-        return auth_error
     if request.method != "GET":
         return _error("METHOD_NOT_ALLOWED", "experiences only accepts GET", 405)
     queryset = Experience.objects.select_related(
@@ -82,9 +78,6 @@ def collection(request):
 
 
 def detail(request, experience_id):
-    auth_error = require_role(request, "viewer")
-    if auth_error is not None:
-        return auth_error
     if request.method != "GET":
         return _error("METHOD_NOT_ALLOWED", "experience only accepts GET", 405)
     experience = _get(Experience, experience_id)
@@ -94,9 +87,6 @@ def detail(request, experience_id):
 
 
 def confirm(request, experience_id):
-    auth_error = require_role(request, "operator")
-    if auth_error is not None:
-        return auth_error
     if request.method != "POST":
         return _error("METHOD_NOT_ALLOWED", "confirm only accepts POST", 405)
     experience = _get(Experience, experience_id)
@@ -112,7 +102,6 @@ def confirm(request, experience_id):
         if not isinstance(target_claim, str) or len(target_claim.strip()) > 192:
             raise APIRequestError("VALIDATION_ERROR", "target_claim is required")
         result = services.confirm_experience(
-            request.user,
             experience,
             human_summary=human_summary,
             target_claim=target_claim,
@@ -125,9 +114,6 @@ def confirm(request, experience_id):
 
 
 def create_task(request, experience_id):
-    auth_error = require_role(request, "operator")
-    if auth_error is not None:
-        return auth_error
     if request.method != "POST":
         return _error("METHOD_NOT_ALLOWED", "codeization task creation only accepts POST", 405)
     experience = _get(Experience, experience_id)
@@ -159,7 +145,6 @@ def create_task(request, experience_id):
         if target_claim is not None and not isinstance(target_claim, str):
             raise APIRequestError("VALIDATION_ERROR", "target_claim must be a string")
         task = services.create_codeization_task(
-            request.user,
             experience,
             inspection_item=item,
             target_capability_id=target_capability_id.strip(),
@@ -178,9 +163,6 @@ def create_task(request, experience_id):
 
 
 def task_collection(request):
-    auth_error = require_role(request, "viewer")
-    if auth_error is not None:
-        return auth_error
     if request.method != "GET":
         return _error("METHOD_NOT_ALLOWED", "codeization-tasks only accepts GET", 405)
     queryset = CodeizationTask.objects.select_related(
@@ -207,9 +189,6 @@ def task_collection(request):
 
 
 def task_detail(request, task_id):
-    auth_error = require_role(request, "operator")
-    if auth_error is not None:
-        return auth_error
     if request.method != "PATCH":
         return _error("METHOD_NOT_ALLOWED", "codeization task only accepts PATCH", 405)
     task = _get(CodeizationTask, task_id)
@@ -229,9 +208,6 @@ def task_detail(request, task_id):
                 "capability version identity requires a status transition",
             )
         if target_status is not None:
-            role_error = require_role(request, "platform_admin")
-            if role_error is not None:
-                return role_error
             target_status = _enum(target_status, CodeizationTask.Status, "status")
             if target_status not in {
                 CodeizationTask.Status.SHADOW,
@@ -253,19 +229,17 @@ def task_detail(request, task_id):
                 capability_version = _transition_version(locked, payload)
                 if target_status == CodeizationTask.Status.SHADOW:
                     locked = codeization.move_to_shadow(
-                        request.user,
                         locked,
                         capability_version=capability_version,
                     )
                 else:
                     locked = codeization.activate_codeization_task(
-                        request.user,
                         locked,
                         capability_version=capability_version,
                     )
             if changes:
                 record_event(
-                    actor=request.user,
+
                     environment=_task_environment(locked),
                     event_type="codeization_task.updated",
                     object_type="CodeizationTask",

@@ -3,7 +3,6 @@ import uuid
 from decimal import Decimal
 
 import pytest
-from django.contrib.auth import get_user_model
 from django.db import close_old_connections
 from django.utils import timezone
 
@@ -51,10 +50,9 @@ def context():
         model_name="qwen",
         conclusion="Likely packet path pressure",
     )
-    user = get_user_model().objects.create_user(username=f"operator-{suffix}")
     conversation = Conversation.objects.create(
         environment=environment,
-        user=user,
+
         context_type=Conversation.ContextType.RISK,
         context_id=risk.pk,
         risk=risk,
@@ -80,7 +78,6 @@ def context():
         "item": item,
         "risk": risk,
         "investigation": investigation,
-        "user": user,
         "conversation": conversation,
         "message": message,
         "evidence": evidence,
@@ -89,7 +86,6 @@ def context():
 
 def feedback_args(ctx, **overrides):
     values = {
-        "actor": ctx["user"],
         "environment": ctx["environment"],
         "risk": ctx["risk"],
         "investigation": ctx["investigation"],
@@ -135,7 +131,7 @@ def test_confirmed_root_cause_with_opt_in_creates_idempotent_discovered_experien
     assert experience.source_risk_id == ctx["risk"].pk
     assert experience.source_investigation_id == ctx["investigation"].pk
     assert experience.conclusion == "PACKET_PATH_PRESSURE"
-    assert create_experience_from_feedback(feedback, actor=ctx["user"]) == experience
+    assert create_experience_from_feedback(feedback) == experience
     assert Experience.objects.count() == 1
 
 
@@ -149,13 +145,11 @@ def test_experience_confirmation_is_separate_from_codeization_task_creation():
     experience = Experience.objects.get()
 
     confirm_experience(
-        ctx["user"],
         experience,
         human_summary="Packet path pressure is reproducible.",
         target_claim="network.packet_loss.cause_category",
     )
     task = create_codeization_task(
-        ctx["user"],
         experience,
         inspection_item=ctx["item"],
         target_capability_id=f"network.packet.pressure.{uuid.uuid4().hex}",
@@ -185,7 +179,6 @@ def test_codeization_requires_pending_shadow_active_and_registry_prefers_active_
     create_feedback(**feedback_args(ctx))
     experience = Experience.objects.get()
     confirm_experience(
-        ctx["user"],
         experience,
         human_summary="Packet path pressure is reproducible.",
         target_claim="network.packet_loss.cause_category",
@@ -205,7 +198,6 @@ def test_codeization_requires_pending_shadow_active_and_registry_prefers_active_
         manifest={"security": {"read_only": True}},
     )
     task = create_codeization_task(
-        ctx["user"],
         experience,
         inspection_item=ctx["item"],
         target_capability_id=capability.capability_id,
@@ -214,9 +206,9 @@ def test_codeization_requires_pending_shadow_active_and_registry_prefers_active_
     )
 
     with pytest.raises(ValueError):
-        activate_codeization_task(ctx["user"], task, version)
+        activate_codeization_task(task, version)
 
-    move_to_shadow(ctx["user"], task, version)
+    move_to_shadow(task, version)
     task.refresh_from_db()
     version.refresh_from_db()
     assert task.status == CodeizationTask.Status.SHADOW
@@ -234,7 +226,7 @@ def test_codeization_requires_pending_shadow_active_and_registry_prefers_active_
     task.precision = Decimal("0.8")
     task.critical_false_positive = 0
     task.save(update_fields=["shadow_cases", "precision", "critical_false_positive"])
-    activate_codeization_task(ctx["user"], task, version)
+    activate_codeization_task(task, version)
     task.refresh_from_db()
     version.refresh_from_db()
     capability.refresh_from_db()
@@ -270,13 +262,11 @@ def test_codeization_rejects_backtracking_and_direct_capability_activation():
     create_feedback(**feedback_args(ctx))
     experience = Experience.objects.get()
     confirm_experience(
-        ctx["user"],
         experience,
         human_summary="Packet path pressure is reproducible.",
         target_claim="network.packet_loss.cause_category",
     )
     task = create_codeization_task(
-        ctx["user"],
         experience,
         inspection_item=ctx["item"],
         target_capability_id=f"network.packet.pressure.{uuid.uuid4().hex}",
@@ -285,7 +275,7 @@ def test_codeization_rejects_backtracking_and_direct_capability_activation():
     )
 
     with pytest.raises(ValueError):
-        transition_codeization_task(ctx["user"], task, CodeizationTask.Status.CODE_ACTIVE)
+        transition_codeization_task(task, CodeizationTask.Status.CODE_ACTIVE)
 
 
 def _confirmed_task(ctx, *, capability=None, capability_id=None, claim=None):
@@ -296,7 +286,6 @@ def _confirmed_task(ctx, *, capability=None, capability_id=None, claim=None):
     experience = Experience.objects.get()
     claim = claim or "network.packet_loss.cause_category"
     confirm_experience(
-        ctx["user"],
         experience,
         human_summary="Packet path pressure is reproducible.",
         target_claim=claim,
@@ -316,7 +305,6 @@ def _confirmed_task(ctx, *, capability=None, capability_id=None, claim=None):
         manifest={"security": {"read_only": True}},
     )
     task = create_codeization_task(
-        ctx["user"],
         experience,
         inspection_item=ctx["item"],
         target_capability_id=capability.capability_id,
@@ -333,7 +321,6 @@ def _confirmed_experience(ctx, *, claim="network.packet_loss.cause_category"):
     create_feedback(**feedback_args(ctx))
     experience = Experience.objects.get()
     confirm_experience(
-        ctx["user"],
         experience,
         human_summary="Packet path pressure is reproducible.",
         target_claim=claim,
@@ -360,7 +347,7 @@ def test_shadow_persists_exact_task_version_and_rejects_v2_without_side_effects(
     version_v2 = _candidate_version(capability, claim, version="0.9.1")
     assert task.capability_version_id is None
 
-    move_to_shadow(ctx["user"], task, version_v1)
+    move_to_shadow(task, version_v1)
     task.refresh_from_db()
     assert task.capability_version_id == version_v1.pk
     shadow_audits = AuditEvent.objects.filter(
@@ -377,9 +364,9 @@ def test_shadow_persists_exact_task_version_and_rejects_v2_without_side_effects(
     audit_count = AuditEvent.objects.count()
 
     with pytest.raises(ValueError):
-        move_to_shadow(ctx["user"], task, version_v2)
+        move_to_shadow(task, version_v2)
     with pytest.raises(ValueError):
-        activate_codeization_task(ctx["user"], task, version_v2)
+        activate_codeization_task(task, version_v2)
 
     task.refresh_from_db()
     version_v1.refresh_from_db()
@@ -414,7 +401,7 @@ def test_concurrent_shadow_versions_bind_one_persisted_version():
     def run(version_id):
         close_old_connections()
         try:
-            move_to_shadow(ctx["user"], task.pk, version_id)
+            move_to_shadow(task.pk, version_id)
             successes.append(version_id)
         except BaseException as exc:
             errors.append(exc)
@@ -467,8 +454,7 @@ def test_create_task_rejects_empty_or_invalid_required_claims(required_claims):
 
     with pytest.raises(ValueError):
         create_codeization_task(
-            ctx["user"],
-            experience,
+                experience,
             inspection_item=ctx["item"],
             target_capability_id=f"network.packet.invalid-required.{uuid.uuid4().hex}",
             task_type=CodeizationTask.TaskType.RULE,
@@ -485,7 +471,7 @@ def test_activate_rechecks_required_claim_after_shadow_and_rolls_back():
 
     ctx = context()
     _experience, capability, version, task, claim = _confirmed_task(ctx)
-    move_to_shadow(ctx["user"], task, version)
+    move_to_shadow(task, version)
     ctx["item"].required_claims = ["network.packet_loss.asset_scope"]
     ctx["item"].save(update_fields=["required_claims"])
     task.shadow_cases = 3
@@ -494,7 +480,7 @@ def test_activate_rechecks_required_claim_after_shadow_and_rolls_back():
     task.save(update_fields=["shadow_cases", "precision", "critical_false_positive"])
 
     with pytest.raises(ValueError):
-        activate_codeization_task(ctx["user"], task, version)
+        activate_codeization_task(task, version)
 
     task.refresh_from_db()
     version.refresh_from_db()
@@ -520,13 +506,13 @@ def test_activation_uses_canonical_required_claims_for_aggregate_status():
     ctx["item"].required_claims = [" Network.Packet_Loss.Cause_Category "]
     ctx["item"].save(update_fields=["required_claims"])
     _experience, _capability, version, task, _claim = _confirmed_task(ctx)
-    move_to_shadow(ctx["user"], task, version)
+    move_to_shadow(task, version)
     task.shadow_cases = 3
     task.precision = Decimal("0.8")
     task.critical_false_positive = 0
     task.save(update_fields=["shadow_cases", "precision", "critical_false_positive"])
 
-    activate_codeization_task(ctx["user"], task, version)
+    activate_codeization_task(task, version)
 
     item = InspectionItem.objects.get(pk=ctx["item"].pk)
     assert item.code_status == InspectionItem.CodeStatus.CODE_ACTIVE
@@ -573,7 +559,7 @@ def test_move_to_shadow_preserves_existing_code_and_active_resolver(initial_stat
     )
     _experience, _capability, version, task, _claim = _confirmed_task(ctx)
 
-    move_to_shadow(ctx["user"], task, version)
+    move_to_shadow(task, version)
 
     ctx["item"].refresh_from_db()
     old_version.refresh_from_db()
@@ -685,14 +671,14 @@ def test_shared_capability_replacement_rejects_other_active_dependencies_then_sw
         ctx,
         capability=old_capability,
     )
-    move_to_shadow(ctx["user"], task, version)
+    move_to_shadow(task, version)
     task.shadow_cases = 3
     task.precision = Decimal("0.8")
     task.critical_false_positive = 0
     task.save(update_fields=["shadow_cases", "precision", "critical_false_positive"])
 
     with pytest.raises(ValueError):
-        activate_codeization_task(ctx["user"], task, version)
+        activate_codeization_task(task, version)
     old_version.refresh_from_db()
     capability.refresh_from_db()
     old_binding.refresh_from_db()
@@ -706,7 +692,7 @@ def test_shared_capability_replacement_rejects_other_active_dependencies_then_sw
 
     other_binding.enabled = False
     other_binding.save(update_fields=["enabled"])
-    activate_codeization_task(ctx["user"], task, version)
+    activate_codeization_task(task, version)
     old_version.refresh_from_db()
     capability.refresh_from_db()
     old_binding.refresh_from_db()
@@ -727,7 +713,7 @@ def test_shadow_activation_requires_boundary_metrics():
 
     ctx = context()
     _experience, _capability, version, task, _claim = _confirmed_task(ctx)
-    move_to_shadow(ctx["user"], task, version)
+    move_to_shadow(task, version)
     assert MIN_SHADOW_CASES == 3
     assert MIN_SHADOW_PRECISION == Decimal("0.8")
     assert MAX_SHADOW_FALSE_POSITIVES == 0
@@ -742,7 +728,7 @@ def test_shadow_activation_requires_boundary_metrics():
         task.critical_false_positive = false_positives
         task.save(update_fields=["shadow_cases", "precision", "critical_false_positive"])
         with pytest.raises(ValueError):
-            activate_codeization_task(ctx["user"], task, version)
+            activate_codeization_task(task, version)
         task.refresh_from_db()
         version.refresh_from_db()
         assert task.status == CodeizationTask.Status.SHADOW
@@ -752,7 +738,7 @@ def test_shadow_activation_requires_boundary_metrics():
     task.precision = Decimal("0.8")
     task.critical_false_positive = 0
     task.save(update_fields=["shadow_cases", "precision", "critical_false_positive"])
-    activate_codeization_task(ctx["user"], task, version)
+    activate_codeization_task(task, version)
     assert CodeizationTask.objects.get(pk=task.pk).status == CodeizationTask.Status.CODE_ACTIVE
 
 
@@ -762,14 +748,14 @@ def test_shadow_retry_is_idempotent_after_version_already_entered_shadow():
 
     ctx = context()
     _experience, _capability, version, task, _claim = _confirmed_task(ctx)
-    first = move_to_shadow(ctx["user"], task, version)
-    second = move_to_shadow(ctx["user"], task, version)
+    first = move_to_shadow(task, version)
+    second = move_to_shadow(task, version)
     assert first.pk == second.pk == task.pk
     assert CodeizationTask.objects.get(pk=task.pk).status == CodeizationTask.Status.SHADOW
 
 
 @pytest.mark.django_db
-def test_standalone_experience_operations_require_explicit_actor_and_strict_bool_flag():
+def test_standalone_experience_operations_are_anonymous_and_require_strict_bool_flag():
     from apps.experiences.services import create_experience_from_feedback
     from apps.feedback.services import create_feedback
 
@@ -778,12 +764,11 @@ def test_standalone_experience_operations_require_explicit_actor_and_strict_bool
         create_feedback(**feedback_args(ctx, create_experience="true"))
     feedback = create_feedback(**feedback_args(ctx))
     experience = Experience.objects.get()
-    with pytest.raises(ValueError):
-        create_experience_from_feedback(feedback)
+    assert create_experience_from_feedback(feedback).pk == experience.pk
     assert experience.status == Experience.Status.DISCOVERED
     feedback.create_experience = "true"
     with pytest.raises(ValueError):
-        create_experience_from_feedback(feedback, actor=ctx["user"])
+        create_experience_from_feedback(feedback)
 
 
 @pytest.mark.django_db
@@ -810,8 +795,7 @@ def test_codeization_task_enforces_scope_without_source_risk():
 
     with pytest.raises(ValueError):
         create_codeization_task(
-            ctx["user"],
-            experience,
+                experience,
             inspection_item=other_item,
             target_capability_id="network.packet.scope-only",
             task_type=CodeizationTask.TaskType.RULE,
@@ -835,7 +819,6 @@ def test_standalone_confirmation_audit_uses_scoped_environment():
     )
 
     confirm_experience(
-        ctx["user"],
         experience,
         human_summary="Confirmed in scoped environment.",
         target_claim="network.packet_loss.cause_category",
@@ -853,13 +836,13 @@ def test_feedback_and_codeization_transitions_write_non_sensitive_audit_events()
     from apps.investigations.models import HumanFeedback
 
     _experience, _capability, version, task, _claim = _confirmed_task(ctx)
-    move_to_shadow(ctx["user"], task, version)
+    move_to_shadow(task, version)
     task.shadow_cases = 3
     task.precision = Decimal("0.8")
     task.save(update_fields=["shadow_cases", "precision"])
-    activate_codeization_task(ctx["user"], task, version)
+    activate_codeization_task(task, version)
 
-    events = AuditEvent.objects.filter(user=ctx["user"]).order_by("created_at", "pk")
+    events = AuditEvent.objects.all().order_by("created_at", "pk")
     assert {event.object_type for event in events} >= {
         "HumanFeedback",
         "Experience",
@@ -881,7 +864,7 @@ def test_feedback_and_codeization_transitions_write_non_sensitive_audit_events()
         == CapabilityVersion.Status.CANDIDATE
     )
     feedback = HumanFeedback.objects.get()
-    assert feedback.user_id == ctx["user"].pk
+
 
 
 @pytest.mark.django_db(transaction=True)
@@ -896,7 +879,7 @@ def test_concurrent_shadow_retry_converges_on_one_task_state():
     def run():
         close_old_connections()
         try:
-            results.append(move_to_shadow(ctx["user"], task.pk, version.pk).pk)
+            results.append(move_to_shadow(task.pk, version.pk).pk)
         except BaseException as exc:
             errors.append(exc)
         finally:

@@ -7,13 +7,11 @@ const resource = {
 }
 
 test('explains a resource run synchronously on demand', async ({ page }) => {
+  const authRequests: string[] = []
+  page.on('request', request => { if (request.url().includes('/api/v1/auth/')) authRequests.push(request.url()) })
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request()
     const url = new URL(request.url())
-    if (request.method() === 'GET' && url.pathname === '/api/v1/auth/me') {
-      await route.fulfill({ json: { user_id: 'user-1', username: 'e2e', roles: ['operator', 'viewer'] } })
-      return
-    }
     if (request.method() === 'GET' && url.pathname === '/api/v1/environments') {
       await route.fulfill({ json: { items: [{ id: 'env-1', slug: 'staging', name: '测试环境', environment_type: 'TEST', timezone: 'Asia/Shanghai', assets_count: 1, mock_dataset_count: 1, inspection_run_count: 1, has_mock_data: true }], page: 1, page_size: 1, total: 1 } })
       return
@@ -52,6 +50,7 @@ test('explains a resource run synchronously on demand', async ({ page }) => {
   })
 
   await page.goto('/resources/llm-runtime')
+  expect(authRequests).toEqual([])
   await page.getByLabel('巡检环境').click()
   await page.locator('.ant-select-dropdown .ant-select-item-option').filter({ hasText: '测试环境' }).click()
   await page.getByRole('tab', { name: '巡检历史' }).click()

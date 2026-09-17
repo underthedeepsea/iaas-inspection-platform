@@ -6,11 +6,8 @@ from types import SimpleNamespace
 
 import pytest
 from django.conf import settings
-from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Group
 from django.test import Client, RequestFactory, override_settings
 
-from apps.api.auth import owned_or_404, require_role, require_session
 from apps.api.http import (
     APIRequestError,
     api_error,
@@ -21,21 +18,11 @@ from apps.api.http import (
 from apps.api.pagination import paginate
 
 
-def _user(*groups, is_superuser=False):
-    user = get_user_model().objects.create_user(
-        username=f"api-{uuid.uuid4().hex}",
-        password="password",
-        is_superuser=is_superuser,
-    )
-    for name in groups:
-        group, _ = Group.objects.get_or_create(name=name)
-        user.groups.add(group)
-    return user
 
 
 def _request(*, user=None, query_string=""):
     request = RequestFactory().get("/" + (f"?{query_string}" if query_string else ""))
-    request.user = user or SimpleNamespace(is_authenticated=False)
+
     return request
 
 
@@ -92,42 +79,6 @@ def test_parse_positive_int_applies_default_and_upper_bound():
         parse_positive_int("101", default=50, maximum=100)
 
 
-@pytest.mark.django_db
-def test_session_and_role_hierarchy_support_groups_and_superusers():
-    anonymous = _request()
-    session_error = require_session(anonymous)
-    assert session_error.status_code == 401
-    assert _body(session_error)["error"]["code"] == "AUTH_REQUIRED"
-
-    viewer = _user("viewer")
-    operator = _user("operator")
-    admin = _user("platform_admin")
-    superuser = _user(is_superuser=True)
-    for user in (viewer, operator, admin, superuser):
-        request = _request(user=user)
-        assert require_session(request) is None
-
-    assert require_role(_request(user=viewer), "viewer") is None
-    assert require_role(_request(user=viewer), "operator").status_code == 403
-    assert require_role(_request(user=operator), "viewer") is None
-    assert require_role(_request(user=operator), "platform_admin").status_code == 403
-    assert require_role(_request(user=admin), "platform_admin") is None
-    assert require_role(_request(user=superuser), "platform_admin") is None
-
-
-@pytest.mark.django_db
-def test_owned_or_404_scopes_queryset_to_user_when_model_has_user_field():
-    owner = _user("viewer")
-    stranger = _user("viewer")
-    owned = SimpleNamespace(pk=1, user_id=owner.pk)
-    queryset = [owned]
-
-    assert owned_or_404(queryset, owner, pk=1) is owned
-    with pytest.raises(Exception) as error:
-        owned_or_404(queryset, stranger, pk=1)
-    assert getattr(error.value, "status_code", 404) == 404
-
-
 def test_paginate_uses_bounded_defaults_and_serializer():
     response = paginate(list(range(120)), _request(), lambda value: {"value": value})
 
@@ -167,7 +118,7 @@ def test_product_info_is_anonymous_and_has_exact_numeric_versions():
     body = response.json()
     assert body["product_name"] == "IaaS 智能巡检"
     assert body["data_mode"] == "MOCK"
-    assert body["llm_provider"] == os.getenv("LLM_PROVIDER", "fake")
+    assert body["llm_provider"] == os.getenv("LLM_PROVIDER", "ollama")
     assert body["security_mode"] == "READ_ONLY_TOOLS"
     assert body["versions"] == {
         "django": "4.2.16",
@@ -177,8 +128,8 @@ def test_product_info_is_anonymous_and_has_exact_numeric_versions():
     }
 
 
-def test_local_development_defaults_to_deterministic_ai_provider():
-    assert settings.LLM_PROVIDER == os.getenv("LLM_PROVIDER", "fake")
+def test_local_development_uses_configured_ai_provider():
+    assert settings.LLM_PROVIDER == os.getenv("LLM_PROVIDER", "ollama")
 
 
 @pytest.mark.django_db

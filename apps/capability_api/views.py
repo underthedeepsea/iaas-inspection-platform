@@ -1,4 +1,4 @@
-"""Thin, authenticated HTTP adapters for the Capability Registry."""
+"""Thin, anonymous HTTP adapters for the Capability Registry."""
 
 from __future__ import annotations
 
@@ -14,7 +14,6 @@ from django.utils import timezone
 from jsonschema import SchemaError
 from jsonschema.validators import validator_for
 
-from apps.api.auth import require_role
 from apps.api.http import APIRequestError, api_error, parse_bool, parse_json_object
 from apps.api.pagination import paginate
 from apps.audits.services import record_event
@@ -40,22 +39,13 @@ class CapabilityAPIError(ValueError):
 
 def collection(request):
     if request.method == "GET":
-        auth_error = require_role(request, "viewer")
-        if auth_error is not None:
-            return auth_error
         return _list(request)
     if request.method == "POST":
-        auth_error = require_role(request, "platform_admin")
-        if auth_error is not None:
-            return auth_error
         return _create(request)
     return _method("capabilities")
 
 
 def detail(request, capability_id):
-    auth_error = require_role(request, "viewer")
-    if auth_error is not None:
-        return auth_error
     if request.method != "GET":
         return _method("capability detail")
     try:
@@ -74,15 +64,12 @@ def detail(request, capability_id):
 
 
 def versions(request, capability_id):
-    auth_error = require_role(request, "platform_admin")
-    if auth_error is not None:
-        return auth_error
     if request.method != "POST":
         return _method("capability versions")
     try:
         payload = parse_json_object(request)
         with transaction.atomic():
-            version = _create_version(capability_id, payload, request.user)
+            version = _create_version(capability_id, payload)
     except APIRequestError as error:
         return _request_error(error)
     except (Capability.DoesNotExist, CapabilityVersion.DoesNotExist):
@@ -98,9 +85,6 @@ def versions(request, capability_id):
 
 
 def test_version(request, capability_id, version):
-    auth_error = require_role(request, "platform_admin")
-    if auth_error is not None:
-        return auth_error
     if request.method != "POST":
         return _method("capability version test")
     try:
@@ -130,9 +114,6 @@ def activate(request, capability_id, version):
 
 
 def resolve(request):
-    auth_error = require_role(request, "viewer")
-    if auth_error is not None:
-        return auth_error
     if request.method != "POST":
         return _method("capability resolve")
     try:
@@ -203,7 +184,7 @@ def _create(request):
                 status=status,
             )
             record_event(
-                actor=request.user,
+
                 environment=None,
                 event_type="capability.created",
                 object_type="Capability",
@@ -220,7 +201,7 @@ def _create(request):
     return JsonResponse(serialize_capability(capability), status=201)
 
 
-def _create_version(capability_id, payload, actor):
+def _create_version(capability_id, payload):
     capability = Capability.objects.get(capability_id=capability_id)
     version = _text(payload.get("version"), "version", 32)
     if not _VERSION_RE.fullmatch(version):
@@ -280,7 +261,7 @@ def _create_version(capability_id, payload, actor):
         retry_count=retry_count,
     )
     record_event(
-        actor=actor,
+
         environment=None,
         event_type="capability_version.created",
         object_type="CapabilityVersion",
@@ -296,9 +277,6 @@ def _create_version(capability_id, payload, actor):
 
 
 def _transition(request, capability_id, version, *, target):
-    auth_error = require_role(request, "platform_admin")
-    if auth_error is not None:
-        return auth_error
     if request.method != "POST":
         return _method("capability transition")
     try:
@@ -310,7 +288,7 @@ def _transition(request, capability_id, version, *, target):
             else:
                 _activate(capability, version_row, payload)
             record_event(
-                actor=request.user,
+
                 environment=None,
                 event_type="capability_version." + target.lower(),
                 object_type="CapabilityVersion",

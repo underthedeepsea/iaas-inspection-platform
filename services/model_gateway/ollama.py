@@ -48,9 +48,15 @@ class OllamaProvider(ModelGateway):
             "messages": request.as_messages(),
             "format": "json",
         }
+        if request.metadata.get("purpose") in {"dashboard_explanation", "inspection_explanation"}:
+            payload["think"] = False
         response = self._send("post", f"{self.base_url}/api/chat", json=payload)
         body = self._response_json(response)
-        content = extract_ollama_content(body)
+        content = extract_ollama_content(body).strip()
+        # Some Ollama-compatible runtimes wrap JSON despite format="json".
+        lines = content.splitlines()
+        if len(lines) >= 3 and lines[0] in {"```json", "```"} and lines[-1] == "```":
+            content = "\n".join(lines[1:-1])
         action = parse_action(content)
         usage, token_source = usage_from_payload(body, provider=self.provider_name)
         return ModelResponse(

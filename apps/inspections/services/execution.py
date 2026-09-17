@@ -7,7 +7,7 @@ from django.utils import timezone
 from apps.assets.models import Asset
 from apps.inspections.models import CheckResult, Finding, InspectionItem, InspectionItemRun, InspectionRun
 from apps.inspections.rules import CheckResultSpec
-from apps.inspections.rules.registry import RULES, get_rule
+from apps.inspections.rules.registry import RULES, get_code_plugin
 from apps.inspections.services.findings import FindingSpec, persist_findings
 from apps.inspections.services.input_reader import InspectionInputReader
 from apps.inspections.services.scope import resolve_item_asset_scope
@@ -37,8 +37,19 @@ def execute_inspection_item(inspection_run, inspection_item, dataset=None, *, re
         item_run.status = 'RUNNING'
         item_run.ai_admission_status = 'NO_AI'
         item_run.save()
+        engine_snapshot = {'source_type': 'CODE', 'engine': 'PYTHON_RULE'}
         try:
-            results = get_rule(inspection_item.code)(reader=reader, assets=assets, config=item_run.asset_scope.get("rule_config", inspection_item.rule_config))
+            plugin = get_code_plugin(inspection_item.code)
+            engine_snapshot.update(
+                rule_code=plugin.rule_code,
+                rule_version=plugin.rule_version,
+                plugin_id=plugin.plugin_id,
+                plugin_name=plugin.name,
+                plugin_version=plugin.plugin_version,
+                operation_key=plugin.operation_key,
+                engine=plugin.engine,
+            )
+            results = plugin.handler(reader=reader, assets=assets, config=item_run.asset_scope.get("rule_config", inspection_item.rule_config))
             result_ids = [r.asset.pk for r in results]
             if set(result_ids) != {a.pk for a in assets} or len(result_ids) != len(assets):
                 raise ValueError('Rule must return exactly one result for each scoped asset')
@@ -55,7 +66,7 @@ def execute_inspection_item(inspection_run, inspection_item, dataset=None, *, re
         failures = [r for r in results if r.status == 'FAIL']
         persist_findings(item_run, [FindingSpec(finding_code=inspection_item.code, title=r.summary, category=inspection_item.domain, severity=inspection_item.default_severity, observed_at=item_run.finished_at, asset=r.asset, materiality=1, value={'observed':r.observed_value, 'expected':r.expected_value, 'evidence':r.evidence}, source_type=Finding.SourceType.RULE) for r in failures])
         counts = dict(Counter(r.status for r in results))
-        item_run.summary = {'result_counts':counts, 'finding_count':len(failures), 'data_valid':bool(results) and not any(r.status in {'UNKNOWN','ERROR'} for r in results), 'rule_config':dict(item_run.asset_scope.get('rule_config', inspection_item.rule_config)), 'data_source':'MOCK'}
+        item_run.summary = {'engine_snapshot': engine_snapshot, 'result_counts':counts, 'finding_count':len(failures), 'data_valid':bool(results) and not any(r.status in {'UNKNOWN','ERROR'} for r in results), 'rule_config':dict(item_run.asset_scope.get('rule_config', inspection_item.rule_config)), 'data_source':'MOCK'}
         item_run.save()
         _update_run_counts(inspection_run)
         return item_run

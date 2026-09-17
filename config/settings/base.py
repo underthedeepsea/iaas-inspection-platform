@@ -1,7 +1,10 @@
 import os
 
+from dotenv import load_dotenv
+
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+load_dotenv(os.path.join(BASE_DIR, ".env"))
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "local-dev-only-change-me")
 DEBUG = False
 LOCAL_BACKGROUND_WORKER_ENABLED = False
@@ -30,4 +33,3 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 STATIC_URL = "/static/"
 STATICFILES_DIRS = [os.path.join(BASE_DIR, "static")]
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
-

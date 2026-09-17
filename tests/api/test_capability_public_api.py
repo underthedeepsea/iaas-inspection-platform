@@ -4,8 +4,6 @@ from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
-from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Group
 from django.test import RequestFactory
 
 from apps.audits.models import AuditEvent
@@ -13,14 +11,6 @@ from apps.capabilities.models import Capability, CapabilityVersion
 from apps.capability_api import views
 
 
-def _user(*roles):
-    user = get_user_model().objects.create_user(
-        username=f"cap-api-{uuid.uuid4().hex}", password="password"
-    )
-    for role in roles:
-        group, _ = Group.objects.get_or_create(name=role)
-        user.groups.add(group)
-    return user
 
 
 def _request(method, path, *, user=None, payload=None, query=None):
@@ -31,7 +21,7 @@ def _request(method, path, *, user=None, payload=None, query=None):
         data=body,
         content_type="application/json",
     )
-    request.user = user or SimpleNamespace(is_authenticated=False)
+
     return request
 
 
@@ -47,15 +37,14 @@ def _capability(**values):
 
 
 @pytest.mark.django_db
-def test_capability_list_requires_session_and_supports_bounded_filters():
+def test_capability_list_is_anonymous_and_supports_bounded_filters():
     capability = _capability(domain="network", status=Capability.Status.ACTIVE)
 
     anonymous = views.collection(_request("GET", "/capabilities/"))
-    assert anonymous.status_code == 401
-    assert _body(anonymous)["error"]["code"] == "AUTH_REQUIRED"
+    assert anonymous.status_code == 200
 
     response = views.collection(
-        _request("GET", "/capabilities/", user=_user("viewer"), query="domain=network&page_size=1")
+        _request("GET", "/capabilities/", user=None, query="domain=network&page_size=1")
     )
     assert response.status_code == 200
     assert _body(response)["items"][0]["capability_id"] == capability.capability_id
@@ -64,7 +53,7 @@ def test_capability_list_requires_session_and_supports_bounded_filters():
 
 @pytest.mark.django_db
 def test_admin_can_create_capability_and_numeric_version_with_audit():
-    admin = _user("platform_admin")
+    admin = None
     payload = {
         "capability_id": "network.api.pressure",
         "name": "Pressure resolver",
@@ -105,7 +94,7 @@ def test_admin_can_create_capability_and_numeric_version_with_audit():
 
 @pytest.mark.django_db
 def test_shadow_then_activate_requires_read_only_schema_and_demo_thresholds():
-    admin = _user("platform_admin")
+    admin = None
     capability = _capability(read_only=True)
     version = CapabilityVersion.objects.create(
         capability=capability,
@@ -150,7 +139,7 @@ def test_shadow_then_activate_requires_read_only_schema_and_demo_thresholds():
 
 @pytest.mark.django_db
 def test_resolve_returns_active_read_only_candidates_without_executing_input():
-    admin = _user("platform_admin")
+    admin = None
     capability = _capability(read_only=True)
     version = CapabilityVersion.objects.create(
         capability=capability,
@@ -180,7 +169,7 @@ def test_resolve_returns_active_read_only_candidates_without_executing_input():
 
 @pytest.mark.django_db
 def test_capability_create_rolls_back_when_audit_write_fails(monkeypatch):
-    admin = _user("platform_admin")
+    admin = None
     monkeypatch.setattr(views, "record_event", lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("audit")))
     response = views.collection(
         _request("POST", "/capabilities/", user=admin,

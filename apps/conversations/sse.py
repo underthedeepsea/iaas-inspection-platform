@@ -27,9 +27,9 @@ def parse_last_event_id(value: Any) -> int:
     return parsed
 
 
-def replay_events(user: Any, conversation_id: Any, turn_id: Any, last_event_id: Any = None) -> Iterator[str]:
+def replay_events(conversation_id: Any, turn_id: Any, last_event_id: Any = None) -> Iterator[str]:
     last_sequence = parse_last_event_id(last_event_id)
-    events = events_for_turn(user, conversation_id, turn_id)
+    events = events_for_turn(conversation_id, turn_id)
     yield from replay_event_rows(events, last_sequence)
 
 

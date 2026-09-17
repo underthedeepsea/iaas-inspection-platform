@@ -34,12 +34,6 @@ export interface Investigation {
   result?: StructuredInvestigationResult & Record<string, unknown>
 }
 
-export interface ConversationTurnResponse {
-  turn_id: string
-  investigation_id: string
-  events_url?: string | null
-}
-
 export interface InvestigationEvent {
   sequence: number
   event_type: string
@@ -75,14 +69,6 @@ export async function getInvestigation(id: string) {
 
 export async function getInvestigationEvents(id: string) {
   return getInvestigationEventHistory(id)
-}
-
-export async function createConversationTurn(conversationId: string, message: string) {
-  const response = await apiClient.post<ConversationTurnResponse>(
-    `/conversations/${encodeURIComponent(conversationId)}/turns`,
-    { message },
-  )
-  return response.data
 }
 
 export async function getResourceInvestigations(code: string, page = 1, pageSize = 20) {

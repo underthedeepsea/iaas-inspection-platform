@@ -231,7 +231,7 @@ def _assets_for(scenario):
             "control-plane-0",
             parent_key=control_plane_host,
             labels={"component": "control-plane", "anti_affinity": "control-plane"},
-            topology={"host": control_plane_host},
+            topology={"host": control_plane_host, "cluster": "cluster-0"},
         ),
         AssetRecord(
             "control-plane-1",
@@ -239,7 +239,7 @@ def _assets_for(scenario):
             "control-plane-1",
             parent_key=second_control_plane_host,
             labels={"component": "control-plane", "anti_affinity": "control-plane"},
-            topology={"host": second_control_plane_host},
+            topology={"host": second_control_plane_host, "cluster": "cluster-0"},
         ),
         AssetRecord(
             "gpu-0",
