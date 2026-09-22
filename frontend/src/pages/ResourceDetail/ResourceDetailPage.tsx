@@ -10,6 +10,7 @@ import { InspectionTriggerButton } from '../../features/inspection-trigger/Inspe
 import { HealthTrendChart } from '../../features/resource-health/HealthTrendChart'
 import { resourceSlugToCode } from '../../features/resource-health/resourceRoutes'
 import { useUiStore } from '../../stores/uiStore'
+import { InferencePerformanceProfile } from './InferencePerformanceProfile'
 
 const tabs = [
   ['overview', '概览'],
@@ -65,7 +66,7 @@ export function ResourceDetailPage({ environmentId: providedEnvironmentId }: { e
       {activeTab === 'history' ? (
         <section className="panel panel-large"><div className="section-heading"><div><span className="eyebrow">INSPECTION HISTORY</span><h3>巡检历史</h3></div><span className="legend">按时间回看每次执行</span></div>{historyQuery.isLoading ? <div className="empty-state compact"><p>正在加载巡检历史</p></div> : <InspectionHistoryTable resourceCode={code} summaries={historyQuery.data?.items ?? []} />}</section>
       ) : activeTab === 'overview' ? (
-        <OverviewPanel overview={overviewQuery.data} />
+        <OverviewPanel code={code} environmentId={environmentId} overview={overviewQuery.data} />
       ) : activeTab === 'risks' ? (
         <RiskPanel overview={overviewQuery.data} risks={risksQuery.data?.items ?? []} loading={risksQuery.isLoading} />
       ) : (
@@ -75,7 +76,7 @@ export function ResourceDetailPage({ environmentId: providedEnvironmentId }: { e
   )
 }
 
-function OverviewPanel({ overview }: { overview?: Awaited<ReturnType<typeof getResourceOverview>> }) {
+function OverviewPanel({ code, environmentId, overview }: { code: string; environmentId: string; overview?: Awaited<ReturnType<typeof getResourceOverview>> }) {
   if (!overview) return <section className="panel"><div className="empty-state compact"><strong>正在加载资源概览</strong><p>正在读取健康度、覆盖率和趋势数据。</p></div></section>
   const latest = overview.latest
   const isNoData = overview.resource_type.data_state === 'NO_DATA' || latest?.summary?.data_state === 'NO_DATA'
@@ -88,6 +89,7 @@ function OverviewPanel({ overview }: { overview?: Awaited<ReturnType<typeof getR
   return (
     <>
       <CheckResultsTable results={overview.check_results} />
+      {code === 'LLM_RUNTIME' ? <InferencePerformanceProfile environmentId={environmentId} /> : null}
       {latest?.summary?.data_state === 'UNKNOWN' ? <p role="status">证据不足，暂无可信健康分数</p> : null}
       {isNoData ? <p className="no-data-banner" role="status">无可用资源数据</p> : null}
       <div className="metric-grid">{metrics.map(([label, value, detail]) => <article className="metric-card" key={label}><span>{label}</span><strong>{value}</strong><small>{detail}</small></article>)}</div>

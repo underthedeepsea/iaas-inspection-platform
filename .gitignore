@@ -4,6 +4,7 @@
 .pytest_cache/
 .superpowers/
 .codex-workflow/
+.codex/
 .venv-airflow/
 .venv-web/
 .worktrees/
@@ -15,3 +16,4 @@ frontend/*.tsbuildinfo
 docs/v0.2/
 __pycache__/
 *.py[cod]
+*.swp

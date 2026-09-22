@@ -1,0 +1,34 @@
+{
+  "default": {
+    "fixed": {
+      "ttft.p95_ms": {"warning": 800, "critical": 1500},
+      "ttft.p99_ms": {"warning": 1500, "critical": 3000},
+      "tpot.p95_ms": {"warning": 50, "critical": 80},
+      "tpot.p99_ms": {"warning": 80, "critical": 120},
+      "e2e.p95_ms": {"warning": 10000, "critical": 20000},
+      "e2e.p99_ms": {"warning": 20000, "critical": 30000},
+      "requests.waiting": {"warning": 10, "critical": 30}
+    },
+    "dynamic": {
+      "warning_z": 3.0,
+      "critical_z": 5.0,
+      "warning_change_ratio": 0.2,
+      "critical_change_ratio": 0.4
+    },
+    "trend": {
+      "window_minutes": 60,
+      "watch_change_ratio": 0.1,
+      "degrading_change_ratio": 0.2
+    },
+    "persistence": {"consecutive_hits": 2}
+  },
+  "engines": {"vllm": {}, "sglang": {}},
+  "models": {
+    "vllm": {
+      "Qwen/Qwen3-32B": {
+        "fixed": {"ttft.p95_ms": {"warning": 500, "critical": 900}}
+      }
+    },
+    "sglang": {}
+  }
+}

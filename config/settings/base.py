@@ -9,7 +9,9 @@ SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "local-dev-only-change-me")
 DEBUG = False
 LOCAL_BACKGROUND_WORKER_ENABLED = False
 ALLOWED_HOSTS = []
-INSTALLED_APPS = []
+INSTALLED_APPS = [
+    "apps.inference_performance",
+]
 MIDDLEWARE = []
 ROOT_URLCONF = "config.urls"
 TEMPLATES = [
