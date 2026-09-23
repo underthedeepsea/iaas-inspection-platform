@@ -105,7 +105,7 @@ ROUTES = (
     ),
     ("GET", "/api/v1/codeization-tasks", 200),
     ("PATCH", f"/api/v1/codeization-tasks/{TASK_ID}", 404),
-    ("POST", "/api/v1/mock-datasets/generate", 400),
+    ("POST", "/api/v1/mock-datasets/generate", 404),
     ("GET", "/api/v1/mock-datasets", 200),
     ("GET", f"/api/v1/mock-datasets/{RESOURCE_ID}", 404),
 )

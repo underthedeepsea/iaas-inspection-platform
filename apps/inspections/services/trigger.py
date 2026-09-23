@@ -4,13 +4,14 @@ from django.utils import timezone
 from apps.core.models import Environment
 from apps.inspections.models import InspectionItem, InspectionItemRun, InspectionRun, ResourceType
 from apps.inspections.services.events import append_run_event
+from apps.inspections.services.inference_freeze import SOURCE, freeze_inference_inputs
 from apps.inspections.services.scope import (
     asset_ids_for_selectors,
     resolve_item_asset_scope,
     resolve_scope,
     scope_to_snapshot,
 )
-from apps.mockdata.services import get_or_create_manual_dataset
+from apps.inspections.rules.registry import UnsupportedInspectionRule, get_code_plugin
 
 
 AI_MODES = {"DEFERRED", "DISABLED"}
@@ -23,15 +24,20 @@ def create_manual_inspection_run(*, environment, resource_type_codes, ai_mode="D
     environment = Environment.objects.select_for_update().get(pk=environment.pk)
     run_date = run_date or timezone.localdate()
     requested_codes = _requested_codes(resource_type_codes)
-    dataset = get_or_create_manual_dataset(
-        environment,
-        run_date,
-        resource_type_codes=requested_codes,
-    )
     scope = resolve_scope(
         environment_id=environment.pk,
         resource_type_codes=requested_codes,
     )
+    if not scope.inspection_item_ids:
+        raise ValueError("NO_ACTIVE_PLUGIN")
+    items = list(InspectionItem.objects.filter(id__in=scope.inspection_item_ids).order_by("code", "created_at", "pk"))
+    try:
+        sources = {get_code_plugin(item.code).input_source for item in items}
+    except UnsupportedInspectionRule:
+        raise ValueError("NO_ACTIVE_PLUGIN") from None
+    if sources != {SOURCE}:
+        raise ValueError("unsupported inspection input source")
+    as_of = timezone.now()
     resolved_snapshot = scope_to_snapshot(scope)
     resolved_snapshot['resource_asset_ids'] = {
         resource.code: sorted(str(pk) for pk in asset_ids_for_selectors(environment.pk, [resource.asset_selector], frozen_ids=scope.asset_ids))
@@ -39,7 +45,7 @@ def create_manual_inspection_run(*, environment, resource_type_codes, ai_mode="D
     }
     run = InspectionRun.objects.create(
         environment=environment,
-        dataset=dataset,
+        dataset=None,
         run_date=run_date,
         trigger_type=InspectionRun.TriggerType.MANUAL,
         status=InspectionRun.Status.PENDING,
@@ -47,10 +53,10 @@ def create_manual_inspection_run(*, environment, resource_type_codes, ai_mode="D
         config_snapshot={
             "requested_scope": {"resource_types": requested_codes},
             "resolved_scope": resolved_snapshot,
+            "input": freeze_inference_inputs(scope.asset_ids, as_of=as_of),
             "trigger_options": {"ai_mode": ai_mode},
         },
     )
-    items = InspectionItem.objects.filter(id__in=scope.inspection_item_ids).order_by("code", "created_at", "pk")
     InspectionItemRun.objects.bulk_create(
         [
             InspectionItemRun(

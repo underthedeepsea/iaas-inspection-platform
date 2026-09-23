@@ -173,7 +173,7 @@ def test_build_resource_summaries_aggregates_counts_and_explainable_health_score
         "ai_investigation_count": summary.ai_investigation_count,
         "p3_count": summary.p3_count,
         "p4_count": summary.p4_count,
-        "health_score": float(summary.health_score),
+        "health_score": summary.health_score,
     } == {
         "assets_total": 36,
         "assets_covered": 35,
@@ -188,8 +188,9 @@ def test_build_resource_summaries_aggregates_counts_and_explainable_health_score
         "ai_investigation_count": 2,
         "p3_count": 2,
         "p4_count": 1,
-        "health_score": 78.0,
+        "health_score": None,
     }
+    assert summary.summary['data_state'] == 'PARTIAL'
     assert summary.summary["health_score_breakdown"] == {
         "penalty": 21,
         "coverage_penalty": 1,

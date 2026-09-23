@@ -70,8 +70,11 @@ def _claim_run(run_id):
             InspectionRun.Status.FAILED,
         } and run.finished_at is not None:
             return None
-        if run.dataset_id is None:
+        source = (run.config_snapshot or {}).get('input', {}).get('source_type')
+        if source == 'MOCK' and run.dataset_id is None:
             raise ValueError("manual inspection run must reference a mock dataset")
+        if source not in {'MOCK', 'INFERENCE_SNAPSHOT'}:
+            raise ValueError("manual inspection run has unsupported input source")
         snapshot = dict(run.config_snapshot or {})
         batch = dict(snapshot.get("batch") or {})
         # A claimed but unfinished run is resumable after a worker restart.

@@ -1,0 +1,45 @@
+{
+  "date": "2026-09-23",
+  "purpose": "P8 inference performance evaluation measurement",
+  "environment": {
+    "host": "Darwin 27.0.0 arm64",
+    "python": "3.10.8",
+    "django": "4.2.16",
+    "database": "PostgreSQL, isolated pytest-created database derived from inspection_benchmark",
+    "developer_database_modified": false,
+    "workload": "synthetic one-minute vLLM snapshots with the full validated metrics shape, one engine/model and QPS 5",
+    "measurement": "one evaluator invocation per history size; insertion excluded from evaluation time; tracemalloc captures Python allocations only, not process RSS or PostgreSQL memory"
+  },
+  "cases": [
+    {
+      "history_count": 4096,
+      "history_span_minutes": 4096,
+      "evaluation_wall_seconds": 0.406,
+      "python_peak_tracemalloc_bytes": 16302993,
+      "database_query_count": 4,
+      "baseline_computation_samples": 4096,
+      "baseline_state": "READY",
+      "trend_status": "STABLE",
+      "evaluation_status": "WARNING",
+      "under_1_5_second_development_target": true
+    },
+    {
+      "history_count": 20160,
+      "history_span_minutes": 20160,
+      "evaluation_wall_seconds": 1.5414,
+      "python_peak_tracemalloc_bytes": 15978544,
+      "database_query_count": 4,
+      "baseline_computation_samples": 4032,
+      "baseline_state": "READY",
+      "trend_status": "STABLE",
+      "evaluation_status": "WARNING",
+      "under_1_5_second_development_target": false
+    }
+  ],
+  "verification": {
+    "pytest_result": "2 passed in 7.09s",
+    "benchmark_script": "temporary pytest script outside the repository; not a product-code change",
+    "database_isolation": "DATABASE_URL pointed to inspection_benchmark so pytest created and tore down a separate test database",
+    "limitations": "Single run per case; no production database, real inference engine, concurrent ingest or RSS/DB-server memory measurement. The 14-day case exceeded 1.5 seconds by 0.0414 seconds on this host."
+  }
+}

@@ -23,6 +23,7 @@ from apps.risks.models import Risk, RiskObservation
 from apps.risks.services.lifecycle import ACTIVE_RISK_STATUSES
 from apps.operations_api.serializers import serialize_risk
 from apps.inspections.services.scope import asset_ids_for_selectors
+from apps.inspections.rules.registry import CODE_PLUGINS
 
 from .serializers import serialize_resource_summary, resource_check_results
 from .services.events import get_run_events
@@ -47,6 +48,8 @@ def _boundary(view):
         except APIRequestError as error:
             return api_error(error.code, error.message, status=400, details=error.details)
         except ValueError as error:
+            if str(error) == "NO_ACTIVE_PLUGIN":
+                return api_error("NO_ACTIVE_PLUGIN", "no active plugin for requested resource", status=409)
             return api_error("VALIDATION_ERROR", str(error), status=400)
 
     return wrapped
@@ -124,11 +127,16 @@ def _item_count(resource_type):
 
 
 def _serialize_resource_type(resource_type, environment):
-    latest = _latest_summary(resource_type, environment) if environment else None
+    active_codes = set(CODE_PLUGINS)
+    connected = InspectionItemResourceType.objects.filter(
+        resource_type=resource_type, enabled=True, inspection_item__enabled=True,
+        inspection_item__code__in=active_codes,
+    ).exists()
+    latest = _latest_summary(resource_type, environment) if environment and connected else None
     asset_count = latest.assets_total if latest else _asset_count(resource_type, environment)
     return {
         "code": resource_type.code,
-        "release_state": "READY" if resource_type.code in {"CONTROL_PLANE", "LLM_RUNTIME"} else "PLANNED",
+        "release_state": "READY" if connected else "PLANNED",
         "name": resource_type.name,
         "description": resource_type.description,
         "icon": resource_type.icon,
@@ -140,7 +148,7 @@ def _serialize_resource_type(resource_type, environment):
         ),
         "inspection_item_count": latest.inspection_item_count if latest else _item_count(resource_type),
         "health_score": float(latest.health_score) if latest and latest.health_score is not None else None,
-        "data_state": (
+        "data_state": "NOT_CONNECTED" if not connected else (
             (latest.summary or {}).get("data_state", "READY" if latest.assets_total else "NO_DATA")
             if latest
             else ("READY" if asset_count else "NO_DATA")
@@ -407,5 +415,11 @@ def rule_detail(request, rule_code):
     try:
         rule = get_code_plugin(rule_code)
     except UnsupportedInspectionRule:
+        if rule_code in {
+            'topology.control_plane_anti_affinity',
+            'llm.ttft_slo',
+            'llm.queue_backlog',
+        }:
+            raise ResourceAPIError('RULE_RETIRED', 'demo rule is retired', status=410) from None
         raise ResourceAPIError('NOT_FOUND', 'rule does not exist', status=404) from None
     return JsonResponse(_serialize_rule(rule))

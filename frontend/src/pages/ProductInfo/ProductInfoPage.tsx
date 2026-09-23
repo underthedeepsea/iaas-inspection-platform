@@ -3,13 +3,13 @@ import { useEffect, useState } from 'react'
 import { displayDataMode, getProductInfo, type ProductInfo } from '../../api/product'
 
 const sections = [
-  ['problem', '这个系统解决什么问题', '内部可用 MVP：针对明确资源执行明确规则，记录可信、可解释、可追踪的巡检事实。首期正式支持 CONTROL_PLANE 与 LLM_RUNTIME。'],
+  ['problem', '这个系统解决什么问题', '针对明确资源执行明确规则，记录可信、可解释、可追踪的巡检事实。当前正式接入 LLM_RUNTIME 推理性能。'],
   ['daily', '每日巡检如何工作', 'Airflow 通过内部 HTTP 编排每日批处理。手动巡检使用相同的规则、风险关联、复验和快照流程。'],
   ['division', '为什么不是所有问题都交给 LLM', '规则决定 PASS、FAIL、UNKNOWN、ERROR 或 NOT_APPLICABLE。AI 不决定检查状态，不直接生成风险。'],
   ['code-ai', 'Code / AI 如何分工', '代码插件完成检查后，进入本次巡检结果页查看结论与版本。需要解释时，可在首页或结果页提问，AI 仅使用当前巡检的检查和风险证据。模型不可用不影响巡检结果。'],
   ['coverage', '覆盖率与证据可信度', '覆盖率是已产生 CheckResult 的资产数除以冻结范围中的目标资产数。UNKNOWN 表示证据不足；没有 PASS 或 FAIL 时不显示健康分数。'],
   ['reverify', '为什么“已处理”后还要自动复验', '已处理将风险置为待复验。下一轮同资产同规则明确 PASS 才能恢复，UNKNOWN 不能证明恢复。'],
-  ['data', '当前数据源与运行时', '数据来源：模拟巡检数据。当前为模拟巡检阈值：TTFT P95 180ms，最少 3 个样本；队列最后连续 3 点超过 10 才失败。并未完成真实生产基础设施接入。'],
+  ['data', '当前数据源与运行时', '外部监控程序推送推理性能快照；固定阈值、14 天动态基线和趋势由 inference-performance 插件评估。其他资源类型尚未接入正式插件。'],
   ['future', '后续阶段', '真实 Prometheus、Kubernetes、CMDB 接入以及其他资源类型留待下一阶段。动态插件、经验生成、Shadow、自进化和复杂多轮 Agent 已延期。'],
 ] as const
 

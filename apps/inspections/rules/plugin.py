@@ -16,6 +16,7 @@ class RuleDefinition:
     status: str = 'ACTIVE'
     description: str = ''
     engine: str = 'PYTHON_RULE'
+    input_source: str = 'MOCK_DATASET'
 
     @property
     def version(self):

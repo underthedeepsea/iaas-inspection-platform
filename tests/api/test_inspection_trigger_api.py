@@ -31,7 +31,7 @@ def make_environment():
 
 def make_item():
     return InspectionItem.objects.create(
-        code="llm.ttft_slo",
+        code="llm.performance_profile",
         name="Trigger item",
         domain="LLM",
         execution_mode=InspectionItem.ExecutionMode.CODE_ONLY,
@@ -81,11 +81,12 @@ def test_valid_request_freezes_requested_and_resolved_scope():
         code="LLM_RUNTIME",
         defaults={
             "name": "LLM 推理引擎",
-            "asset_selector": {"asset_types": [Asset.AssetType.LLM_INSTANCE]},
+            "asset_selector": {"asset_types": [Asset.AssetType.LLM_INSTANCE], "labels": {"input_source": "INFERENCE_SNAPSHOT"}},
         },
     )
     resource_type.enabled = True
-    resource_type.save(update_fields=["enabled"])
+    resource_type.asset_selector = {"asset_types": [Asset.AssetType.LLM_INSTANCE], "labels": {"input_source": "INFERENCE_SNAPSHOT"}}
+    resource_type.save(update_fields=["enabled", "asset_selector"])
     item = make_item()
     InspectionItemResourceType.objects.create(resource_type=resource_type, inspection_item=item)
     Asset.objects.create(
@@ -93,6 +94,7 @@ def test_valid_request_freezes_requested_and_resolved_scope():
         external_key="llm-0",
         asset_type=Asset.AssetType.LLM_INSTANCE,
         name="LLM instance",
+        labels={"input_source": "INFERENCE_SNAPSHOT"},
     )
 
     response = views.trigger_inspection_run(
@@ -113,17 +115,18 @@ def test_valid_request_freezes_requested_and_resolved_scope():
     assert run.status == InspectionRun.Status.PENDING
     assert run.config_snapshot["requested_scope"] == {"resource_types": ["LLM_RUNTIME"]}
     assert run.config_snapshot["resolved_scope"]["resource_types"] == ["LLM_RUNTIME"]
-    # LLM_RUNTIME includes only the labeled LLM instance, GPU, and runtime pod.
-    assert run.config_snapshot["resolved_scope"]["asset_count"] == 3
+    assert run.config_snapshot["resolved_scope"]["asset_count"] == 1
+    assert run.config_snapshot["input"]["source_type"] == "INFERENCE_SNAPSHOT"
+    assert run.config_snapshot["input"]["snapshots"] == {str(next(iter(Asset.objects.filter(environment=environment))).pk): None}
     assert body["scope"] == {
         "resource_types": ["LLM_RUNTIME"],
-        "asset_count": 3,
+        "asset_count": 1,
         "inspection_item_count": 1,
     }
 
 
 @pytest.mark.django_db(transaction=True)
-def test_valid_manual_trigger_binds_ready_dataset_and_enqueues_full_run(monkeypatch):
+def test_valid_manual_trigger_freezes_real_input_without_mock_dataset(monkeypatch):
     from apps.operations_api import views
 
     environment = make_environment()
@@ -135,7 +138,8 @@ def test_valid_manual_trigger_binds_ready_dataset_and_enqueues_full_run(monkeypa
         },
     )
     resource_type.enabled = True
-    resource_type.save(update_fields=["enabled"])
+    resource_type.asset_selector = {"asset_types": [Asset.AssetType.LLM_INSTANCE], "labels": {"input_source": "INFERENCE_SNAPSHOT"}}
+    resource_type.save(update_fields=["enabled", "asset_selector"])
     InspectionItemResourceType.objects.create(resource_type=resource_type, inspection_item=make_item())
     enqueued = []
     monkeypatch.setattr(
@@ -158,11 +162,9 @@ def test_valid_manual_trigger_binds_ready_dataset_and_enqueues_full_run(monkeypa
     assert response.status_code == 201
     body = json.loads(response.content)
     run = InspectionRun.objects.select_related("dataset").get(pk=body["id"])
-    assert run.dataset_id is not None
-    assert run.dataset.environment_id == environment.id
-    assert run.dataset.dataset_date == run.run_date
-    assert run.dataset.status == run.dataset.Status.READY
-    assert body["dataset_id"] == str(run.dataset_id)
+    assert run.dataset_id is None
+    assert body["dataset_id"] is None
+    assert run.config_snapshot["input"]["source_type"] == "INFERENCE_SNAPSHOT"
     assert enqueued == [str(run.id)]
 
 
@@ -180,11 +182,12 @@ def test_http_trigger_enters_the_full_manual_orchestrator(monkeypatch):
         code="LLM_RUNTIME",
         defaults={
             "name": "LLM 推理引擎",
-            "asset_selector": {"asset_types": [Asset.AssetType.LLM_INSTANCE]},
+            "asset_selector": {"asset_types": [Asset.AssetType.LLM_INSTANCE], "labels": {"input_source": "INFERENCE_SNAPSHOT"}},
         },
     )
     resource_type.enabled = True
-    resource_type.save(update_fields=["enabled"])
+    resource_type.asset_selector = {"asset_types": [Asset.AssetType.LLM_INSTANCE], "labels": {"input_source": "INFERENCE_SNAPSHOT"}}
+    resource_type.save(update_fields=["enabled", "asset_selector"])
     item = make_item()
     item.required_claims = ["llm.performance.status"]
     item.save(update_fields=["required_claims", "updated_at"])
@@ -208,6 +211,6 @@ def test_http_trigger_enters_the_full_manual_orchestrator(monkeypatch):
     assert response.status_code == 201
     run = InspectionRun.objects.get(pk=json.loads(response.content)["id"])
     assert run.status == InspectionRun.Status.SUCCEEDED
-    assert run.dataset_id is not None
+    assert run.dataset_id is None
     assert run.resource_summaries.exists()
     assert run.events.filter(event_type="run.completed").exists()

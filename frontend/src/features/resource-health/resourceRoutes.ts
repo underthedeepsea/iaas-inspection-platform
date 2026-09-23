@@ -7,4 +7,4 @@ export function resourceSlugToCode(slug: string) {
 }
 
 
-export const isLaunchResource = (resource: { code: string }) => ['CONTROL_PLANE', 'LLM_RUNTIME'].includes(resource.code)
+export const isLaunchResource = (resource: { code: string }) => resource.code === 'LLM_RUNTIME'

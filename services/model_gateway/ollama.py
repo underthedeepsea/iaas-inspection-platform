@@ -50,6 +50,7 @@ class OllamaProvider(ModelGateway):
         }
         if request.metadata.get("purpose") in {"dashboard_explanation", "inspection_explanation"}:
             payload["think"] = False
+            payload["options"] = {"num_predict": 384}
         response = self._send("post", f"{self.base_url}/api/chat", json=payload)
         body = self._response_json(response)
         content = extract_ollama_content(body).strip()

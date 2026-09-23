@@ -5,6 +5,7 @@ import hashlib
 
 from django.db import transaction
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 from apps.assets.models import Asset
 from apps.inspections.models import CheckResult, Finding, InspectionItemRun, InspectionRun
@@ -184,7 +185,8 @@ def _correlate_run_in_transaction(
     correlated = []
     item_runs_query = InspectionItemRun.objects.filter(
         inspection_run=inspection_run,
-        status=InspectionItemRun.Status.SUCCEEDED,
+        status__in=(InspectionItemRun.Status.SUCCEEDED, InspectionItemRun.Status.FAILED),
+        finished_at__isnull=False,
     )
     if inspection_item_ids is not None:
         item_runs_query = item_runs_query.filter(inspection_item_id__in=inspection_item_ids)
@@ -245,10 +247,13 @@ def _correlate_run_in_transaction(
                 continue
 
             check = CheckResult.objects.get(inspection_run=inspection_run, inspection_item_run=item_run, asset=representative.asset, status='FAIL')
+            evidence = check.evidence or {}
+            window_start = parse_datetime(evidence.get('window_start') or '')
+            window_end = parse_datetime(evidence.get('window_end') or '')
             Evidence.objects.get_or_create(
                 risk=risk, inspection_run=inspection_run, inspection_item_run=item_run,
                 evidence_key=f'check-result:{check.pk}',
-                defaults={'asset':check.asset, 'evidence_type':'TOPOLOGY' if item_run.inspection_item.code.startswith('topology.') else 'METRIC', 'source':'deterministic_rule', 'summary':check.summary, 'payload':{'check_result_id':str(check.pk), 'observed':check.observed_value, 'expected':check.expected_value, 'evidence':check.evidence}, 'window_end':check.checked_at},
+                defaults={'asset':check.asset, 'evidence_type':'TOPOLOGY' if item_run.inspection_item.code.startswith('topology.') else 'METRIC', 'source':'inference_snapshot' if evidence.get('snapshot_id') else 'deterministic_rule', 'summary':check.summary, 'payload':{'check_result_id':str(check.pk), 'observed':check.observed_value, 'expected':check.expected_value, 'evidence':check.evidence}, 'window_start':window_start, 'window_end':window_end or check.checked_at, 'raw_ref':str(evidence['snapshot_id']) if evidence.get('snapshot_id') else None},
             )
             from_status = None if created else risk.status
             status_after = (

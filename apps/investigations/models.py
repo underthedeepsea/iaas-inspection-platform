@@ -4,6 +4,17 @@ from django.db import models
 from apps.core.models import CreatedModel, EditableModel, semantic_version_validator
 
 
+class ExplanationPrompt(models.Model):
+    key = models.CharField(primary_key=True, max_length=64)
+    name = models.CharField(max_length=128)
+    body = models.TextField()
+    revision = models.PositiveIntegerField(default=1)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "explanation_prompts"
+
+
 class Investigation(EditableModel):
     class TriggerType(models.TextChoices):
         HUMAN = "HUMAN", "Human"

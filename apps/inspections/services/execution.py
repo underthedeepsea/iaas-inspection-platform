@@ -8,15 +8,24 @@ from apps.assets.models import Asset
 from apps.inspections.models import CheckResult, Finding, InspectionItem, InspectionItemRun, InspectionRun
 from apps.inspections.rules import CheckResultSpec
 from apps.inspections.rules.registry import RULES, get_code_plugin
+from apps.inspections.services.code_dispatch import dispatch_code_rule
 from apps.inspections.services.findings import FindingSpec, persist_findings
 from apps.inspections.services.input_reader import InspectionInputReader
+from apps.inference_performance.services.input_reader import InferenceSnapshotInputReader
 from apps.inspections.services.scope import resolve_item_asset_scope
 
 
 def execute_inspection_item(inspection_run, inspection_item, dataset=None, *, registry=None, observed_at=None):
-    dataset = dataset or inspection_run.dataset
-    if dataset is None or dataset.environment_id != inspection_run.environment_id:
-        raise ValueError('Run requires a dataset from the same environment')
+    plugin = get_code_plugin(inspection_item.code)
+    source = (inspection_run.config_snapshot or {}).get('input', {}).get('source_type')
+    if source != plugin.input_source:
+        raise ValueError('Run input source does not match its plugin')
+    if source == 'MOCK':
+        dataset = dataset or inspection_run.dataset
+        if dataset is None or dataset.environment_id != inspection_run.environment_id:
+            raise ValueError('Run requires a dataset from the same environment')
+    elif source != 'INFERENCE_SNAPSHOT':
+        raise ValueError('Unsupported inspection input source')
     with transaction.atomic():
         item_run, _ = InspectionItemRun.objects.select_for_update().get_or_create(inspection_run=inspection_run, inspection_item=inspection_item)
         # Completed facts are immutable on duplicate delivery.
@@ -25,21 +34,20 @@ def execute_inspection_item(inspection_run, inspection_item, dataset=None, *, re
         if 'asset_ids' not in (item_run.asset_scope or {}):
             scope = resolve_item_asset_scope(inspection_run, inspection_item)
             if scope is None:
-                asset_type = 'POD' if inspection_item.code == 'topology.control_plane_anti_affinity' else 'LLM_INSTANCE'
-                targets = Asset.objects.filter(environment_id=inspection_run.environment_id, status='ACTIVE', asset_type=asset_type)
-                if asset_type == 'POD':
-                    targets = targets.filter(labels__component='control-plane')
-                scope = {'asset_ids': [str(pk) for pk in targets.values_list('pk', flat=True)]}
+                raise ValueError('Run is missing frozen asset scope')
             item_run.asset_scope = scope
-        reader = InspectionInputReader(dataset, item_run.asset_scope['asset_ids'])
-        assets = list(reader.assets())
+        assets = list(Asset.objects.filter(pk__in=item_run.asset_scope['asset_ids'], environment_id=inspection_run.environment_id).order_by('external_key', 'pk'))
+        if source == 'INFERENCE_SNAPSHOT':
+            frozen = (inspection_run.config_snapshot or {}).get('input', {}).get('snapshots') or {}
+            reader = InferenceSnapshotInputReader(mode='FROZEN_RESULT', frozen_inputs_by_asset={str(asset.pk): frozen.get(str(asset.pk)) for asset in assets}, assets=assets)
+        else:
+            reader = InspectionInputReader(dataset, item_run.asset_scope['asset_ids'])
         item_run.started_at = observed_at or timezone.now()
         item_run.status = 'RUNNING'
         item_run.ai_admission_status = 'NO_AI'
         item_run.save()
         engine_snapshot = {'source_type': 'CODE', 'engine': 'PYTHON_RULE'}
         try:
-            plugin = get_code_plugin(inspection_item.code)
             engine_snapshot.update(
                 rule_code=plugin.rule_code,
                 rule_version=plugin.rule_version,
@@ -49,7 +57,7 @@ def execute_inspection_item(inspection_run, inspection_item, dataset=None, *, re
                 operation_key=plugin.operation_key,
                 engine=plugin.engine,
             )
-            results = plugin.handler(reader=reader, assets=assets, config=item_run.asset_scope.get("rule_config", inspection_item.rule_config))
+            results = dispatch_code_rule(rule_code=inspection_item.code, reader=reader, assets=assets, config=item_run.asset_scope.get("rule_config", inspection_item.rule_config))
             result_ids = [r.asset.pk for r in results]
             if set(result_ids) != {a.pk for a in assets} or len(result_ids) != len(assets):
                 raise ValueError('Rule must return exactly one result for each scoped asset')
@@ -64,9 +72,9 @@ def execute_inspection_item(inspection_run, inspection_item, dataset=None, *, re
         item_run.finished_at = timezone.now()
         CheckResult.objects.bulk_create([CheckResult(inspection_run=inspection_run, inspection_item_run=item_run, asset=r.asset, status=r.status, summary=r.summary, observed_value=r.observed_value, expected_value=r.expected_value, evidence={**r.evidence, 'asset_name':r.asset.name}, checked_at=item_run.finished_at) for r in results])
         failures = [r for r in results if r.status == 'FAIL']
-        persist_findings(item_run, [FindingSpec(finding_code=inspection_item.code, title=r.summary, category=inspection_item.domain, severity=inspection_item.default_severity, observed_at=item_run.finished_at, asset=r.asset, materiality=1, value={'observed':r.observed_value, 'expected':r.expected_value, 'evidence':r.evidence}, source_type=Finding.SourceType.RULE) for r in failures])
+        persist_findings(item_run, [FindingSpec(finding_code=inspection_item.code, title=r.summary, category=inspection_item.domain, severity=getattr(r, 'severity', None) or inspection_item.default_severity, observed_at=item_run.finished_at, asset=r.asset, materiality=1, value={'observed':r.observed_value, 'expected':r.expected_value, 'evidence':r.evidence}, source_type=Finding.SourceType.RULE) for r in failures])
         counts = dict(Counter(r.status for r in results))
-        item_run.summary = {'engine_snapshot': engine_snapshot, 'result_counts':counts, 'finding_count':len(failures), 'data_valid':bool(results) and not any(r.status in {'UNKNOWN','ERROR'} for r in results), 'rule_config':dict(item_run.asset_scope.get('rule_config', inspection_item.rule_config)), 'data_source':'MOCK'}
+        item_run.summary = {'engine_snapshot': engine_snapshot, 'result_counts':counts, 'finding_count':len(failures), 'data_valid':bool(results) and not any(r.status in {'UNKNOWN','ERROR'} for r in results), 'rule_config':dict(item_run.asset_scope.get('rule_config', inspection_item.rule_config)), 'data_source':source}
         item_run.save()
         _update_run_counts(inspection_run)
         return item_run

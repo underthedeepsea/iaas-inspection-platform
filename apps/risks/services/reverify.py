@@ -2,6 +2,7 @@
 
 from django.db import transaction
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 from apps.inspections.models import CheckResult, Finding, InspectionItemRun, InspectionRun
 from apps.risks.models import Risk, RiskObservation, RiskStatusHistory
@@ -95,7 +96,7 @@ def _valid_item_runs(inspection_run, *, allow_nonterminal=False, as_of=None):
     item_runs = (
         InspectionItemRun.objects.filter(
             inspection_run=inspection_run,
-            status=InspectionItemRun.Status.SUCCEEDED,
+            status__in=COMPLETED_ITEM_STATUSES,
         )
         .select_related("inspection_item")
     )
@@ -104,7 +105,10 @@ def _valid_item_runs(inspection_run, *, allow_nonterminal=False, as_of=None):
         for item_run in item_runs
         if item_run.finished_at is not None
         and item_run.finished_at <= boundary
-        and (item_run.summary or {}).get("data_valid") is True
+        and ((item_run.summary or {}).get("data_valid") is True or (
+            (inspection_run.config_snapshot or {}).get('input', {}).get('source_type') == 'INFERENCE_SNAPSHOT'
+            and (item_run.summary or {}).get("engine_snapshot", {}).get("plugin_id")
+        ))
     }
 
 
@@ -138,6 +142,28 @@ def _matching_non_active_finding(risk, item_run, environment, inspection_item):
         ) == risk.fingerprint:
             return finding
     return None
+
+
+def _valid_performance_pass(risk, check, pending_history):
+    evidence = check.evidence or {}
+    snapshot_id = evidence.get('snapshot_id')
+    window_start = parse_datetime(evidence.get('window_start') or '')
+    evaluation = evidence.get('evaluation') or {}
+    quality = evaluation.get('quality') or {}
+    if not snapshot_id or window_start is None or timezone.is_naive(window_start):
+        return False
+    if window_start <= pending_history.created_at:
+        return False
+    if quality.get('pending_confirmation') or quality.get('state') not in {'READY', 'IDLE'}:
+        return False
+    if quality.get('state') == 'IDLE':
+        return False
+    prior = RiskObservation.objects.filter(risk=risk, detected=True, created_at__lt=pending_history.created_at).order_by('-created_at', '-pk').first()
+    if prior is None:
+        return False
+    prior_check = CheckResult.objects.filter(inspection_item_run=prior.inspection_item_run, asset_id=risk.primary_asset_id).first()
+    prior_snapshot_id = (prior_check.evidence or {}).get('snapshot_id') if prior_check else None
+    return bool(prior_snapshot_id and str(prior_snapshot_id) != str(snapshot_id))
 
 
 def reverify_pending_risks(inspection_run, *, allow_nonterminal=False, as_of=None):
@@ -228,8 +254,13 @@ def reverify_pending_risks(inspection_run, *, allow_nonterminal=False, as_of=Non
                 as_of=as_of if allow_nonterminal else None,
             ):
                 continue
-            if not CheckResult.objects.filter(inspection_run=locked_run, inspection_item_run=item_run, asset_id=risk.primary_asset_id, status='PASS').exists():
+            check = CheckResult.objects.filter(inspection_run=locked_run, inspection_item_run=item_run, asset_id=risk.primary_asset_id, status='PASS').first()
+            if check is None:
                 continue
+            if (locked_run.config_snapshot or {}).get('input', {}).get('source_type') == 'INFERENCE_SNAPSHOT':
+                pending_history = RiskStatusHistory.objects.filter(risk=risk, to_status=Risk.Status.PENDING_REVERIFY).order_by('-created_at', '-pk').first()
+                if pending_history is None or not _valid_performance_pass(risk, check, pending_history):
+                    continue
             matching_finding = _matching_non_active_finding(
                 risk,
                 item_run,

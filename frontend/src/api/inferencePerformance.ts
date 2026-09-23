@@ -36,6 +36,10 @@ export interface InferenceProfile {
   engine: { engine_id: string; engine_type: string; model_name: string }
   window: { start: string; end: string }
   status: InferenceStatus | 'UNKNOWN'
+  evaluation_status?: InferenceStatus | 'UNKNOWN'
+  freshness?: { state: 'FRESH' | 'STALE'; age_seconds: number; max_age_seconds: number }
+  plugin?: { id?: string; version?: string; rule_code?: string }
+  quality?: { state?: string; pending_confirmation?: boolean }
   current_metrics: CurrentInferenceMetrics
   fixed: { status?: InferenceStatus }
   dynamic: { status?: EvaluationStatus; baseline_state?: 'READY' | 'NOT_READY' }
@@ -44,10 +48,19 @@ export interface InferenceProfile {
   reasons: InferenceReason[]
 }
 
-export async function getInferenceProfile(environmentId: string, engineId = 'latest') {
+export interface InferenceEngine { engine_id: string; engine_type: string; model_name: string }
+
+export async function getInferenceEngines(environmentId: string) {
+  const response = await apiClient.get<{ engines: InferenceEngine[] }>('/inference-performance/engines', {
+    params: { environment_id: environmentId },
+  })
+  return response.data.engines
+}
+
+export async function getInferenceProfile(environmentId: string, engineId = 'latest', engineType?: string, modelName?: string) {
   const response = await apiClient.get<InferenceProfile>(
     `/inference-performance/engines/${encodeURIComponent(engineId)}/profile`,
-    { params: { environment_id: environmentId } },
+    { params: { environment_id: environmentId, engine_type: engineType, model_name: modelName } },
   )
   return response.data
 }

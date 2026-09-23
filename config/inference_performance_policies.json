@@ -20,7 +20,8 @@
       "watch_change_ratio": 0.1,
       "degrading_change_ratio": 0.2
     },
-    "persistence": {"consecutive_hits": 2}
+    "persistence": {"consecutive_hits": 2},
+    "quality": {"max_age_seconds": 300, "max_gap_seconds": 300}
   },
   "engines": {"vllm": {}, "sglang": {}},
   "models": {

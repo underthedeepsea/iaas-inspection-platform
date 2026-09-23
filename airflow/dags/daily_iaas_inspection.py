@@ -14,8 +14,6 @@ SCHEDULE = os.getenv("INSPECTION_DAG_SCHEDULE", "0 7 * * *")
 API_BASE_URL = os.getenv("INSPECTION_API_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
 INTERNAL_TOKEN = os.getenv("AIRFLOW_INTERNAL_TOKEN", "")
 HTTP_TIMEOUT_SECONDS = float(os.getenv("INSPECTION_HTTP_TIMEOUT_SECONDS", "30"))
-DEFAULT_SEED = os.getenv("MOCK_DEFAULT_SEED", "20260823")
-DEFAULT_SCENARIO = os.getenv("MOCK_DEFAULT_SCENARIO", "llm_scheduler_pressure")
 
 
 def _configured_environment_id():
@@ -51,30 +49,15 @@ def _date(context):
     return context.get("ds") or context["execution_date"].date().isoformat()
 
 
-def generate_dataset_task(**context):
-    environment_id = _configured_environment_id()
-    response = _post(
-        "datasets/",
-        {
-            "environment_id": environment_id,
-            "dataset_date": _date(context),
-            "seed": DEFAULT_SEED,
-            "scenario": DEFAULT_SCENARIO,
-        },
-    )
-    return {"dataset_id": response["dataset_id"]}
-
-
 def create_run_task(**context):
     environment_id = _configured_environment_id()
-    dataset = context["ti"].xcom_pull(task_ids="generate_dataset")
     response = _post(
         "inspection-runs/",
         {
-            "dataset_id": dataset["dataset_id"],
             "environment_id": environment_id,
             "run_date": _date(context),
             "dag_run_id": context["run_id"],
+            "source_type": "INFERENCE_SNAPSHOT",
         },
     )
     return {"inspection_run_id": response["inspection_run_id"]}
@@ -127,11 +110,6 @@ with DAG(
     },
     tags=["iaas", "inspection"],
 ) as dag:
-    generate_dataset = PythonOperator(
-        task_id="generate_dataset",
-        python_callable=generate_dataset_task,
-        provide_context=True,
-    )
     create_run = PythonOperator(
         task_id="create_run",
         python_callable=create_run_task,
@@ -168,6 +146,5 @@ with DAG(
         provide_context=True,
     )
 
-    generate_dataset >> create_run >> execute_inspections
-    execute_inspections >> correlate_risks >> reverify_pending_risks
+    create_run >> execute_inspections >> correlate_risks >> reverify_pending_risks
     reverify_pending_risks >> build_resource_summaries >> build_snapshot >> complete_run
