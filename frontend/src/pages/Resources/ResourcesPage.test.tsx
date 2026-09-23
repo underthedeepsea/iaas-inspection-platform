@@ -13,7 +13,7 @@ describe('ResourcesPage', () => {
     vi.spyOn(apiClient, 'get').mockResolvedValue({
       data: {
         items: [{
-          code: 'CONTROL_PLANE', name: '控制面', description: '控制面资源', icon: 'control', asset_count: 12,
+          code: 'LLM_RUNTIME', name: 'LLM 运行时', description: '推理性能资源', icon: 'llm', asset_count: 12,
           inspection_item_count: 5, health_score: 91, risk_count: 3, p1_count: 1, p2_count: 1,
           coverage_rate: 0.96, last_inspection_at: '2026-08-25T10:00:00Z',
         }], page: 1, page_size: 1, total: 1,

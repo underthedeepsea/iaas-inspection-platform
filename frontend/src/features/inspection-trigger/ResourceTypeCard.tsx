@@ -2,12 +2,7 @@ import { Card } from 'antd'
 import type { ResourceType } from '../../api/resources'
 
 const tagsByCode: Record<string, string[]> = {
-  CONTROL_PLANE: ['反亲和', '冗余度', '容量'],
-  KVM_CLUSTER: ['容量', '健康度', '超分'],
-  K8S_CLUSTER: ['组件容量', '调度', '告警'],
-  LLM_RUNTIME: ['性能', 'GPU', '调度', '容量'],
-  GPU_POOL: ['ECC', '利用率', '健康度'],
-  HOST: ['基础服务', '内核参数', '容量'],
+  LLM_RUNTIME: ['推理性能', '固定阈值', '动态基线', '趋势'],
 }
 
 export function ResourceTypeCard({
@@ -19,7 +14,7 @@ export function ResourceTypeCard({
   selected: boolean
   onToggle: () => void
 }) {
-  const tags = tagsByCode[resource.code] ?? ['健康度', '容量']
+  const tags = tagsByCode[resource.code] ?? ['未接入正式插件']
   return (
     <Card className="inspection-resource-card-shell" bordered={false} styles={{ body: { padding: 0 } }}>
       <button aria-checked={selected} aria-pressed={selected} className={`inspection-resource-card${selected ? ' is-selected' : ''}`} onClick={onToggle} type="button">

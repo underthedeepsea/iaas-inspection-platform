@@ -26,6 +26,7 @@ from apps.inspections.services.execution import execute_inspection_run
 from apps.inspections.services.events import append_run_event
 from apps.inspections.services.resource_summary import build_resource_summaries
 from apps.inspections.services.snapshot import build_daily_snapshot
+from apps.inspections.services.trigger import create_manual_inspection_run
 from apps.mockdata.services import persist_dataset
 from apps.risks.models import RiskObservation
 from apps.risks.services.correlation import correlate_run
@@ -338,6 +339,8 @@ def datasets(request):
 
     with transaction.atomic():
         environment = _environment(environment_id, lock=True)
+        if environment.environment_type != Environment.EnvironmentType.TEST:
+            raise BatchAPIError('mock_disabled', 'mock dataset generation is available only in test environments', 403)
         if requested_dataset_id is not None:
             try:
                 requested_dataset = MockDataset.objects.select_for_update().get(
@@ -395,23 +398,19 @@ def datasets(request):
 @batch_endpoint
 def inspection_runs(request):
     payload = _payload(request)
-    dataset_id = _uuid(_required(payload, "dataset_id"), "dataset_id")
+    source_type = payload.get('source_type', 'INFERENCE_SNAPSHOT')
+    if source_type != 'INFERENCE_SNAPSHOT':
+        raise BatchAPIError('invalid_input', 'unsupported input source', 400)
+    if 'dataset_id' in payload:
+        raise BatchAPIError('invalid_input', 'dataset_id is not accepted for real inference runs', 400)
     environment_id = _uuid(_required(payload, "environment_id"), "environment_id")
     run_date = _date(
         payload.get("run_date", payload.get("business_date")),
         "run_date",
     )
     dag_run_id = _text(_required(payload, "dag_run_id"), "dag_run_id", 250)
-    dataset = _dataset(dataset_id)
-    if dataset.environment_id != environment_id or dataset.dataset_date != run_date:
-        raise BatchAPIError(
-            "immutable_input_conflict",
-            "dataset and run context do not match",
-            409,
-        )
-
     with transaction.atomic():
-        _environment(environment_id, lock=True)
+        environment = _environment(environment_id, lock=True)
         run = (
             InspectionRun.objects.select_for_update()
             .filter(airflow_dag_run_id=dag_run_id)
@@ -420,8 +419,8 @@ def inspection_runs(request):
         if run is not None:
             if (
                 run.environment_id != environment_id
-                or run.dataset_id != dataset_id
                 or run.run_date != run_date
+                or (run.config_snapshot or {}).get('input', {}).get('source_type') != source_type
             ):
                 raise BatchAPIError(
                     "immutable_input_conflict",
@@ -434,22 +433,18 @@ def inspection_runs(request):
                 # winner must not poison the surrounding transaction before
                 # we read the canonical row for the idempotent retry.
                 with transaction.atomic():
-                    run = InspectionRun.objects.create(
-                        environment_id=environment_id,
-                        dataset_id=dataset_id,
-                        run_date=run_date,
-                        trigger_type=InspectionRun.TriggerType.AIRFLOW,
-                        airflow_dag_run_id=dag_run_id,
-                        config_snapshot={
-                            "batch": {
-                                "environment_id": str(environment_id),
-                                "dataset_id": str(dataset_id),
-                                "run_date": run_date.isoformat(),
-                                "dag_run_id": dag_run_id,
-                                "stages": {},
-                            }
-                        },
-                    )
+                    try:
+                        run = create_manual_inspection_run(environment=environment, resource_type_codes=['LLM_RUNTIME'], ai_mode='DISABLED', run_date=run_date)
+                    except ValueError as error:
+                        if str(error) == 'NO_ACTIVE_PLUGIN':
+                            raise BatchAPIError('NO_ACTIVE_PLUGIN', 'no active plugin for requested resource', 409) from None
+                        raise
+                    run.trigger_type = InspectionRun.TriggerType.AIRFLOW
+                    run.airflow_dag_run_id = dag_run_id
+                    snapshot = dict(run.config_snapshot)
+                    snapshot['batch'] = {'environment_id': str(environment_id), 'run_date': run_date.isoformat(), 'dag_run_id': dag_run_id, 'stages': {}}
+                    run.config_snapshot = snapshot
+                    run.save(update_fields=['trigger_type', 'airflow_dag_run_id', 'config_snapshot'])
             except IntegrityError:
                 run = (
                     InspectionRun.objects.select_for_update()
@@ -464,8 +459,8 @@ def inspection_runs(request):
                     ) from None
                 if (
                     run.environment_id != environment_id
-                    or run.dataset_id != dataset_id
                     or run.run_date != run_date
+                    or (run.config_snapshot or {}).get('input', {}).get('source_type') != source_type
                 ):
                     raise BatchAPIError(
                         "immutable_input_conflict",
@@ -480,8 +475,9 @@ def _stage_run(request, run_id):
     payload = _payload(request)
     run = _run(run_id)
     _check_run_context(run, payload)
-    if run.dataset_id is None:
-        raise BatchAPIError("invalid_state", "inspection run has no dataset", 409)
+    source = (run.config_snapshot or {}).get('input', {}).get('source_type')
+    if source != 'INFERENCE_SNAPSHOT':
+        raise BatchAPIError("invalid_state", "inspection run has unsupported input source", 409)
     return run
 
 

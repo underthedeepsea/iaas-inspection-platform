@@ -25,9 +25,9 @@ def make_environment():
     return Environment.objects.create(name="Resource API", slug=f"resource-{uuid.uuid4().hex}")
 
 
-def make_item(index):
+def make_item(index, *, code=None):
     return InspectionItem.objects.create(
-        code=f"resource.api.item.{index}.{uuid.uuid4().hex}",
+        code=code or f"resource.api.item.{index}.{uuid.uuid4().hex}",
         name=f"Resource item {index}",
         domain="LLM",
         execution_mode=InspectionItem.ExecutionMode.CODE_ONLY,
@@ -73,18 +73,19 @@ def make_run(environment, resource_type, run_date, *, status=InspectionRun.Statu
 @pytest.mark.django_db
 def test_resource_type_list_exposes_latest_summary_metrics():
     environment = make_environment()
-    resource_type = ResourceType.objects.create(
-        code="RESOURCE_API_LLM",
-        name="LLM 推理引擎",
-        asset_selector={"asset_types": ["LLM_INSTANCE"]},
+    resource_type, _ = ResourceType.objects.update_or_create(
+        code="LLM_RUNTIME",
+        defaults={"name": "LLM 推理引擎", "enabled": True,
+                  "asset_selector": {"asset_types": ["LLM_INSTANCE"], "labels": {"input_source": "INFERENCE_SNAPSHOT"}}},
     )
-    item = make_item(1)
+    item = make_item(1, code='llm.performance_profile')
     InspectionItemResourceType.objects.create(resource_type=resource_type, inspection_item=item)
     Asset.objects.create(
         environment=environment,
         external_key="resource-api-llm",
         asset_type=Asset.AssetType.LLM_INSTANCE,
         name="LLM",
+        labels={"input_source": "INFERENCE_SNAPSHOT"},
     )
     make_run(environment, resource_type, date(2026, 8, 25))
     client = Client()
@@ -97,6 +98,7 @@ def test_resource_type_list_exposes_latest_summary_metrics():
     assert item_body == {
         **item_body,
         "name": "LLM 推理引擎",
+        "release_state": "READY",
         "asset_count": 36,
         "assets_total": 36,
         "assets_covered": 35,
@@ -117,6 +119,19 @@ def test_resource_type_endpoints_accept_environment_slug():
     response = client.get("/api/v1/resource-types", {"environment_id": environment.slug})
 
     assert response.status_code == 200
+
+
+@pytest.mark.django_db
+def test_unconnected_resource_does_not_reuse_historical_mock_health():
+    environment = make_environment()
+    resource = ResourceType.objects.create(code='RESOURCE_API_UNCONNECTED', name='Unconnected', asset_selector={'asset_types': ['POD']})
+    make_run(environment, resource, date(2026, 8, 25))
+    response = Client().get('/api/v1/resource-types', {'environment_id': str(environment.pk)})
+    assert response.status_code == 200
+    row = next(item for item in response.json()['items'] if item['code'] == resource.code)
+    assert row['release_state'] == 'PLANNED'
+    assert row['health_score'] is None
+    assert row['data_state'] == 'NOT_CONNECTED'
 
 
 @pytest.mark.django_db

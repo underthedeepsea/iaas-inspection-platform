@@ -6,6 +6,7 @@ import { AiRuntimePage } from '../pages/AiRuntime/AiRuntimePage'
 import { DashboardPage } from '../pages/Dashboard/DashboardPage'
 import { MainLayout } from '../layouts/MainLayout/MainLayout'
 import { ProductInfoPage } from '../pages/ProductInfo/ProductInfoPage'
+import { PromptsPage } from '../pages/Prompts/PromptsPage'
 import { ResourceDetailPage } from '../pages/ResourceDetail/ResourceDetailPage'
 import { ResourceRunDetailPage } from '../pages/ResourceRunDetail/ResourceRunDetailPage'
 import { ResourcesPage } from '../pages/Resources/ResourcesPage'
@@ -28,6 +29,7 @@ export function AppRouter() {
           <Route element={<RisksPage />} path="/risks" />
           <Route element={<AiRuntimePage />} path="/ai-runtime" />
           <Route element={<ProductInfoPage />} path="/about" />
+          <Route element={<PromptsPage />} path="/prompts" />
         </Route>
       </Routes>
     </BrowserRouter>

@@ -67,7 +67,10 @@ def _build_summary(run, resource_type):
         statuses[str(asset_id)].add(status)
         counts[status] += 1
     applicable_assets = sum(bool(values - {'NOT_APPLICABLE'}) for values in statuses.values())
-    conclusive_assets = sum(bool(values & {'PASS','FAIL'}) for values in statuses.values())
+    conclusive_assets = sum(
+        bool(values & {'PASS', 'FAIL'}) and not bool(values & {'UNKNOWN', 'ERROR'})
+        for values in statuses.values()
+    )
     confidence = {
         'applicable_assets': applicable_assets,
         'conclusive_assets': conclusive_assets,
@@ -121,6 +124,9 @@ def _build_summary(run, resource_type):
     if assets_total and confidence['conclusive_assets'] == 0:
         health_score = None
         data_state = 'UNKNOWN'
+    elif assets_total and confidence['conclusive_assets'] < assets_total:
+        health_score = None
+        data_state = 'PARTIAL'
     breakdown = {
         "penalty": penalty,
         "coverage_penalty": coverage_penalty,

@@ -39,23 +39,35 @@ def build_baseline(*, snapshot, max_samples: int = 4096) -> HistoricalBaseline:
         environment=snapshot.environment, engine_id=snapshot.engine_id, engine_type=snapshot.engine_type,
         model_name=snapshot.model_name, window_end__gte=snapshot.window_end - timedelta(days=14),
         window_end__lt=snapshot.window_end,
-    ).order_by("window_end", "pk")
-    history = list(queryset)
+    ).order_by("window_end", "pk").values('window_start', 'window_end', 'metrics')
+    count = queryset.count()
+    stride = max(1, (count + max_samples - 1) // max_samples)
+    history = []
+    for index, item in enumerate(queryset.iterator(chunk_size=512)):
+        if index % stride:
+            continue
+        if (item['window_end'] - item['window_start']) != (snapshot.window_end - snapshot.window_start):
+            continue
+        metrics = item['metrics']
+        if (metrics['traffic']['qps'] == 0 and metrics['requests']['running'] == 0 and
+                metrics['requests']['waiting'] == 0 and metrics['throughput']['generation_tps'] == 0 and
+                metrics['throughput']['prompt_tps'] == 0):
+            continue
+        history.append(item)
     current_qps = metric_value(snapshot.metrics, "traffic.qps")
     load_filter = "FULL_HISTORY_FALLBACK"
     if current_qps > 0:
         comparable = [
             item for item in history
-            if current_qps * 0.5 <= metric_value(item.metrics, "traffic.qps") <= current_qps * 1.5
+            if current_qps * 0.5 <= metric_value(item['metrics'], "traffic.qps") <= current_qps * 1.5
         ]
-        if len(comparable) >= 50:
+        if len(comparable) >= 100 and len({item['window_end'].date() for item in comparable}) >= 3:
             history = comparable
             load_filter = "QPS_COMPARABLE"
-    history = _downsample(history, max_samples)
-    days_covered = len({item.window_end.date() for item in history})
+    days_covered = len({item['window_end'].date() for item in history})
     values: dict[str, MetricBaseline] = {}
     for metric in (*PRIMARY_METRICS, *SUPPORT_METRICS):
-        series = [metric_value(item.metrics, metric) for item in history]
+        series = [metric_value(item['metrics'], metric) for item in history]
         if not series:
             continue
         center = float(median(series))
@@ -79,17 +91,23 @@ def evaluate_dynamic(*, current_metrics: dict[str, Any], baseline: HistoricalBas
         current = metric_value(current_metrics, metric)
         warning = max(item.median * (1 + float(dynamic["warning_change_ratio"])), item.median + float(dynamic["warning_z"]) * item.robust_sigma)
         critical = max(item.median * (1 + float(dynamic["critical_change_ratio"])), item.median + float(dynamic["critical_z"]) * item.robust_sigma)
-        reaches_critical = current > critical if critical == 0 else current >= critical
-        reaches_warning = current > warning if warning == 0 else current >= warning
-        status = "CRITICAL" if reaches_critical else "WARNING" if reaches_warning else "NORMAL"
+        zero_baseline = item.median == 0
+        if zero_baseline:
+            status = 'NOT_EVALUABLE'
+        else:
+            status = "CRITICAL" if current >= critical else "WARNING" if current >= warning else "NORMAL"
         primary = metric in PRIMARY_METRICS
+        contributes = primary and result['load_filter'] == 'QPS_COMPARABLE' and not zero_baseline
         result["metrics"][metric] = {
             "metric": metric, "current": current, "baseline_median": item.median, "mad": item.mad,
             "robust_sigma": item.robust_sigma, "warning": warning, "critical": critical,
-            "change_ratio": (current - item.median) / max(item.median, 1e-9),
-            "status": status, "contributes_to_status": primary,
+            "change_ratio": None if zero_baseline else (current - item.median) / item.median,
+            "absolute_change": current - item.median,
+            "status": status if primary else 'OBSERVED',
+            "quality_reason": 'ZERO_BASELINE' if zero_baseline else None,
+            "contributes_to_status": contributes,
         }
-        if primary:
+        if contributes:
             statuses.append(status)
     result["status"] = highest_status(statuses)
     return result

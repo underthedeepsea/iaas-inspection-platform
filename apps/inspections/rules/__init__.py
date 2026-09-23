@@ -10,3 +10,4 @@ class CheckResultSpec:
     observed_value: dict = field(default_factory=dict)
     expected_value: dict = field(default_factory=dict)
     evidence: dict = field(default_factory=dict)
+    severity: str | None = None

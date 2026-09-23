@@ -48,13 +48,14 @@ export function ResourceDetailPage({ environmentId: providedEnvironmentId }: { e
   const resource = overviewQuery.data?.resource_type
   const resourceName = resource?.name ?? code
   const latest = overviewQuery.data?.latest
+  const hasRealLlmRun = code !== 'LLM_RUNTIME' || Boolean(overviewQuery.data?.check_results?.some(result => result.source?.plugin_id === 'inference-performance'))
 
   return (
     <section aria-labelledby="resource-detail-title" className="view">
       <div className="back-row"><Link className="text-link" to="/resources">← 返回资源巡检</Link><span className="muted">{code}</span></div>
       <div className="page-heading">
         <div><span className="eyebrow">RESOURCE DETAIL</span><h2 id="resource-detail-title">{resourceName}</h2><p className="lede">{resource?.description ?? '查看资源健康、巡检历史、风险和 AI 研判。'}</p></div>
-        <div className="heading-actions"><span className="freshness">{latest?.run_date ? `最近巡检：${latest.run_date}` : '等待最近巡检'}</span>{resource ? <InspectionTriggerButton environmentId={environmentId} resourceTypes={[resource]} /> : null}</div>
+        <div className="heading-actions"><span className="freshness">{hasRealLlmRun && latest?.run_date ? `最近正式巡检：${latest.run_date}` : '等待正式巡检'}</span>{resource ? <InspectionTriggerButton environmentId={environmentId} resourceTypes={[resource]} /> : null}</div>
       </div>
       <Tabs
         activeKey={activeTab}
@@ -69,6 +70,8 @@ export function ResourceDetailPage({ environmentId: providedEnvironmentId }: { e
         <OverviewPanel code={code} environmentId={environmentId} overview={overviewQuery.data} />
       ) : activeTab === 'risks' ? (
         <RiskPanel overview={overviewQuery.data} risks={risksQuery.data?.items ?? []} loading={risksQuery.isLoading} />
+      ) : code === 'LLM_RUNTIME' && !hasRealLlmRun ? (
+        <section className="panel panel-large"><div className="empty-state compact"><strong>尚无正式性能巡检结果</strong><p>请先运行一次使用真实快照的巡检，再查看 AI 解读。</p></div></section>
       ) : (
         <section className="panel panel-large"><AIAnalysisPanel contextType="RESOURCE_TYPE" environmentId={environmentId} resourceCode={code} /></section>
       )}
@@ -78,7 +81,8 @@ export function ResourceDetailPage({ environmentId: providedEnvironmentId }: { e
 
 function OverviewPanel({ code, environmentId, overview }: { code: string; environmentId: string; overview?: Awaited<ReturnType<typeof getResourceOverview>> }) {
   if (!overview) return <section className="panel"><div className="empty-state compact"><strong>正在加载资源概览</strong><p>正在读取健康度、覆盖率和趋势数据。</p></div></section>
-  const latest = overview.latest
+  const isRealLlmRun = code !== 'LLM_RUNTIME' || Boolean(overview.check_results?.some(result => result.source?.plugin_id === 'inference-performance'))
+  const latest = isRealLlmRun ? overview.latest : null
   const isNoData = overview.resource_type.data_state === 'NO_DATA' || latest?.summary?.data_state === 'NO_DATA'
   const metrics = [
     ['健康度', latest?.health_score ?? '—', latest?.health_score == null ? '等待巡检结果' : '最近一轮巡检'],
@@ -89,7 +93,8 @@ function OverviewPanel({ code, environmentId, overview }: { code: string; enviro
   return (
     <>
       <CheckResultsTable results={overview.check_results} />
-      {code === 'LLM_RUNTIME' ? <InferencePerformanceProfile environmentId={environmentId} /> : null}
+      {code === 'LLM_RUNTIME' ? <InferencePerformanceProfile environmentId={environmentId} latestRunAt={latest?.finished_at} /> : null}
+      {code === 'LLM_RUNTIME' && overview.latest && !isRealLlmRun ? <p role="status">最近记录来自已退场演示规则，仅可作历史查看；当前尚无正式插件巡检结论。</p> : null}
       {latest?.summary?.data_state === 'UNKNOWN' ? <p role="status">证据不足，暂无可信健康分数</p> : null}
       {isNoData ? <p className="no-data-banner" role="status">无可用资源数据</p> : null}
       <div className="metric-grid">{metrics.map(([label, value, detail]) => <article className="metric-card" key={label}><span>{label}</span><strong>{value}</strong><small>{detail}</small></article>)}</div>

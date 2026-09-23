@@ -24,11 +24,13 @@ _SAFE_PAYLOAD_KEYS = frozenset(
         "shadow_cases",
         "precision",
         "critical_false_positive",
+        "before_revision", "after_revision", "before_body", "after_body",
+        "before_hash", "after_hash", "credential_identity", "prompt_key", "guard_version",
     }
 )
 
 
-def record_event(*, environment, event_type, object_type, object_id, payload=None):
+def record_event(*, environment, event_type, object_type, object_id, payload=None, trace_id=None):
     """Write a bounded, non-sensitive audit row inside the caller's transaction."""
 
     if not isinstance(event_type, str) or not event_type.strip():
@@ -41,6 +43,7 @@ def record_event(*, environment, event_type, object_type, object_id, payload=Non
         event_type=event_type.strip()[:64],
         object_type=object_type.strip()[:64],
         object_id=str(object_id),
+        trace_id=trace_id,
         payload=safe_payload,
     )
 

@@ -7,6 +7,7 @@ import uuid
 from datetime import date
 from collections.abc import Mapping
 
+from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.http import JsonResponse
 
@@ -23,6 +24,8 @@ _MAX_CONFIG_KEYS = {"host_count", "duration_minutes"}
 
 
 def generate(request):
+    if not (settings.DEBUG and getattr(settings, "MOCK_DATA_GENERATION_ENABLED", False)):
+        return api_error("MOCK_GENERATION_DISABLED", "mock dataset generation is unavailable", status=404)
     if request.method != "POST":
         return _method("mock dataset generation")
     try:

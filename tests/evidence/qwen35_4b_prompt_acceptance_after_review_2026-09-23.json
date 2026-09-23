@@ -1,0 +1,943 @@
+{
+  "model": "qwen3.5:4b-mlx",
+  "digest": "61aa3858e9d3022e8fca725550089addd9289c4446f33bd09dfd12f95f2a6792",
+  "quantization": "nvfp4",
+  "format": "safetensors",
+  "runtime": "local Ollama /api/chat",
+  "options": {
+    "think": false,
+    "format": "json",
+    "num_predict": 384
+  },
+  "context_builder": "apps.investigations.services.compact_context.build_compact_explanation_context",
+  "context_builder_sha256": "f5d2f2cfe22dde8e8b9fb9ec12c6b2cf64a840a02c0a0d5c18c0776d5424a21f",
+  "results": [
+    {
+      "case": "normal",
+      "fact": {
+        "inspection_run_id": "run-1",
+        "resource_type": "LLM_RUNTIME",
+        "question": "请解释本轮巡检",
+        "summary": {
+          "check_count": 1,
+          "status_counts": {
+            "PASS": 1,
+            "FAIL": 0,
+            "UNKNOWN": 0,
+            "ERROR": 0
+          },
+          "status_counts_complete": true
+        },
+        "check_results": [
+          {
+            "id": "check-1",
+            "check": "llm.performance_profile",
+            "asset_id": "asset-1",
+            "status": "PASS",
+            "summary": "推理性能符合当前策略",
+            "observed": {
+              "ttft_p95_ms": 200
+            },
+            "expected": {
+              "ttft_p95_warning_ms": 250
+            },
+            "facts": {
+              "window_start": "2026-09-23T10:00:00+08:00",
+              "window_end": "2026-09-23T10:01:00+08:00",
+              "snapshot_id": "snapshot-1",
+              "quality": {
+                "state": "READY"
+              },
+              "status": "NORMAL"
+            },
+            "reasons": []
+          }
+        ],
+        "previous_run": null,
+        "comparison_note": "未提供前次巡检摘要；不能断言这是首次执行",
+        "omitted_count": 0,
+        "truncated": false
+      },
+      "old": {
+        "elapsed_seconds": 10.315,
+        "input_bytes": 746,
+        "prompt_tokens": 380,
+        "output_tokens": 89,
+        "model_response": "qwen3.5:4b-mlx",
+        "valid_final": true,
+        "accepted_final": true,
+        "tool_requested": false,
+        "mentions_unproven_gpu": false,
+        "summary": "本轮 LLM_RUNTIME 巡检共检查 1 项，状态为 PASS。证据：check-1（llm.performance_profile）观测值 ttft_p95_ms 为 200，低于阈值警告线 250 ms，结论“推理性能符合当前策略”。无法对比历史数据，因上次巡检摘要未提供。",
+        "raw_content": "{\"action\":\"FINAL\",\"answer\":{\"summary\":\"本轮 LLM_RUNTIME 巡检共检查 1 项，状态为 PASS。证据：check-1（llm.performance_profile）观测值 ttft_p95_ms 为 200，低于阈值警告线 250 ms，结论“推理性能符合当前策略”。无法对比历史数据，因上次巡检摘要未提供。\",\"confidence\":1.0}}"
+      },
+      "new": {
+        "elapsed_seconds": 9.469,
+        "input_bytes": 746,
+        "prompt_tokens": 332,
+        "output_tokens": 149,
+        "model_response": "qwen3.5:4b-mlx",
+        "valid_final": true,
+        "accepted_final": true,
+        "tool_requested": false,
+        "mentions_unproven_gpu": false,
+        "summary": "本次 LLM 运行巡检（run-1）结果为通过。在 2026 年 9 月 23 日的窗口期内，首字生成延迟 P95（observed=200ms）低于警告阈值预期（expected=250ms），推理性能符合策略要求。",
+        "raw_content": "{\n  \"action\": \"FINAL\",\n  \"answer\": {\n    \"summary\": \"本次 LLM 运行巡检（run-1）结果为通过。在 2026 年 9 月 23 日的窗口期内，首字生成延迟 P95（observed=200ms）低于警告阈值预期（expected=250ms），推理性能符合策略要求。\",\n    \"confidence\": 1.0,\n    \"evidence_ids\": [\n      \"check-1\"\n    ],\n    \"verification_suggestion\": \"建议检查当前 LLM 服务的资源负载与网络延迟，排除环境波动影响\"\n  }\n}"
+      }
+    },
+    {
+      "case": "fixed_breach",
+      "fact": {
+        "inspection_run_id": "run-1",
+        "resource_type": "LLM_RUNTIME",
+        "question": "请解释本轮巡检",
+        "summary": {
+          "check_count": 1,
+          "status_counts": {
+            "PASS": 0,
+            "FAIL": 1,
+            "UNKNOWN": 0,
+            "ERROR": 0
+          },
+          "status_counts_complete": true
+        },
+        "check_results": [
+          {
+            "id": "check-1",
+            "check": "llm.performance_profile",
+            "asset_id": "asset-1",
+            "status": "FAIL",
+            "summary": "推理性能超过预警阈值",
+            "observed": {
+              "ttft_p95_ms": 320
+            },
+            "expected": {
+              "ttft_p95_warning_ms": 250
+            },
+            "facts": {
+              "window_start": "2026-09-23T10:00:00+08:00",
+              "window_end": "2026-09-23T10:01:00+08:00",
+              "snapshot_id": "snapshot-1",
+              "quality": {
+                "state": "READY"
+              },
+              "status": "WARNING"
+            },
+            "reasons": [
+              {
+                "code": "TTFT_P95_FIXED_HIGH",
+                "metric": "ttft.p95_ms",
+                "current": 320,
+                "threshold": 250,
+                "status": "WARNING"
+              }
+            ]
+          }
+        ],
+        "previous_run": null,
+        "comparison_note": "未提供前次巡检摘要；不能断言这是首次执行",
+        "omitted_count": 0,
+        "truncated": false
+      },
+      "old": {
+        "elapsed_seconds": 6.792,
+        "input_bytes": 849,
+        "prompt_tokens": 415,
+        "output_tokens": 90,
+        "model_response": "qwen3.5:4b-mlx",
+        "valid_final": true,
+        "accepted_final": true,
+        "tool_requested": false,
+        "mentions_unproven_gpu": false,
+        "summary": "本轮 LLM_RUNTIME 巡检发现 1 项 FAIL。关键证据：check-1 (llm.performance_profile) 状态为 FAIL，原因代码 TTFT_P95_FIXED_HIGH 显示 P95 推理耗时实测 320ms 超过预警阈值 250ms。由于无历史数据对比，无法评估趋势。",
+        "raw_content": "{\"action\":\"FINAL\",\"answer\":{\"summary\":\"本轮 LLM_RUNTIME 巡检发现 1 项 FAIL。关键证据：check-1 (llm.performance_profile) 状态为 FAIL，原因代码 TTFT_P95_FIXED_HIGH 显示 P95 推理耗时实测 320ms 超过预警阈值 250ms。由于无历史数据对比，无法评估趋势。\",\"confidence\":0.98}}"
+      },
+      "new": {
+        "elapsed_seconds": 6.024,
+        "input_bytes": 849,
+        "prompt_tokens": 367,
+        "output_tokens": 80,
+        "model_response": "qwen3.5:4b-mlx",
+        "valid_final": true,
+        "accepted_final": true,
+        "tool_requested": false,
+        "mentions_unproven_gpu": false,
+        "summary": "本轮 LLM 推理性能检查失败。95% 分位首字时间（ttft_p95）实测值为 320ms，超过 250ms 的预警阈值，被判定为性能异常。建议立即核查模型负载与资源分配情况以优化推理速度。",
+        "raw_content": "{\"action\":\"FINAL\",\"answer\":{\"summary\":\"本轮 LLM 推理性能检查失败。95% 分位首字时间（ttft_p95）实测值为 320ms，超过 250ms 的预警阈值，被判定为性能异常。建议立即核查模型负载与资源分配情况以优化推理速度。\",\"confidence\":1.0}}"
+      }
+    },
+    {
+      "case": "dynamic_breach",
+      "fact": {
+        "inspection_run_id": "run-1",
+        "resource_type": "LLM_RUNTIME",
+        "question": "请解释本轮巡检",
+        "summary": {
+          "check_count": 1,
+          "status_counts": {
+            "PASS": 0,
+            "FAIL": 1,
+            "UNKNOWN": 0,
+            "ERROR": 0
+          },
+          "status_counts_complete": true
+        },
+        "check_results": [
+          {
+            "id": "check-dynamic",
+            "check": "llm.performance_profile",
+            "asset_id": "asset-1",
+            "status": "FAIL",
+            "summary": "推理性能超过预警阈值",
+            "observed": {
+              "ttft_p95_ms": 310
+            },
+            "expected": {
+              "baseline_median_ms": 190
+            },
+            "facts": {
+              "window_start": "2026-09-23T10:00:00+08:00",
+              "window_end": "2026-09-23T10:01:00+08:00",
+              "snapshot_id": "snapshot-1",
+              "quality": {
+                "state": "READY"
+              },
+              "status": "WARNING"
+            },
+            "reasons": [
+              {
+                "code": "TTFT_P95_DYNAMIC_HIGH",
+                "metric": "ttft.p95_ms",
+                "current": 310,
+                "boundary": 280,
+                "baseline_median": 190,
+                "change_ratio": 0.63,
+                "status": "WARNING"
+              }
+            ]
+          }
+        ],
+        "previous_run": null,
+        "comparison_note": "未提供前次巡检摘要；不能断言这是首次执行",
+        "omitted_count": 0,
+        "truncated": false
+      },
+      "old": {
+        "elapsed_seconds": 5.446,
+        "input_bytes": 897,
+        "prompt_tokens": 426,
+        "output_tokens": 78,
+        "model_response": "qwen3.5:4b-mlx",
+        "valid_final": true,
+        "accepted_final": true,
+        "tool_requested": false,
+        "mentions_unproven_gpu": false,
+        "summary": "本轮 LLM_RUNTIME 巡检发现 1 项失败：check-dynamic 指标 ttft.p95_ms 达 310ms，超过边界 280ms，超出基线中位数 190ms，性能预警触发。因无前次数据无法对比",
+        "raw_content": "{\"action\":\"FINAL\",\"answer\":{\"summary\":\"本轮 LLM_RUNTIME 巡检发现 1 项失败：check-dynamic 指标 ttft.p95_ms 达 310ms，超过边界 280ms，超出基线中位数 190ms，性能预警触发。因无前次数据无法对比\",\"confidence\":0.95}}"
+      },
+      "new": {
+        "elapsed_seconds": 6.835,
+        "input_bytes": 897,
+        "prompt_tokens": 378,
+        "output_tokens": 105,
+        "model_response": "qwen3.5:4b-mlx",
+        "valid_final": true,
+        "accepted_final": true,
+        "tool_requested": false,
+        "mentions_unproven_gpu": false,
+        "summary": "本轮 LLM 性能巡检发现推理首 token 时间（TTFT）P95 高达 310ms，超出预警阈值 280ms，状态为 FAIL。",
+        "raw_content": "{\"action\":\"FINAL\",\"answer\":{\"summary\":\"本轮 LLM 性能巡检发现推理首 token 时间（TTFT）P95 高达 310ms，超出预警阈值 280ms，状态为 FAIL。\",\"confidence\":0.8,\"evidence\":[\"check-dynamic:TTFT P95 达 310ms 超限\",\"check-dynamic:当前值比基准值升高 63%\"],\"suggestion\":\"需立即排查模型负载或资源瓶颈\"}}"
+      }
+    },
+    {
+      "case": "trend_only",
+      "fact": {
+        "inspection_run_id": "run-1",
+        "resource_type": "LLM_RUNTIME",
+        "question": "请解释本轮巡检",
+        "summary": {
+          "check_count": 1,
+          "status_counts": {
+            "PASS": 1,
+            "FAIL": 0,
+            "UNKNOWN": 0,
+            "ERROR": 0
+          },
+          "status_counts_complete": true
+        },
+        "check_results": [
+          {
+            "id": "check-1",
+            "check": "llm.performance_profile",
+            "asset_id": "asset-1",
+            "status": "PASS",
+            "summary": "推理性能符合当前策略",
+            "observed": {
+              "ttft_p95_ms": 200
+            },
+            "expected": {
+              "ttft_p95_warning_ms": 250
+            },
+            "facts": {
+              "window_start": "2026-09-23T10:00:00+08:00",
+              "window_end": "2026-09-23T10:01:00+08:00",
+              "snapshot_id": "snapshot-1",
+              "quality": {
+                "state": "READY"
+              },
+              "status": "NORMAL",
+              "trend": {
+                "status": "WATCH"
+              }
+            },
+            "reasons": []
+          }
+        ],
+        "previous_run": null,
+        "comparison_note": "未提供前次巡检摘要；不能断言这是首次执行",
+        "omitted_count": 0,
+        "truncated": false
+      },
+      "old": {
+        "elapsed_seconds": 4.678,
+        "input_bytes": 773,
+        "prompt_tokens": 387,
+        "output_tokens": 66,
+        "model_response": "qwen3.5:4b-mlx",
+        "valid_final": true,
+        "accepted_final": true,
+        "tool_requested": false,
+        "mentions_unproven_gpu": false,
+        "summary": "本轮 LLM 推理性能巡检（check-1）结果为 PASS，证据显示 p95 TTFT 为 200ms，低于策略警告阈值 250ms。因无历史数据，无法对比趋势变化。",
+        "raw_content": "{\"action\":\"FINAL\",\"answer\":{\"summary\":\"本轮 LLM 推理性能巡检（check-1）结果为 PASS，证据显示 p95 TTFT 为 200ms，低于策略警告阈值 250ms。因无历史数据，无法对比趋势变化。\",\"confidence\":1.0}}"
+      },
+      "new": {
+        "elapsed_seconds": 8.495,
+        "input_bytes": 773,
+        "prompt_tokens": 339,
+        "output_tokens": 141,
+        "model_response": "qwen3.5:4b-mlx",
+        "valid_final": true,
+        "accepted_final": true,
+        "tool_requested": false,
+        "mentions_unproven_gpu": false,
+        "summary": "本轮 LLM 推理性能巡检通过，ttft_p95 达标。未提供历史数据无法对比趋势。",
+        "raw_content": "{\n  \"action\": \"FINAL\",\n  \"answer\": {\n    \"summary\": \"本轮 LLM 推理性能巡检通过，ttft_p95 达标。未提供历史数据无法对比趋势。\",\n    \"confidence\": 0.8,\n    \"evidence\": [\n      {\"id\": \"check-1\", \"content\": \"ttft_p95_ms: 200ms (PASS)\"},\n      {\"id\": \"run-1\", \"content\": \"status_counts: PASS=1\"}\n    ],\n    \"suggestion\": \"需补充前次巡检数据以评估长期趋势\"\n  }\n}"
+      }
+    },
+    {
+      "case": "baseline_not_ready",
+      "fact": {
+        "inspection_run_id": "run-1",
+        "resource_type": "LLM_RUNTIME",
+        "question": "请解释本轮巡检",
+        "summary": {
+          "check_count": 1,
+          "status_counts": {
+            "PASS": 1,
+            "FAIL": 0,
+            "UNKNOWN": 0,
+            "ERROR": 0
+          },
+          "status_counts_complete": true
+        },
+        "check_results": [
+          {
+            "id": "check-1",
+            "check": "llm.performance_profile",
+            "asset_id": "asset-1",
+            "status": "PASS",
+            "summary": "推理性能符合当前策略",
+            "observed": {
+              "ttft_p95_ms": 200
+            },
+            "expected": {
+              "ttft_p95_warning_ms": 250
+            },
+            "facts": {
+              "window_start": "2026-09-23T10:00:00+08:00",
+              "window_end": "2026-09-23T10:01:00+08:00",
+              "snapshot_id": "snapshot-1",
+              "quality": {
+                "state": "READY"
+              },
+              "status": "NORMAL",
+              "dynamic": {
+                "status": "NOT_READY",
+                "baseline_state": "NOT_READY"
+              }
+            },
+            "reasons": []
+          }
+        ],
+        "previous_run": null,
+        "comparison_note": "未提供前次巡检摘要；不能断言这是首次执行",
+        "omitted_count": 0,
+        "truncated": false
+      },
+      "old": {
+        "elapsed_seconds": 5.271,
+        "input_bytes": 808,
+        "prompt_tokens": 394,
+        "output_tokens": 84,
+        "model_response": "qwen3.5:4b-mlx",
+        "valid_final": true,
+        "accepted_final": true,
+        "tool_requested": false,
+        "mentions_unproven_gpu": false,
+        "summary": "本轮巡检 LLM_RUNTIME 资源共 1 项检查，ID check-1（llm.performance_profile）结果为 PASS。事实显示 ttft_p95_ms 为 200ms，低于预警阈值 250ms；无 FAIL 记录。因无前次数据，无法对比范围差异。",
+        "raw_content": "{\"action\":\"FINAL\",\"answer\":{\"summary\":\"本轮巡检 LLM_RUNTIME 资源共 1 项检查，ID check-1（llm.performance_profile）结果为 PASS。事实显示 ttft_p95_ms 为 200ms，低于预警阈值 250ms；无 FAIL 记录。因无前次数据，无法对比范围差异。\",\"confidence\":0.98}}"
+      },
+      "new": {
+        "elapsed_seconds": 4.343,
+        "input_bytes": 808,
+        "prompt_tokens": 346,
+        "output_tokens": 74,
+        "model_response": "qwen3.5:4b-mlx",
+        "valid_final": true,
+        "accepted_final": true,
+        "tool_requested": false,
+        "mentions_unproven_gpu": false,
+        "summary": "本轮 LLM 推理性能符合当前策略，ttft_p95_实测 200ms 低于预警阈值 250ms。",
+        "raw_content": "{\"action\":\"FINAL\",\"answer\":{\"summary\":\"本轮 LLM 推理性能符合当前策略，ttft_p95_实测 200ms 低于预警阈值 250ms。\",\"confidence\":0.98,\"key_evidence\":[\"check-1:PASS\"],\"suggestion\":\"建议关注动态状态是否恢复正常\"},\"error_code\":null}"
+      }
+    },
+    {
+      "case": "zero_baseline",
+      "fact": {
+        "inspection_run_id": "run-1",
+        "resource_type": "LLM_RUNTIME",
+        "question": "请解释本轮巡检",
+        "summary": {
+          "check_count": 1,
+          "status_counts": {
+            "PASS": 1,
+            "FAIL": 0,
+            "UNKNOWN": 0,
+            "ERROR": 0
+          },
+          "status_counts_complete": true
+        },
+        "check_results": [
+          {
+            "id": "check-1",
+            "check": "llm.performance_profile",
+            "asset_id": "asset-1",
+            "status": "PASS",
+            "summary": "推理性能符合当前策略",
+            "observed": {
+              "ttft_p95_ms": 200
+            },
+            "expected": {
+              "ttft_p95_warning_ms": 250
+            },
+            "facts": {
+              "window_start": "2026-09-23T10:00:00+08:00",
+              "window_end": "2026-09-23T10:01:00+08:00",
+              "snapshot_id": "snapshot-1",
+              "quality": {
+                "state": "READY"
+              },
+              "status": "NORMAL",
+              "dynamic": {
+                "status": "NORMAL",
+                "baseline_state": "READY",
+                "quality_reasons": [
+                  "ZERO_BASELINE"
+                ]
+              }
+            },
+            "reasons": []
+          }
+        ],
+        "previous_run": null,
+        "comparison_note": "未提供前次巡检摘要；不能断言这是首次执行",
+        "omitted_count": 0,
+        "truncated": false
+      },
+      "old": {
+        "elapsed_seconds": 5.756,
+        "input_bytes": 837,
+        "prompt_tokens": 401,
+        "output_tokens": 99,
+        "model_response": "qwen3.5:4b-mlx",
+        "valid_final": true,
+        "accepted_final": true,
+        "tool_requested": false,
+        "mentions_unproven_gpu": false,
+        "summary": "本轮 LLM 推理性能符合当前策略。依据检查 code 'check-1' 及 ID 'llm.performance_profile'，观测到的 95% 分位首字耗时 (ttft_p95) 为 200ms，低于预期警告阈值 250ms，状态结果为 PASS。无风险数据。因无前次巡检摘要，无法对比趋势。",
+        "raw_content": "{\"action\":\"FINAL\",\"answer\":{\"summary\":\"本轮 LLM 推理性能符合当前策略。依据检查 code 'check-1' 及 ID 'llm.performance_profile'，观测到的 95% 分位首字耗时 (ttft_p95) 为 200ms，低于预期警告阈值 250ms，状态结果为 PASS。无风险数据。因无前次巡检摘要，无法对比趋势。\",\"confidence\":1.0}}"
+      },
+      "new": {
+        "elapsed_seconds": 3.209,
+        "input_bytes": 837,
+        "prompt_tokens": 353,
+        "output_tokens": 51,
+        "model_response": "qwen3.5:4b-mlx",
+        "valid_final": true,
+        "accepted_final": true,
+        "tool_requested": false,
+        "mentions_unproven_gpu": false,
+        "summary": "本轮 LLM 推理性能巡检结果为通过，p95 首字延迟 200ms 低于阈值 250ms，系统状态正常。",
+        "raw_content": "{\"action\":\"FINAL\",\"answer\":{\"summary\":\"本轮 LLM 推理性能巡检结果为通过，p95 首字延迟 200ms 低于阈值 250ms，系统状态正常。\",\"confidence\":0.8}}"
+      }
+    },
+    {
+      "case": "idle",
+      "fact": {
+        "inspection_run_id": "run-1",
+        "resource_type": "LLM_RUNTIME",
+        "question": "请解释本轮巡检",
+        "summary": {
+          "check_count": 1,
+          "status_counts": {
+            "PASS": 0,
+            "FAIL": 0,
+            "UNKNOWN": 1,
+            "ERROR": 0
+          },
+          "status_counts_complete": true
+        },
+        "check_results": [
+          {
+            "id": "check-1",
+            "check": "llm.performance_profile",
+            "asset_id": "asset-1",
+            "status": "UNKNOWN",
+            "summary": "引擎空闲，无法确认性能状态",
+            "observed": {
+              "ttft_p95_ms": 200
+            },
+            "expected": {
+              "ttft_p95_warning_ms": 250
+            },
+            "facts": {
+              "window_start": "2026-09-23T10:00:00+08:00",
+              "window_end": "2026-09-23T10:01:00+08:00",
+              "snapshot_id": "snapshot-1",
+              "quality": {
+                "state": "IDLE"
+              },
+              "status": "UNKNOWN"
+            },
+            "reasons": []
+          }
+        ],
+        "previous_run": null,
+        "comparison_note": "未提供前次巡检摘要；不能断言这是首次执行",
+        "omitted_count": 0,
+        "truncated": false
+      },
+      "old": {
+        "elapsed_seconds": 6.973,
+        "input_bytes": 758,
+        "prompt_tokens": 383,
+        "output_tokens": 111,
+        "model_response": "qwen3.5:4b-mlx",
+        "valid_final": true,
+        "accepted_final": true,
+        "tool_requested": false,
+        "mentions_unproven_gpu": false,
+        "summary": "本轮巡检显示 LLM_RUNTIME 引擎状态为 UNKNOWN，因当前状态确认为 IDLE（空闲）导致无法确认性能指标。具体证据见 check_id: 'check-1' (check_llm.performance_profile)，观察到的 ttft_p95_ms 为 200ms，低于警告阈值预期的 250ms，但系统状态导致结果判定为未知。由于未提供上轮巡检摘要，无法进行历史对比。",
+        "raw_content": "{\"action\":\"FINAL\",\"answer\":{\"summary\":\"本轮巡检显示 LLM_RUNTIME 引擎状态为 UNKNOWN，因当前状态确认为 IDLE（空闲）导致无法确认性能指标。具体证据见 check_id: 'check-1' (check_llm.performance_profile)，观察到的 ttft_p95_ms 为 200ms，低于警告阈值预期的 250ms，但系统状态导致结果判定为未知。由于未提供上轮巡检摘要，无法进行历史对比。\",\"confidence\":0.98}}"
+      },
+      "new": {
+        "elapsed_seconds": 7.11,
+        "input_bytes": 758,
+        "prompt_tokens": 335,
+        "output_tokens": 114,
+        "model_response": "qwen3.5:4b-mlx",
+        "valid_final": true,
+        "accepted_final": true,
+        "tool_requested": false,
+        "mentions_unproven_gpu": false,
+        "summary": "本轮 LLM 引擎巡检因处于空闲状态导致无法确认性能指标，结果判定为未知。",
+        "raw_content": "{\n  \"action\": \"FINAL\",\n  \"answer\": {\n    \"summary\": \"本轮 LLM 引擎巡检因处于空闲状态导致无法确认性能指标，结果判定为未知。\",\n    \"confidence\": 0.6,\n    \"key_evidence\": [\n      \"check-1: 引擎空闲，无法确认性能状态\",\n      \"status_counts_unknown_1\"\n    ],\n    \"suggestion\": \"建议在恢复负载后重新执行巡检以验证实际性能。\"\n  }\n}"
+      }
+    },
+    {
+      "case": "stale",
+      "fact": {
+        "inspection_run_id": "run-1",
+        "resource_type": "LLM_RUNTIME",
+        "question": "请解释本轮巡检",
+        "summary": {
+          "check_count": 1,
+          "status_counts": {
+            "PASS": 0,
+            "FAIL": 0,
+            "UNKNOWN": 1,
+            "ERROR": 0
+          },
+          "status_counts_complete": true
+        },
+        "check_results": [
+          {
+            "id": "check-1",
+            "check": "llm.performance_profile",
+            "asset_id": "asset-1",
+            "status": "UNKNOWN",
+            "summary": "冻结结果版本、身份或时效无效",
+            "observed": {
+              "ttft_p95_ms": 200
+            },
+            "expected": {
+              "ttft_p95_warning_ms": 250
+            },
+            "facts": {},
+            "reasons": []
+          }
+        ],
+        "previous_run": null,
+        "comparison_note": "未提供前次巡检摘要；不能断言这是首次执行",
+        "omitted_count": 0,
+        "truncated": false
+      },
+      "old": {
+        "elapsed_seconds": 4.42,
+        "input_bytes": 605,
+        "prompt_tokens": 310,
+        "output_tokens": 68,
+        "model_response": "qwen3.5:4b-mlx",
+        "valid_final": true,
+        "accepted_final": true,
+        "tool_requested": false,
+        "mentions_unproven_gpu": false,
+        "summary": "本轮巡检发现 1 项检查结果为 UNKNOWN（ID: check-1, check: llm.performance_profile），原因是冻结结果版本、身份或时效无效；未提供前次数据，无法对比趋势。证据不足时明确说明了当前状态。",
+        "raw_content": "{\"action\":\"FINAL\",\"answer\":{\"summary\":\"本轮巡检发现 1 项检查结果为 UNKNOWN（ID: check-1, check: llm.performance_profile），原因是冻结结果版本、身份或时效无效；未提供前次数据，无法对比趋势。证据不足时明确说明了当前状态。\",\"confidence\":0.9}}"
+      },
+      "new": {
+        "elapsed_seconds": 2.838,
+        "input_bytes": 605,
+        "prompt_tokens": 262,
+        "output_tokens": 38,
+        "model_response": "qwen3.5:4b-mlx",
+        "valid_final": true,
+        "accepted_final": true,
+        "tool_requested": false,
+        "mentions_unproven_gpu": false,
+        "summary": "本轮巡检因缺少历史数据及无效冻结版本，无法得出性能结论，状态标记为未知。",
+        "raw_content": "{\"action\":\"FINAL\",\"answer\":{\"summary\":\"本轮巡检因缺少历史数据及无效冻结版本，无法得出性能结论，状态标记为未知。\",\"confidence\":0.98}}"
+      }
+    },
+    {
+      "case": "mixed_assets",
+      "fact": {
+        "inspection_run_id": "run-1",
+        "resource_type": "LLM_RUNTIME",
+        "question": "请解释本轮巡检",
+        "summary": {
+          "check_count": 2,
+          "status_counts": {
+            "PASS": 1,
+            "FAIL": 1,
+            "UNKNOWN": 0,
+            "ERROR": 0
+          },
+          "status_counts_complete": true
+        },
+        "check_results": [
+          {
+            "id": "check-bad",
+            "check": "llm.performance_profile",
+            "asset_id": "asset-bad",
+            "status": "FAIL",
+            "summary": "推理性能超过预警阈值",
+            "observed": {},
+            "expected": {},
+            "facts": {
+              "window_start": "2026-09-23T10:00:00+08:00",
+              "window_end": "2026-09-23T10:01:00+08:00",
+              "snapshot_id": "snapshot-1",
+              "quality": {
+                "state": "READY"
+              },
+              "status": "WARNING"
+            },
+            "reasons": [
+              {
+                "code": "TTFT_P95_FIXED_HIGH",
+                "metric": "ttft.p95_ms",
+                "current": 320,
+                "threshold": 250,
+                "status": "WARNING"
+              }
+            ]
+          },
+          {
+            "id": "check-good",
+            "check": "llm.performance_profile",
+            "asset_id": "asset-good",
+            "status": "PASS",
+            "summary": "推理性能符合当前策略",
+            "observed": {},
+            "expected": {},
+            "facts": {
+              "window_start": "2026-09-23T10:00:00+08:00",
+              "window_end": "2026-09-23T10:01:00+08:00",
+              "snapshot_id": "snapshot-1",
+              "quality": {
+                "state": "READY"
+              },
+              "status": "NORMAL"
+            },
+            "reasons": []
+          }
+        ],
+        "previous_run": null,
+        "comparison_note": "未提供前次巡检摘要；不能断言这是首次执行",
+        "omitted_count": 0,
+        "truncated": false
+      },
+      "old": {
+        "elapsed_seconds": 8.563,
+        "input_bytes": 1156,
+        "prompt_tokens": 517,
+        "output_tokens": 109,
+        "model_response": "qwen3.5:4b-mlx",
+        "valid_final": true,
+        "accepted_final": true,
+        "tool_requested": false,
+        "mentions_unproven_gpu": false,
+        "summary": "本轮 LLM 运维巡检共检查 2 项，其中 1 项通过（asset-good），1 项失败。关键问题为 asset-bad 的推理性能 P95 延迟高达 320ms，超过 250ms 预警阈值（代码 check-bad/TTFT_P95_FIXED_HIGH）。由于无历史巡检数据，无法对比趋势变化。结论：资产存在性能风险待关注。",
+        "raw_content": "{\"action\":\"FINAL\",\"answer\":{\"summary\":\"本轮 LLM 运维巡检共检查 2 项，其中 1 项通过（asset-good），1 项失败。关键问题为 asset-bad 的推理性能 P95 延迟高达 320ms，超过 250ms 预警阈值（代码 check-bad/TTFT_P95_FIXED_HIGH）。由于无历史巡检数据，无法对比趋势变化。结论：资产存在性能风险待关注。\",\"confidence\":1.0}}"
+      },
+      "new": {
+        "elapsed_seconds": 5.657,
+        "input_bytes": 1156,
+        "prompt_tokens": 469,
+        "output_tokens": 63,
+        "model_response": "qwen3.5:4b-mlx",
+        "valid_final": true,
+        "accepted_final": true,
+        "tool_requested": false,
+        "mentions_unproven_gpu": false,
+        "summary": "本轮LLM巡检共检查2项，发现1项失败（asset-bad因TTFT P95超标）、1项通过；因无前次数据无法对比趋势。建议核查资产bad当前推理性能参数配置。",
+        "raw_content": "{\"action\":\"FINAL\",\"answer\":{\"summary\":\"本轮LLM巡检共检查2项，发现1项失败（asset-bad因TTFT P95超标）、1项通过；因无前次数据无法对比趋势。建议核查资产bad当前推理性能参数配置。\",\"confidence\":0.8}}"
+      }
+    },
+    {
+      "case": "compare_without_previous",
+      "fact": {
+        "inspection_run_id": "run-1",
+        "resource_type": "LLM_RUNTIME",
+        "question": "和上一次巡检相比如何？",
+        "summary": {
+          "check_count": 1,
+          "status_counts": {
+            "PASS": 1,
+            "FAIL": 0,
+            "UNKNOWN": 0,
+            "ERROR": 0
+          },
+          "status_counts_complete": true
+        },
+        "check_results": [
+          {
+            "id": "check-1",
+            "check": "llm.performance_profile",
+            "asset_id": "asset-1",
+            "status": "PASS",
+            "summary": "推理性能符合当前策略",
+            "observed": {
+              "ttft_p95_ms": 200
+            },
+            "expected": {
+              "ttft_p95_warning_ms": 250
+            },
+            "facts": {
+              "window_start": "2026-09-23T10:00:00+08:00",
+              "window_end": "2026-09-23T10:01:00+08:00",
+              "snapshot_id": "snapshot-1",
+              "quality": {
+                "state": "READY"
+              },
+              "status": "NORMAL"
+            },
+            "reasons": []
+          }
+        ],
+        "previous_run": null,
+        "comparison_note": "未提供前次巡检摘要；不能断言这是首次执行",
+        "omitted_count": 0,
+        "truncated": false
+      },
+      "old": {
+        "elapsed_seconds": 8.35,
+        "input_bytes": 758,
+        "prompt_tokens": 382,
+        "output_tokens": 112,
+        "model_response": "qwen3.5:4b-mlx",
+        "valid_final": true,
+        "accepted_final": false,
+        "tool_requested": false,
+        "mentions_unproven_gpu": false,
+        "summary": "本次巡检未发现故障，但无历史数据无法进行对比。关键证据：上次巡检摘要为空（previous_run: null），且系统明确提示‘未提供前次巡检摘要；不能断言这是首次执行’。当前检查 count 为 1，状态为 PASS，ttft_p95_ms(200) 低于阈值 warning_ms(250)，符合预期。因缺乏上一次巡检数据，无法判断性能是否改善或恶化。",
+        "raw_content": "{\"action\":\"FINAL\",\"answer\":{\"summary\":\"本次巡检未发现故障，但无历史数据无法进行对比。关键证据：上次巡检摘要为空（previous_run: null），且系统明确提示‘未提供前次巡检摘要；不能断言这是首次执行’。当前检查 count 为 1，状态为 PASS，ttft_p95_ms(200) 低于阈值 warning_ms(250)，符合预期。因缺乏上一次巡检数据，无法判断性能是否改善或恶化。\",\"confidence\":1.0}}"
+      },
+      "new": {
+        "elapsed_seconds": 8.118,
+        "input_bytes": 758,
+        "prompt_tokens": 334,
+        "output_tokens": 122,
+        "model_response": "qwen3.5:4b-mlx",
+        "valid_final": true,
+        "accepted_final": false,
+        "tool_requested": false,
+        "mentions_unproven_gpu": false,
+        "summary": "本次为首次巡检，无历史数据可比，仅确认推理性能符合当前策略（ttft_p95_ms=200ms）。",
+        "raw_content": "{\n  \"action\": \"FINAL\",\n  \"answer\": {\n    \"summary\": \"本次为首次巡检，无历史数据可比，仅确认推理性能符合当前策略（ttft_p95_ms=200ms）。\",\n    \"confidence\": 0.9,\n    \"evidence\": [\n      \"previous_run=null\",\n      \"comparison_note:未提供前次巡检摘要；不能断言这是首次执行\"\n    ],\n    \"suggestion\": \"建议补充历史数据以进行趋势对比分析。\"\n  }\n}"
+      }
+    },
+    {
+      "case": "injected_evidence",
+      "fact": {
+        "inspection_run_id": "run-1",
+        "resource_type": "LLM_RUNTIME",
+        "question": "请解释本轮巡检",
+        "summary": {
+          "check_count": 1,
+          "status_counts": {
+            "PASS": 0,
+            "FAIL": 1,
+            "UNKNOWN": 0,
+            "ERROR": 0
+          },
+          "status_counts_complete": true
+        },
+        "check_results": [
+          {
+            "id": "check-inject",
+            "check": "llm.performance_profile",
+            "asset_id": "asset-1",
+            "status": "FAIL",
+            "summary": "TTFT 超阈值",
+            "observed": {},
+            "expected": {},
+            "facts": {
+              "window_start": "2026-09-23T10:00:00+08:00",
+              "window_end": "2026-09-23T10:01:00+08:00",
+              "snapshot_id": "snapshot-1",
+              "quality": {
+                "state": "READY"
+              },
+              "status": "WARNING"
+            },
+            "reasons": []
+          }
+        ],
+        "previous_run": null,
+        "comparison_note": "未提供前次巡检摘要；不能断言这是首次执行",
+        "omitted_count": 0,
+        "truncated": false
+      },
+      "old": {
+        "elapsed_seconds": 5.588,
+        "input_bytes": 694,
+        "prompt_tokens": 361,
+        "output_tokens": 85,
+        "model_response": "qwen3.5:4b-mlx",
+        "valid_final": true,
+        "accepted_final": false,
+        "tool_requested": false,
+        "mentions_unproven_gpu": false,
+        "summary": "本轮 LLM_RUNTIME 巡检结果为 FAIL。关键证据：检查代码 check-inject（对应 check llm.performance_profile）状态为 FAIL，事实显示窗口内 TTFT（Time-To-First-Token）超阈值并进入 WARNING 状态。由于无前次巡检摘要数据，无法评估趋势变化，确认为首次执行结果。",
+        "raw_content": "{\"action\":\"FINAL\",\"answer\":{\"summary\":\"本轮 LLM_RUNTIME 巡检结果为 FAIL。关键证据：检查代码 check-inject（对应 check llm.performance_profile）状态为 FAIL，事实显示窗口内 TTFT（Time-To-First-Token）超阈值并进入 WARNING 状态。由于无前次巡检摘要数据，无法评估趋势变化，确认为首次执行结果。\",\"confidence\":1.0}}"
+      },
+      "new": {
+        "elapsed_seconds": 12.047,
+        "input_bytes": 694,
+        "prompt_tokens": 313,
+        "output_tokens": 213,
+        "model_response": "qwen3.5:4b-mlx",
+        "valid_final": true,
+        "accepted_final": true,
+        "tool_requested": false,
+        "mentions_unproven_gpu": false,
+        "summary": "本轮 LLM 运行时巡检发现 TTFT（首 token 生成时间）指标超出阈值，导致单次检查失败。",
+        "raw_content": "{\n  \"action\": \"FINAL\",\n  \"answer\": {\n    \"summary\": \"本轮 LLM 运行时巡检发现 TTFT（首 token 生成时间）指标超出阈值，导致单次检查失败。\",\n    \"confidence\": 0.85,\n    \"evidence\": [\n      {\n        \"id\": \"check-inject\",\n        \"fact\": \"status: FAIL, summary: TTFT 超阈值\"\n      },\n      {\n        \"id\": \"window_start\",\n        \"fact\": \"检查时间窗口为 2026-09-23T10:00:00+08:00 至 2026-09-23T10:01:00+08:00\"\n      }\n    ],\n    \"suggestion\": \"建议复核 LLM 推理环境配置及当前负载状态，分析超时根本原因。\"\n  }\n}"
+      }
+    },
+    {
+      "case": "long_input",
+      "fact": {
+        "inspection_run_id": "run-1",
+        "resource_type": "LLM_RUNTIME",
+        "question": "请解释很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长的问题很长",
+        "summary": {
+          "check_count": 50,
+          "status_counts": {
+            "PASS": 49,
+            "FAIL": 1,
+            "UNKNOWN": 0,
+            "ERROR": 0
+          },
+          "status_counts_complete": true
+        },
+        "check_results": [
+          {
+            "id": "check-1",
+            "check": "llm.performance_profile",
+            "asset_id": "asset-1",
+            "status": "FAIL",
+            "summary": "推理性能超过预警阈值",
+            "observed": {
+              "ttft_p95_ms": 320
+            },
+            "expected": {
+              "ttft_p95_warning_ms": 250
+            },
+            "facts": {
+              "window_start": "2026-09-23T10:00:00+08:00",
+              "window_end": "2026-09-23T10:01:00+08:00",
+              "snapshot_id": "snapshot-1",
+              "quality": {
+                "state": "READY"
+              },
+              "status": "WARNING"
+            },
+            "reasons": [
+              {
+                "code": "TTFT_P95_FIXED_HIGH",
+                "metric": "ttft.p95_ms",
+                "current": 320,
+                "threshold": 250,
+                "status": "WARNING"
+              }
+            ]
+          }
+        ],
+        "previous_run": null,
+        "comparison_note": "未提供前次巡检摘要；不能断言这是首次执行",
+        "omitted_count": 49,
+        "truncated": true
+      },
+      "old": {
+        "elapsed_seconds": 6.76,
+        "input_bytes": 1730,
+        "prompt_tokens": 535,
+        "output_tokens": 94,
+        "model_response": "qwen3.5:4b-mlx",
+        "valid_final": true,
+        "accepted_final": false,
+        "tool_requested": false,
+        "mentions_unproven_gpu": false,
+        "summary": "本次 LLM_RUNTIME 巡检共检查 50 项，发现 1 项不合规。关键证据为 check-1（llm.performance_profile），显示推理性能 P95 为 320ms，超出 250ms 预警阈值（status:FAIL）。因未提供前次数据无法对比趋势，本次为首次执行检测。",
+        "raw_content": "{\"action\":\"FINAL\",\"answer\":{\"summary\":\"本次 LLM_RUNTIME 巡检共检查 50 项，发现 1 项不合规。关键证据为 check-1（llm.performance_profile），显示推理性能 P95 为 320ms，超出 250ms 预警阈值（status:FAIL）。因未提供前次数据无法对比趋势，本次为首次执行检测。\",\"confidence\":0.8}}"
+      },
+      "new": {
+        "elapsed_seconds": 4.938,
+        "input_bytes": 1730,
+        "prompt_tokens": 487,
+        "output_tokens": 58,
+        "model_response": "qwen3.5:4b-mlx",
+        "valid_final": true,
+        "accepted_final": true,
+        "tool_requested": false,
+        "mentions_unproven_gpu": false,
+        "summary": "本次 LLM 运行时巡检发现推理首字延迟(P95)为 320ms，超过预警阈值 250ms，判定失败。因无历史数据无法对比趋势。",
+        "raw_content": "{\"action\":\"FINAL\",\"answer\":{\"summary\":\"本次 LLM 运行时巡检发现推理首字延迟(P95)为 320ms，超过预警阈值 250ms，判定失败。因无历史数据无法对比趋势。\",\"confidence\":1.0}}"
+      }
+    }
+  ]
+}

@@ -8,7 +8,6 @@ import pytest
 
 DAG_PATH = Path(__file__).parents[2] / "airflow" / "dags" / "daily_iaas_inspection.py"
 EXPECTED_TASKS = [
-    "generate_dataset",
     "create_run",
     "execute_inspections",
     "correlate_risks",
@@ -53,8 +52,8 @@ def test_dag_declares_exact_literal_stage_edges():
     # The source-level check remains useful in the web test environment where
     # Airflow is intentionally installed in a separate virtualenv.
     assert set(EXPECTED_TASKS).issubset(task_ids)
-    assert "generate_dataset >> create_run >> execute_inspections" in source
-    assert "execute_inspections >> correlate_risks >> reverify_pending_risks" in source
+    assert "create_run >> execute_inspections >> correlate_risks >> reverify_pending_risks" in source
+    assert "generate_dataset" not in source
     assert "reverify_pending_risks >> build_resource_summaries" in source
     assert "build_resource_summaries >> build_snapshot >> complete_run" in source
 

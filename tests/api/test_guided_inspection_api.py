@@ -19,7 +19,7 @@ def guided(client, launch_context):
     item_run = execute(launch_context)
     run = item_run.inspection_run
     run.status, run.finished_at = 'SUCCEEDED', timezone.now()
-    run.config_snapshot = {'resolved_scope': {'resource_types': ['CONTROL_PLANE', 'LLM_RUNTIME']}}
+    run.config_snapshot = {'resolved_scope': {'resource_types': ['LLM_RUNTIME']}}
     run.save()
     correlate_run(run)
     return client, run
@@ -32,7 +32,7 @@ def test_code_plugins_are_anonymous_and_read_only(client, guided):
     response = client.get('/api/v1/code-plugins')
     assert response.status_code == 200
     rows = response.json()['items']
-    assert len(rows) == 3
+    assert len(rows) == 1
     assert {r['engine'] for r in rows} == {'PYTHON_RULE'}
     assert all(r['deterministic'] and r['version'] == '1.0.0' for r in rows)
     assert client.post('/api/v1/code-plugins').status_code == 405
@@ -45,18 +45,18 @@ def test_rule_catalog_is_anonymous_read_only_and_complete(client, guided):
     response = client.get('/api/v1/rules')
     assert response.status_code == 200
     rows = response.json()['items']
-    assert {row['rule_code'] for row in rows} == {
-        'topology.control_plane_anti_affinity',
-        'llm.ttft_slo',
-        'llm.queue_backlog',
-    }
-    assert all(row['plugin_id'] and row['operation_key'] and row['parameters'] for row in rows)
-    detail = client.get('/api/v1/rules/llm.queue_backlog')
+    assert {row['rule_code'] for row in rows} == {'llm.performance_profile'}
+    assert all(row['plugin_id'] and row['operation_key'] and isinstance(row['parameters'], dict) for row in rows)
+    detail = client.get('/api/v1/rules/llm.performance_profile')
     assert detail.status_code == 200
-    assert detail.json()['name'] == 'LLM 最近 N 点连续超限'
-    assert detail.json()['parameters']['consecutive_points'] == 3
+    assert detail.json()['plugin_id'] == 'inference-performance'
     assert client.post('/api/v1/rules').status_code == 405
-    assert client.patch('/api/v1/rules/llm.queue_backlog').status_code == 405
+    assert client.patch('/api/v1/rules/llm.performance_profile').status_code == 405
+    for retired in ('topology.control_plane_anti_affinity', 'llm.ttft_slo', 'llm.queue_backlog'):
+        retired_response = client.get(f'/api/v1/rules/{retired}')
+        assert retired_response.status_code == 410
+        assert retired_response.json()['error']['code'] == 'RULE_RETIRED'
+    assert client.get('/api/v1/rules/unknown.code').status_code == 404
 
 
 def test_aggregate_result_is_scoped_and_keeps_provenance(guided):
@@ -67,13 +67,13 @@ def test_aggregate_result_is_scoped_and_keeps_provenance(guided):
     response = client.get(url, {'environment_id': str(run.environment_id)})
     assert response.status_code == 200
     body = response.json()
-    assert body['scope']['resource_types'] == ['CONTROL_PLANE', 'LLM_RUNTIME']
+    assert body['scope']['resource_types'] == ['LLM_RUNTIME']
     assert body['summary']['fail_count'] == 1
     assert body['summary']['assets_total'] == 1
     assert body['summary']['risk_count'] == 1
     assert len(body['check_results']) == 1
     assert body['check_results'][0]['source']['plugin_version'] == '1.0.0'
-    assert body['code_plugins'][0]['plugin_id'] == 'llm-ttft-slo'
+    assert body['code_plugins'][0]['plugin_id'] == 'inference-performance'
     assert {r['id'] for r in body['risks']} == {str(r.pk) for r in Risk.objects.filter(environment=run.environment)}
 
 
@@ -89,7 +89,7 @@ def test_dashboard_ask_exact_run_read_only_and_bounded_failure(guided, monkeypat
     client, run = guided
     gateway = Mock(spec=['invoke', 'timeout'])
     gateway.timeout = 120.0
-    gateway.invoke.return_value = ModelResponse(action=FinalAction('根据 llm.ttft_slo 检查，TTFT 超阈值。', .7), model='test', provider='fake')
+    gateway.invoke.return_value = ModelResponse(action=FinalAction('根据 llm.performance_profile 检查，TTFT 超阈值。', .7), model='test', provider='fake')
     monkeypatch.setattr('apps.conversations.services._default_gateway', lambda: gateway)
     before = list(CheckResult.objects.values())
     risks = list(Risk.objects.values())
@@ -102,9 +102,9 @@ def test_dashboard_ask_exact_run_read_only_and_bounded_failure(guided, monkeypat
     assert answer['references'][0]['source'] == 'CODE'
     context = json.loads(gateway.invoke.call_args.args[0].messages[-1]['content'])
     assert len(context['check_results']) == 1
-    assert context['check_results'][0]['source']['plugin_version'] == '1.0.0'
-    assert context['check_results'][0]['evidence']
-    assert 'fingerprint' not in context['risks'][0]
+    assert context['check_results'][0]['check'] == 'llm.performance_profile'
+    assert context['check_results'][0]['facts']['snapshot_id']
+    assert 'fingerprint' not in json.dumps(context)
     assert gateway.timeout == 120.0
     assert gateway.invoke.call_count == 1
     for result in [RuntimeError('secret-provider-detail'), ModelResponse(action=CallToolAction('write.risk', {}, 'change'), model='test', provider='fake')]:
@@ -134,7 +134,7 @@ def test_dashboard_ask_implicit_context_skips_running_and_other_environments(gui
     other = Environment.objects.create(name='Other', slug='other')
     InspectionRun.objects.create(environment=other, run_date=run.run_date, trigger_type='MANUAL', status='SUCCEEDED', finished_at=timezone.now(), config_snapshot=run.config_snapshot)
     gateway = Mock(spec=['invoke'])
-    gateway.invoke.return_value = ModelResponse(action=FinalAction('根据 llm.ttft_slo 检查。', .5), model='test', provider='fake')
+    gateway.invoke.return_value = ModelResponse(action=FinalAction('根据 llm.performance_profile 检查。', .5), model='test', provider='fake')
     monkeypatch.setattr('apps.conversations.services._default_gateway', lambda: gateway)
     response = client.post('/api/v1/dashboard/ask', data=json.dumps({'environment_id':str(run.environment_id),'question':'本次巡检发现了什么？'}), content_type='application/json')
     assert response.status_code == 200
@@ -158,7 +158,7 @@ def test_dashboard_explanation_limits_checks_and_excludes_unscoped_facts(guided)
     gateway.invoke.return_value = ModelResponse(action=FinalAction('证据限于提供的检查。', .5), model='test', provider='fake')
     result = explain_dashboard(run, '对比上一次', gateway=gateway)
     context = json.loads(gateway.invoke.call_args.args[0].messages[-1]['content'])
-    assert len(context['check_results']) == 50
+    assert len(context['check_results']) <= 8
     assert result['truncated'] is True
     assert context['previous_run'] is None
     assert all(row['asset_id'] != str(unscoped.pk) for row in context['check_results'])

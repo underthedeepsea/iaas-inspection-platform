@@ -5,6 +5,7 @@ from django.http import HttpResponse
 from django.shortcuts import render
 from django.urls import include, path, re_path
 from django.views.static import serve
+from apps.investigations import prompt_views
 
 
 def react_app(request, **kwargs):
@@ -22,6 +23,8 @@ def react_asset(request, path):
 
 
 urlpatterns = [
+    path("api/v1/prompts/<str:key>", prompt_views.explanation_prompt, name="explanation-prompt"),
+    path("api/v1/prompts/<str:key>/reset", prompt_views.reset_prompt, name="explanation-prompt-reset"),
     path("api/v1/", include("apps.api.urls")),
     path("api/internal/v1/mock/", include("apps.mockdata.internal_urls")),
     path("api/internal/v1/batch/", include("apps.inspections.internal_urls")),
@@ -39,6 +42,8 @@ urlpatterns = [
     path("risks/<uuid:risk_id>/", react_app),
     path("ai-runtime", react_app, name="web-ai-runtime"),
     path("ai-runtime/", react_app),
+    path("prompts", react_app, name="web-prompts"),
+    path("prompts/", react_app),
     path("about", react_app, name="web-about"),
     path("about/", react_app),
 ]

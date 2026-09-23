@@ -12,6 +12,22 @@ from apps.inspections.models import MockDataset, MockEvent, MockLog
 from apps.mockdata import internal_views, public_views
 
 
+@pytest.fixture(autouse=True)
+def enable_test_mock_generation(settings):
+    settings.DEBUG = True
+    settings.MOCK_DATA_GENERATION_ENABLED = True
+
+
+@pytest.mark.django_db
+def test_public_mock_generation_is_disabled_without_explicit_test_gate():
+    with override_settings(MOCK_DATA_GENERATION_ENABLED=False):
+        response = public_views.generate(_request("POST", "/mock-datasets/generate/", payload={}))
+    assert response.status_code == 404
+    assert _body(response)["error"]["code"] == "MOCK_GENERATION_DISABLED"
+    with override_settings(DEBUG=False, MOCK_DATA_GENERATION_ENABLED=True):
+        response = public_views.generate(_request("POST", "/mock-datasets/generate/", payload={}))
+    assert response.status_code == 404
+
 
 
 def _request(method, path, *, user=None, payload=None, token=None, query=None):

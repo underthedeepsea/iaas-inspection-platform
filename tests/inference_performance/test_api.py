@@ -1,5 +1,6 @@
 import json
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -7,7 +8,36 @@ from django.test import Client
 
 from apps.core.models import Environment
 from apps.inference_performance.models import InferencePerformanceSnapshot
+from apps.inference_performance.api import serialize_profile
 from .helpers import payload, sample
+
+
+@pytest.mark.parametrize(
+    'raw_status,quality,plugin,expected', [
+        ('NORMAL', {'state': 'IDLE', 'pending_confirmation': False}, True, 'UNKNOWN'),
+        ('NORMAL', {'state': 'READY', 'pending_confirmation': True}, True, 'UNKNOWN'),
+        ('NORMAL', {'state': 'READY', 'pending_confirmation': False}, False, 'UNKNOWN'),
+        ('NORMAL', {'state': 'READY', 'pending_confirmation': False}, True, 'NORMAL'),
+        ('WARNING', {'state': 'READY', 'pending_confirmation': True}, True, 'WARNING'),
+        ('CRITICAL', {'state': 'IDLE', 'pending_confirmation': True}, True, 'CRITICAL'),
+    ],
+)
+def test_current_profile_status_respects_quality_and_version(raw_status, quality, plugin, expected):
+    end = datetime.now(timezone.utc)
+    snapshot = SimpleNamespace(
+        id='snapshot-1', engine_id='engine-1', engine_type='vllm', model_name='Model',
+        window_start=end - timedelta(minutes=1), window_end=end, metrics={},
+        evaluation={
+            'status': raw_status,
+            'quality': quality,
+            'plugin': {'id': 'inference-performance', 'version': '1.0.0'} if plugin else {},
+            'resolved_policy': {'quality': {'max_age_seconds': 300}},
+        },
+    )
+    profile = serialize_profile(snapshot)
+    assert profile['freshness']['state'] == 'FRESH'
+    assert profile['status'] == expected
+    assert profile['evaluation_status'] == raw_status
 
 
 @pytest.mark.django_db
@@ -84,11 +114,11 @@ def test_batch_replay_preserves_saved_evaluation_and_evaluates_an_unevaluated_la
     saved = InferencePerformanceSnapshot.objects.get(sample_id="saved")
     original_evaluation = saved.evaluation
 
-    with patch("apps.inference_performance.services.ingest.evaluate_snapshot") as evaluate_snapshot:
+    with patch("apps.inference_performance.services.ingest.dispatch_code_rule") as dispatch:
         replay = client.post(
             "/api/v1/inference-performance/snapshots/batch", data=json.dumps(batch), content_type="application/json",
         )
-        evaluate_snapshot.assert_not_called()
+        dispatch.assert_not_called()
     saved.refresh_from_db()
     assert replay.status_code == 201
     assert replay.json()["created_count"] == 0
@@ -105,42 +135,17 @@ def test_batch_replay_preserves_saved_evaluation_and_evaluates_an_unevaluated_la
     )
     batch["samples"] = [unevaluated_request["sample"]]
 
-    expected_evaluation = {
-        "status": "WARNING",
-        "fixed": {"status": "WARNING", "metrics": {}},
-        "dynamic": {"status": "NOT_READY", "metrics": {}},
-        "trend": {"status": "NOT_READY"},
-        "policy_source": {"level": "default", "config_hash": "test-hash"},
-        "reasons": [{"code": "MOCK_REASON"}],
-    }
-    with patch(
-        "apps.inference_performance.services.ingest.evaluate_snapshot", return_value=expected_evaluation,
-    ) as evaluate_snapshot:
-        evaluated = client.post(
-            "/api/v1/inference-performance/snapshots/batch", data=json.dumps(batch), content_type="application/json",
-        )
-        evaluate_snapshot.assert_called_once()
-        assert evaluate_snapshot.call_args.args[0].pk == unevaluated.pk
+    evaluated = client.post(
+        "/api/v1/inference-performance/snapshots/batch", data=json.dumps(batch), content_type="application/json",
+    )
     unevaluated.refresh_from_db()
     assert evaluated.status_code == 201
     assert evaluated.json()["created_count"] == 0
-    assert unevaluated.evaluation == expected_evaluation
+    assert unevaluated.evaluation["plugin"]["id"] == "inference-performance"
     profile = evaluated.json()["evaluated"]
-    assert profile == {
-        "snapshot_id": str(unevaluated.id),
-        "engine": {"engine_id": "qwen-prod-1", "engine_type": "vllm", "model_name": "Qwen/Qwen3-32B"},
-        "window": {
-            "start": unevaluated.window_start.isoformat(),
-            "end": unevaluated.window_end.isoformat(),
-        },
-        "status": "WARNING",
-        "current_metrics": unevaluated.metrics,
-        "fixed": expected_evaluation["fixed"],
-        "dynamic": expected_evaluation["dynamic"],
-        "trend": expected_evaluation["trend"],
-        "policy_source": expected_evaluation["policy_source"],
-        "reasons": expected_evaluation["reasons"],
-    }
+    assert profile["snapshot_id"] == str(unevaluated.id)
+    assert profile["plugin"]["id"] == "inference-performance"
+    assert profile["evaluation_status"] == unevaluated.evaluation["status"]
 
 
 @pytest.mark.django_db

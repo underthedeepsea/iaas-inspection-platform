@@ -10,6 +10,7 @@ const primaryNavigation = [
   ['资源巡检', '/resources'],
   ['风险中心', '/risks'],
   ['规则库', '/rules'],
+  ['提示词', '/prompts'],
   ['产品说明', '/about'],
 ] as const
 
@@ -21,6 +22,7 @@ const pageTitles: Array<[string, string]> = [
   ['/risks', '风险中心'],
   ['/ai-runtime', 'AI 运行情况'],
   ['/about', '产品说明'],
+  ['/prompts', '提示词'],
   ['/resources', '资源巡检'],
 ]
 
@@ -115,7 +117,7 @@ export function MainLayout({ children }: { children?: ReactNode }) {
 
         <div className="sidebar-footer">
           <span className="status-dot" aria-hidden="true" />
-          <span>数据来源：模拟巡检数据</span>
+          <span>数据来源：外部推理性能快照</span>
         </div>
       </aside>
       {mobileNavOpen ? <button aria-label="关闭主导航遮罩" className="mobile-nav-backdrop" onClick={closeMobileNav} type="button" /> : null}

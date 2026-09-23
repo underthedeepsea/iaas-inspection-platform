@@ -38,7 +38,7 @@ it('renders the document navigation and runtime controls from the environment AP
   expect(screen.getByText('CODE 确定性巡检')).toBeInTheDocument()
   expect(screen.queryByText('未登录')).not.toBeInTheDocument()
   expect(screen.queryByText('未建立会话')).not.toBeInTheDocument()
-  expect(screen.getByText('数据来源：模拟巡检数据')).toBeInTheDocument()
+  expect(screen.getByText('数据来源：外部推理性能快照')).toBeInTheDocument()
   expect(screen.queryByText('本地演示环境')).not.toBeInTheDocument()
   expect(screen.queryByText('Demo v4.1')).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: '收起侧边栏' })).toBeInTheDocument()
