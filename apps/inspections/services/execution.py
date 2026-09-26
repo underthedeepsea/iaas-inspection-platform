@@ -13,18 +13,20 @@ from apps.inspections.services.findings import FindingSpec, persist_findings
 from apps.inspections.services.input_reader import InspectionInputReader
 from apps.inference_performance.services.input_reader import InferenceSnapshotInputReader
 from apps.inspections.services.scope import resolve_item_asset_scope
+from apps.inspections.services.inference_freeze import input_for_plugin
 
 
 def execute_inspection_item(inspection_run, inspection_item, dataset=None, *, registry=None, observed_at=None):
     plugin = get_code_plugin(inspection_item.code)
-    source = (inspection_run.config_snapshot or {}).get('input', {}).get('source_type')
+    run_input = input_for_plugin((inspection_run.config_snapshot or {}).get('input', {}), plugin.input_source)
+    source = run_input.get('source_type')
     if source != plugin.input_source:
         raise ValueError('Run input source does not match its plugin')
     if source == 'MOCK':
         dataset = dataset or inspection_run.dataset
         if dataset is None or dataset.environment_id != inspection_run.environment_id:
             raise ValueError('Run requires a dataset from the same environment')
-    elif source != 'INFERENCE_SNAPSHOT':
+    elif source not in {'INFERENCE_SNAPSHOT', 'HARDWARE_SNAPSHOT'}:
         raise ValueError('Unsupported inspection input source')
     with transaction.atomic():
         item_run, _ = InspectionItemRun.objects.select_for_update().get_or_create(inspection_run=inspection_run, inspection_item=inspection_item)
@@ -38,8 +40,11 @@ def execute_inspection_item(inspection_run, inspection_item, dataset=None, *, re
             item_run.asset_scope = scope
         assets = list(Asset.objects.filter(pk__in=item_run.asset_scope['asset_ids'], environment_id=inspection_run.environment_id).order_by('external_key', 'pk'))
         if source == 'INFERENCE_SNAPSHOT':
-            frozen = (inspection_run.config_snapshot or {}).get('input', {}).get('snapshots') or {}
+            frozen = run_input.get('snapshots') or {}
             reader = InferenceSnapshotInputReader(mode='FROZEN_RESULT', frozen_inputs_by_asset={str(asset.pk): frozen.get(str(asset.pk)) for asset in assets}, assets=assets)
+        elif source == 'HARDWARE_SNAPSHOT':
+            from apps.hardware_health.services import HardwareInputReader
+            reader = HardwareInputReader(assets=assets, frozen=run_input.get('snapshots') or {})
         else:
             reader = InspectionInputReader(dataset, item_run.asset_scope['asset_ids'])
         item_run.started_at = observed_at or timezone.now()

@@ -32,7 +32,7 @@ def test_code_plugins_are_anonymous_and_read_only(client, guided):
     response = client.get('/api/v1/code-plugins')
     assert response.status_code == 200
     rows = response.json()['items']
-    assert len(rows) == 1
+    assert len(rows) == 3
     assert {r['engine'] for r in rows} == {'PYTHON_RULE'}
     assert all(r['deterministic'] and r['version'] == '1.0.0' for r in rows)
     assert client.post('/api/v1/code-plugins').status_code == 405
@@ -45,7 +45,7 @@ def test_rule_catalog_is_anonymous_read_only_and_complete(client, guided):
     response = client.get('/api/v1/rules')
     assert response.status_code == 200
     rows = response.json()['items']
-    assert {row['rule_code'] for row in rows} == {'llm.performance_profile'}
+    assert {row['rule_code'] for row in rows} == {'llm.performance_profile', 'hardware.gpu_health', 'hardware.host_health'}
     assert all(row['plugin_id'] and row['operation_key'] and isinstance(row['parameters'], dict) for row in rows)
     detail = client.get('/api/v1/rules/llm.performance_profile')
     assert detail.status_code == 200

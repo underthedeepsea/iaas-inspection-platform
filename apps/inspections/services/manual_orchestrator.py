@@ -73,7 +73,7 @@ def _claim_run(run_id):
         source = (run.config_snapshot or {}).get('input', {}).get('source_type')
         if source == 'MOCK' and run.dataset_id is None:
             raise ValueError("manual inspection run must reference a mock dataset")
-        if source not in {'MOCK', 'INFERENCE_SNAPSHOT'}:
+        if source not in {'MOCK', 'INFERENCE_SNAPSHOT', 'HARDWARE_SNAPSHOT', 'EXTERNAL_SNAPSHOTS'}:
             raise ValueError("manual inspection run has unsupported input source")
         snapshot = dict(run.config_snapshot or {})
         batch = dict(snapshot.get("batch") or {})

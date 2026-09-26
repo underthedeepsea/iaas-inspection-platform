@@ -4,7 +4,7 @@ from django.utils import timezone
 from apps.core.models import Environment
 from apps.inspections.models import InspectionItem, InspectionItemRun, InspectionRun, ResourceType
 from apps.inspections.services.events import append_run_event
-from apps.inspections.services.inference_freeze import SOURCE, freeze_inference_inputs
+from apps.inspections.services.inference_freeze import SOURCE, freeze_external_inputs
 from apps.inspections.services.scope import (
     asset_ids_for_selectors,
     resolve_item_asset_scope,
@@ -35,7 +35,7 @@ def create_manual_inspection_run(*, environment, resource_type_codes, ai_mode="D
         sources = {get_code_plugin(item.code).input_source for item in items}
     except UnsupportedInspectionRule:
         raise ValueError("NO_ACTIVE_PLUGIN") from None
-    if sources != {SOURCE}:
+    if not sources or not sources <= {'INFERENCE_SNAPSHOT', 'HARDWARE_SNAPSHOT'}:
         raise ValueError("unsupported inspection input source")
     as_of = timezone.now()
     resolved_snapshot = scope_to_snapshot(scope)
@@ -53,7 +53,7 @@ def create_manual_inspection_run(*, environment, resource_type_codes, ai_mode="D
         config_snapshot={
             "requested_scope": {"resource_types": requested_codes},
             "resolved_scope": resolved_snapshot,
-            "input": freeze_inference_inputs(scope.asset_ids, as_of=as_of),
+            "input": freeze_external_inputs(scope.asset_ids, sources=sources, as_of=as_of),
             "trigger_options": {"ai_mode": ai_mode},
         },
     )

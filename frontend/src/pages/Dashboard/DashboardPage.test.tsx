@@ -58,7 +58,7 @@ describe('DashboardPage', () => {
     renderDashboard()
 
     expect((await screen.findAllByText('大模型运行时')).length).toBeGreaterThan(0)
-    expect(screen.queryByText('规划主机')).not.toBeInTheDocument()
+    expect(screen.getAllByText('规划主机').length).toBeGreaterThan(0)
     expect(screen.getByText('整体健康度')).toBeInTheDocument()
     expect(screen.getByText('当前风险')).toBeInTheDocument()
     expect(screen.getByText('巡检覆盖率')).toBeInTheDocument()
