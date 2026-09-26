@@ -253,7 +253,7 @@ def _correlate_run_in_transaction(
             Evidence.objects.get_or_create(
                 risk=risk, inspection_run=inspection_run, inspection_item_run=item_run,
                 evidence_key=f'check-result:{check.pk}',
-                defaults={'asset':check.asset, 'evidence_type':'TOPOLOGY' if item_run.inspection_item.code.startswith('topology.') else 'METRIC', 'source':'inference_snapshot' if evidence.get('snapshot_id') else 'deterministic_rule', 'summary':check.summary, 'payload':{'check_result_id':str(check.pk), 'observed':check.observed_value, 'expected':check.expected_value, 'evidence':check.evidence}, 'window_start':window_start, 'window_end':window_end or check.checked_at, 'raw_ref':str(evidence['snapshot_id']) if evidence.get('snapshot_id') else None},
+                defaults={'asset':check.asset, 'evidence_type':'TOPOLOGY' if item_run.inspection_item.code.startswith('topology.') else 'METRIC', 'source':('hardware_snapshot' if evidence.get('source_type') == 'HARDWARE_SNAPSHOT' else 'inference_snapshot') if evidence.get('snapshot_id') else 'deterministic_rule', 'summary':check.summary, 'payload':{'check_result_id':str(check.pk), 'observed':check.observed_value, 'expected':check.expected_value, 'evidence':check.evidence}, 'window_start':window_start, 'window_end':window_end or check.checked_at, 'raw_ref':str(evidence['snapshot_id']) if evidence.get('snapshot_id') else None},
             )
             from_status = None if created else risk.status
             status_after = (

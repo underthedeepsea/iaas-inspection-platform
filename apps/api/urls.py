@@ -11,6 +11,7 @@ urlpatterns = [
     path("product-info/", views.product_info, name="api-product-info-slash"),
     path("", include("apps.operations_api.urls")),
     path("", include("apps.inference_performance.urls")),
+    path("", include("apps.hardware_health.urls")),
     path("", include("apps.inspections.urls")),
     re_path(r"^capabilities(?:/|$)", include("apps.capability_api.urls")),
     re_path(r"^conversations(?:/|$)", include("apps.conversations.urls")),

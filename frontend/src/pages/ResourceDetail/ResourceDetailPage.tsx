@@ -1,3 +1,4 @@
+import { HardwareHealthProfile } from '../../features/hardware-health/HardwareHealthProfile'
 import { CheckResultsTable } from '../../features/inspection-history/CheckResultsTable'
 import { useQuery } from '@tanstack/react-query'
 import { Tabs } from 'antd'
@@ -93,6 +94,7 @@ function OverviewPanel({ code, environmentId, overview }: { code: string; enviro
   return (
     <>
       <CheckResultsTable results={overview.check_results} />
+      {['GPU_POOL', 'HOST'].includes(code) ? <HardwareHealthProfile environmentId={environmentId} resourceCode={code} /> : null}
       {code === 'LLM_RUNTIME' ? <InferencePerformanceProfile environmentId={environmentId} latestRunAt={latest?.finished_at} /> : null}
       {code === 'LLM_RUNTIME' && overview.latest && !isRealLlmRun ? <p role="status">最近记录来自已退场演示规则，仅可作历史查看；当前尚无正式插件巡检结论。</p> : null}
       {latest?.summary?.data_state === 'UNKNOWN' ? <p role="status">证据不足，暂无可信健康分数</p> : null}

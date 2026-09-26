@@ -7,4 +7,4 @@ export function resourceSlugToCode(slug: string) {
 }
 
 
-export const isLaunchResource = (resource: { code: string }) => resource.code === 'LLM_RUNTIME'
+export const isLaunchResource = (resource: { code: string }) => ['LLM_RUNTIME', 'GPU_POOL', 'HOST'].includes(resource.code)

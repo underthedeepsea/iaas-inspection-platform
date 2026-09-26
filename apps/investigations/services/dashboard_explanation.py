@@ -13,7 +13,7 @@ from .prompts import load_explanation_prompt, prompt_metadata, render_explanatio
 
 
 COMPLETED_STATUSES = ('SUCCEEDED', 'PARTIAL')
-LAUNCH_TYPES = {'LLM_RUNTIME'}
+LAUNCH_TYPES = {'LLM_RUNTIME', 'GPU_POOL', 'HOST'}
 
 
 def latest_completed_launch_run(environment, *, before=None):

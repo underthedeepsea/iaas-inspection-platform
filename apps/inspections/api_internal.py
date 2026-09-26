@@ -399,8 +399,11 @@ def datasets(request):
 def inspection_runs(request):
     payload = _payload(request)
     source_type = payload.get('source_type', 'INFERENCE_SNAPSHOT')
-    if source_type != 'INFERENCE_SNAPSHOT':
+    if source_type not in {'INFERENCE_SNAPSHOT', 'HARDWARE_SNAPSHOT', 'EXTERNAL_SNAPSHOTS'}:
         raise BatchAPIError('invalid_input', 'unsupported input source', 400)
+    requested_resources = payload.get('resource_types', ['LLM_RUNTIME'] if source_type == 'INFERENCE_SNAPSHOT' else ['GPU_POOL', 'HOST'] if source_type == 'HARDWARE_SNAPSHOT' else ['LLM_RUNTIME', 'GPU_POOL', 'HOST'])
+    if not isinstance(requested_resources, list) or not requested_resources or any(code not in {'LLM_RUNTIME', 'GPU_POOL', 'HOST'} for code in requested_resources):
+        raise BatchAPIError('invalid_input', 'unsupported resource_types', 400)
     if 'dataset_id' in payload:
         raise BatchAPIError('invalid_input', 'dataset_id is not accepted for real inference runs', 400)
     environment_id = _uuid(_required(payload, "environment_id"), "environment_id")
@@ -421,6 +424,7 @@ def inspection_runs(request):
                 run.environment_id != environment_id
                 or run.run_date != run_date
                 or (run.config_snapshot or {}).get('input', {}).get('source_type') != source_type
+                or set((run.config_snapshot or {}).get('requested_scope', {}).get('resource_types', [])) != set(requested_resources)
             ):
                 raise BatchAPIError(
                     "immutable_input_conflict",
@@ -434,11 +438,13 @@ def inspection_runs(request):
                 # we read the canonical row for the idempotent retry.
                 with transaction.atomic():
                     try:
-                        run = create_manual_inspection_run(environment=environment, resource_type_codes=['LLM_RUNTIME'], ai_mode='DISABLED', run_date=run_date)
+                        run = create_manual_inspection_run(environment=environment, resource_type_codes=requested_resources, ai_mode='DISABLED', run_date=run_date)
                     except ValueError as error:
                         if str(error) == 'NO_ACTIVE_PLUGIN':
                             raise BatchAPIError('NO_ACTIVE_PLUGIN', 'no active plugin for requested resource', 409) from None
                         raise
+                    if run.config_snapshot['input']['source_type'] != source_type:
+                        raise BatchAPIError('invalid_input', 'source_type does not match requested resources', 400)
                     run.trigger_type = InspectionRun.TriggerType.AIRFLOW
                     run.airflow_dag_run_id = dag_run_id
                     snapshot = dict(run.config_snapshot)
@@ -461,6 +467,7 @@ def inspection_runs(request):
                     run.environment_id != environment_id
                     or run.run_date != run_date
                     or (run.config_snapshot or {}).get('input', {}).get('source_type') != source_type
+                or set((run.config_snapshot or {}).get('requested_scope', {}).get('resource_types', [])) != set(requested_resources)
                 ):
                     raise BatchAPIError(
                         "immutable_input_conflict",
@@ -476,7 +483,7 @@ def _stage_run(request, run_id):
     run = _run(run_id)
     _check_run_context(run, payload)
     source = (run.config_snapshot or {}).get('input', {}).get('source_type')
-    if source != 'INFERENCE_SNAPSHOT':
+    if source not in {'INFERENCE_SNAPSHOT', 'HARDWARE_SNAPSHOT', 'EXTERNAL_SNAPSHOTS'}:
         raise BatchAPIError("invalid_state", "inspection run has unsupported input source", 409)
     return run
 

@@ -106,7 +106,7 @@ def _valid_item_runs(inspection_run, *, allow_nonterminal=False, as_of=None):
         if item_run.finished_at is not None
         and item_run.finished_at <= boundary
         and ((item_run.summary or {}).get("data_valid") is True or (
-            (inspection_run.config_snapshot or {}).get('input', {}).get('source_type') == 'INFERENCE_SNAPSHOT'
+            (item_run.summary or {}).get('data_source') in {'INFERENCE_SNAPSHOT', 'HARDWARE_SNAPSHOT'}
             and (item_run.summary or {}).get("engine_snapshot", {}).get("plugin_id")
         ))
     }
@@ -164,6 +164,39 @@ def _valid_performance_pass(risk, check, pending_history):
     prior_check = CheckResult.objects.filter(inspection_item_run=prior.inspection_item_run, asset_id=risk.primary_asset_id).first()
     prior_snapshot_id = (prior_check.evidence or {}).get('snapshot_id') if prior_check else None
     return bool(prior_snapshot_id and str(prior_snapshot_id) != str(snapshot_id))
+
+
+def _valid_hardware_pass(risk, check, pending_history):
+    evidence = check.evidence or {}
+    evaluation = evidence.get('evaluation') or {}
+    window_start = parse_datetime(evidence.get('window_start') or '')
+    if (not window_start or timezone.is_naive(window_start) or window_start <= pending_history.created_at
+            or evaluation.get('quality', {}).get('state') != 'READY'
+            or evaluation.get('quality', {}).get('pending_confirmation')):
+        return False
+    # Every detected observation in this risk's lifetime remains an obligation.
+    # This intentionally errs on the side of retaining a risk after device replacement.
+    observations = RiskObservation.objects.filter(risk=risk, detected=True, created_at__lt=pending_history.created_at)
+    prior_checks = CheckResult.objects.filter(inspection_item_run_id__in=observations.values('inspection_item_run_id'), asset_id=risk.primary_asset_id, status='FAIL')
+    seen = False
+    att = evidence.get('hardware_reverification') or {}
+    performed = parse_datetime(att.get('performed_at') or '')
+    for prior in prior_checks:
+        seen = True
+        old = prior.evidence or {}
+        if old.get('snapshot_id') == evidence.get('snapshot_id'):
+            return False
+        for component, identity in (old.get('components') or {}).items():
+            if evidence.get('components', {}).get(component) != identity or evaluation.get('coverage', {}).get(component) != 'READY':
+                return False
+        for issue in (old.get('evaluation') or {}).get('issues', []):
+            if evaluation.get('diagnostics', {}).get(issue['key'], {}).get('status') != 'NORMAL':
+                return False
+            if issue.get('event_id'):
+                if (issue['event_id'] not in att.get('event_ids', []) or att.get('result') != 'PASSED'
+                        or not performed or timezone.is_naive(performed) or performed <= pending_history.created_at):
+                    return False
+    return seen
 
 
 def reverify_pending_risks(inspection_run, *, allow_nonterminal=False, as_of=None):
@@ -257,9 +290,10 @@ def reverify_pending_risks(inspection_run, *, allow_nonterminal=False, as_of=Non
             check = CheckResult.objects.filter(inspection_run=locked_run, inspection_item_run=item_run, asset_id=risk.primary_asset_id, status='PASS').first()
             if check is None:
                 continue
-            if (locked_run.config_snapshot or {}).get('input', {}).get('source_type') == 'INFERENCE_SNAPSHOT':
+            if (item_run.summary or {}).get('data_source') in {'INFERENCE_SNAPSHOT', 'HARDWARE_SNAPSHOT'}:
                 pending_history = RiskStatusHistory.objects.filter(risk=risk, to_status=Risk.Status.PENDING_REVERIFY).order_by('-created_at', '-pk').first()
-                if pending_history is None or not _valid_performance_pass(risk, check, pending_history):
+                validator = _valid_hardware_pass if (item_run.summary or {}).get('data_source') == 'HARDWARE_SNAPSHOT' else _valid_performance_pass
+                if pending_history is None or not validator(risk, check, pending_history):
                     continue
             matching_finding = _matching_non_active_finding(
                 risk,

@@ -50,3 +50,11 @@ class Command(BaseCommand):
             defaults={"enabled": True},
         )
         self.stdout.write(self.style.SUCCESS("Configured inference performance plugin"))
+
+        for code,kind,title in [('GPU_POOL','GPU','GPU 资源'),('HOST','HOST','主机基础环境')]:
+            resource, _ = ResourceType.objects.update_or_create(code=code, defaults={
+                'name':title,'enabled':True,'asset_selector':{'asset_types':[kind], 'labels':{'input_source':'HARDWARE_SNAPSHOT'}}})
+            item, _ = InspectionItem.objects.update_or_create(code=f'hardware.{kind.lower()}_health', defaults={
+                'name':title+'健康巡检','domain':'hardware','execution_mode':'CODE_ONLY','code_status':'CODE_ACTIVE',
+                'default_severity':'P2','rule_config':{},'enabled':True,'llm_responsibilities':[]})
+            InspectionItemResourceType.objects.update_or_create(resource_type=resource,inspection_item=item,defaults={'enabled':True})

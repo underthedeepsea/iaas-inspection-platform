@@ -11,6 +11,7 @@ LOCAL_BACKGROUND_WORKER_ENABLED = False
 ALLOWED_HOSTS = []
 INSTALLED_APPS = [
     "apps.inference_performance",
+    "apps.hardware_health",
 ]
 MIDDLEWARE = []
 ROOT_URLCONF = "config.urls"

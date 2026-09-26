@@ -2,6 +2,8 @@ import { Card } from 'antd'
 import type { ResourceType } from '../../api/resources'
 
 const tagsByCode: Record<string, string[]> = {
+  GPU_POOL: ['条件基线', 'GPU 事件', '持续退化', '处置复验'],
+  HOST: ['CPU / 内存', '文件系统', 'IO 趋势', '组件证据'],
   LLM_RUNTIME: ['推理性能', '固定阈值', '动态基线', '趋势'],
 }
 
