@@ -1,0 +1,881 @@
+{
+  "items": [
+    {
+      "rule_code": "hardware.gpu_health",
+      "name": "GPU 健康巡检",
+      "rule_version": "1.0.0",
+      "plugin_id": "gpu-host-health",
+      "plugin_version": "1.0.0",
+      "operation_key": "evaluate",
+      "resource_types": [
+        "GPU_POOL"
+      ],
+      "parameters": {},
+      "status": "ACTIVE",
+      "description": "条件基线、持续退化、容量趋势与硬件事件复验。",
+      "deterministic": true,
+      "input_source": "HARDWARE_SNAPSHOT",
+      "supported_metrics": [
+        {
+          "field": "gpu.utilization_ratio",
+          "input_path": "metrics.gpu.values.utilization_ratio.value",
+          "name": "GPU 利用率",
+          "unit": "比例",
+          "range": "0–1",
+          "purpose": "同负载双向漂移；高利用率输出下降、排队但低利用率关联"
+        },
+        {
+          "field": "gpu.memory_used_bytes",
+          "input_path": "metrics.gpu.values.memory_used_bytes.value",
+          "name": "GPU 已用显存",
+          "unit": "bytes",
+          "range": "≥ 0，且 ≤ memory_total_bytes",
+          "purpose": "容量证据；预分配不直接视为异常"
+        },
+        {
+          "field": "gpu.memory_total_bytes",
+          "input_path": "metrics.gpu.values.memory_total_bytes.value",
+          "name": "GPU 总显存",
+          "unit": "bytes",
+          "range": "> 0（容量对有效时）",
+          "purpose": "容量与显存使用背景"
+        },
+        {
+          "field": "gpu.temperature_celsius",
+          "input_path": "metrics.gpu.values.temperature_celsius.value",
+          "name": "GPU 温度",
+          "unit": "°C",
+          "range": "≥ 0",
+          "purpose": "同负载温度双向漂移；无通用固定高温阈值"
+        },
+        {
+          "field": "gpu.ecc_sbe_delta",
+          "input_path": "metrics.gpu.values.ecc_sbe_delta.value",
+          "name": "DRAM 单比特 ECC 增量",
+          "unit": "事件数/窗口",
+          "range": "非负整数",
+          "purpose": "偶发、复发、加速增长事件；需要处置复验"
+        },
+        {
+          "field": "gpu.ecc_dbe_delta",
+          "input_path": "metrics.gpu.values.ecc_dbe_delta.value",
+          "name": "DRAM 双比特 ECC 增量",
+          "unit": "事件数/窗口",
+          "range": "非负整数",
+          "purpose": "新增不可纠正错误 P1；需要处置复验"
+        },
+        {
+          "field": "gpu.xid_events",
+          "input_path": "metrics.gpu.values.xid_events.value",
+          "name": "GPU Xid 事件",
+          "unit": "事件列表",
+          "range": "≤ 1000 条；code 为 1–999 整数",
+          "purpose": "按 Xid 类别判定 P1/P2；稳定 event_id 去重与复验"
+        }
+      ],
+      "judgment_rules": [
+        {
+          "title": "数据质量、身份与条件基线",
+          "items": [
+            "使用过去 14 天相同 identity、config_id、bindings 及组件 identity 的历史。缺失/替换过的组件不会视为已恢复。外部引擎绑定必须完整，并带齐已冻结的推理快照，才可比较同负载。",
+            "相似负载维度：traffic.qps、throughput.prompt_tps、throughput.generation_tps、requests.running、cache.kv_cache_hit_rate。缓存命中率绝对差 ≤ 0.15；其他维度与当前差 ≤ max(1, |当前值|×0.3)。输出退化比较排除 generation_tps 本身。",
+            "条件基线至少 8 点，8 点只代表最低计算门槛。最近最多 6 点留出作为观察序列，不立刻吸收进基线；历史/推理绑定不足则 NOT_READY。窗口间断超过 max(300秒, 前一窗口时长×2) 会截断连续序列。"
+          ]
+        },
+        {
+          "title": "双向条件漂移与确认",
+          "items": [
+            "最小绝对效应 floor：temperature_celsius=5；utilization_ratio=0.1。GPU 输出吞吐 floor=1 Token/秒。相对最小效应 r 为温度 0.05，其他指标 0.15。",
+            "M=median，MAD=median(|x−M|)，scale=max(1.4826×MAD, floor/3, |M|×r/3, 1e−9)，minimum=max(floor, |M|×r)。当 |x−M| > max(3×scale, minimum) 判定向上/向下越界。最近 3 点至少 2 点同方向且最后一点仍越界才 WARNING；最后一点越界但未确认为 PENDING。",
+            "CUSUM 同时累积双向标准化偏差 z=(x−M)/scale：positive=max(0, positive+z−0.5)，negative=min(0, negative+z+0.5)。序列至少 3 点，|最后值−M| ≥ minimum 且 max(positive, −negative) ≥ 5，可确认慢漂移 WARNING。",
+            "GPU 温度、利用率均按条件基线判断；当前实现没有通用固定高温告警阈值。显存预分配或单点容量不作为漂移异常。"
+          ]
+        },
+        {
+          "title": "GPU 与推理表现的关联",
+          "items": [
+            "输出吞吐确认向下漂移且 GPU 利用率 ≥ 0.7：SUSPECT_GPU_BUSY_OUTPUT_DOWN，产生 P2 问题。waiting > 0 且利用率 < 0.2，最近 3 点至少 2 点满足条件：SUSPECT_QUEUE_WITH_IDLE_GPU，产生 P2；仅 1 点为 PENDING。",
+            "同负载温度向上漂移可给出疑似温度关联；硬件事件与推理 WARNING/CRITICAL 并存可给出疑似共同退化。疑似相关性不等同根因，无频率/功耗数据不能诊断热降频。"
+          ]
+        },
+        {
+          "title": "ECC / Xid 严重度与处置复验",
+          "items": [
+            "DRAM DOUBLE_BIT 增量 > 0 为 ECC_DBE_NEW（P1）。DRAM SINGLE_BIT 增量 > 0 默认 ECC_SBE_OCCASIONAL（P2）；最近最多 3 个有效窗口出现正增量为 RECURRENT；当前每秒增量率 > 前一率 > 再前一率 > 0 为 ACCELERATING，仍为 P2。",
+            "Xid 48/63/64/92/94/95 为 MEMORY_ERROR，79 为 DEVICE_LOST，119/120 为 GSP_ERROR，13/31/43 为 APPLICATION_OR_DRIVER，其他 UNCLASSIFIED。48/79/94/95/119/120 为 P1，其余 P2。",
+            "事件状态跨 14 天基线和配置变化保留。后续没有新事件不等于恢复；必须外部处置后推送 hardware_reverification，列出待清除的事件 ID、当前窗口内 performed_at、method 与 PASSED。有效复验才清除所列事件；诊断提示 HARDWARE_REVERIFICATION_REQUIRED。"
+          ]
+        },
+        {
+          "title": "overall 与诊断覆盖边界",
+          "items": [
+            "逐指标 quality 支持 MISSING / RESET / UNSUPPORTED / VALID。非 VALID 必须 value=null，不用 0 替代；缺失或不支持不是健康。主机缺 filesystem/disk 组件会产生覆盖 MISSING。",
+            "overall 顺序：有 P1 问题 → CRITICAL；其他已确认问题 → WARNING；无问题但覆盖不完整或有 PENDING → UNKNOWN；否则 NORMAL。NOT_READY 诊断本身不会自动将 overall 改为 UNKNOWN，所以基础检查 PASS / NORMAL 时仍可能有高级诊断未就绪，必须逐项查看 coverage 与 diagnostics。",
+            "硬件快照时效当前实现固定 300 秒；超过该时效、缺失或冻结身份/版本/时效无效 → UNKNOWN。有效 CRITICAL / WARNING 映射 FAIL（P1 / P2），NORMAL 映射 PASS，其余 UNKNOWN。共享设备或归属不完整时仅报告设备级现象。"
+          ]
+        }
+      ],
+      "policy_profiles": [],
+      "input_contract": "外部采集系统推送 HARDWARE_SNAPSHOT；平台接收、校验和评估，不直接采集硬件指标。GPU 必须包含 gpu；HOST 必须包含 host，可同时推送 filesystem:<稳定标识>、disk:<稳定标识>。每个组件必须提供其全部指标和逐指标 value / quality / collected_at；ECC 另需 source_metric / semantics / scope=DRAM。"
+    },
+    {
+      "rule_code": "hardware.host_health",
+      "name": "宿主机健康巡检",
+      "rule_version": "1.0.0",
+      "plugin_id": "gpu-host-health",
+      "plugin_version": "1.0.0",
+      "operation_key": "evaluate",
+      "resource_types": [
+        "HOST"
+      ],
+      "parameters": {},
+      "status": "ACTIVE",
+      "description": "条件基线、持续退化、容量趋势与硬件事件复验。",
+      "deterministic": true,
+      "input_source": "HARDWARE_SNAPSHOT",
+      "supported_metrics": [
+        {
+          "field": "host.cpu_busy_ratio",
+          "input_path": "metrics.host.values.cpu_busy_ratio.value",
+          "name": "主机 CPU 忙碌率",
+          "unit": "比例",
+          "range": "0–1",
+          "purpose": "同负载双向漂移；无通用固定 CPU 阈值"
+        },
+        {
+          "field": "host.memory_available_bytes",
+          "input_path": "metrics.host.values.memory_available_bytes.value",
+          "name": "主机可用内存",
+          "unit": "bytes",
+          "range": "≥ 0，且 ≤ memory_total_bytes",
+          "purpose": "持续下降趋势；当前容量不直接判异常"
+        },
+        {
+          "field": "host.memory_total_bytes",
+          "input_path": "metrics.host.values.memory_total_bytes.value",
+          "name": "主机总内存",
+          "unit": "bytes",
+          "range": "> 0（容量对有效时）",
+          "purpose": "容量背景与容量对校验"
+        },
+        {
+          "field": "filesystem.available_bytes",
+          "input_path": "metrics.filesystem:<稳定标识>.values.available_bytes.value",
+          "name": "文件系统可用空间",
+          "unit": "bytes",
+          "range": "≥ 0，且 ≤ size_bytes",
+          "purpose": "持续下降趋势与到达 10% 保留空间的时间估计"
+        },
+        {
+          "field": "filesystem.size_bytes",
+          "input_path": "metrics.filesystem:<稳定标识>.values.size_bytes.value",
+          "name": "文件系统总空间",
+          "unit": "bytes",
+          "range": "> 0（容量对有效时）",
+          "purpose": "计算 10% 保留空间；本身不设固定低空间告警"
+        },
+        {
+          "field": "disk.read_bytes_per_second",
+          "input_path": "metrics.disk:<稳定标识>.values.read_bytes_per_second.value",
+          "name": "磁盘读取吞吐",
+          "unit": "bytes/秒",
+          "range": "≥ 0",
+          "purpose": "同负载双向漂移；结合 I/O 背景观察"
+        },
+        {
+          "field": "disk.write_bytes_per_second",
+          "input_path": "metrics.disk:<稳定标识>.values.write_bytes_per_second.value",
+          "name": "磁盘写入吞吐",
+          "unit": "bytes/秒",
+          "range": "≥ 0",
+          "purpose": "同负载双向漂移；结合 I/O 背景观察"
+        },
+        {
+          "field": "disk.read_latency_avg_ms",
+          "input_path": "metrics.disk:<稳定标识>.values.read_latency_avg_ms.value",
+          "name": "磁盘平均读延迟",
+          "unit": "ms",
+          "range": "≥ 0",
+          "purpose": "同负载双向漂移；上升生成疑似 I/O 延迟退化关联"
+        },
+        {
+          "field": "disk.write_latency_avg_ms",
+          "input_path": "metrics.disk:<稳定标识>.values.write_latency_avg_ms.value",
+          "name": "磁盘平均写延迟",
+          "unit": "ms",
+          "range": "≥ 0",
+          "purpose": "同负载双向漂移；上升生成疑似 I/O 延迟退化关联"
+        },
+        {
+          "field": "disk.io_busy_ratio",
+          "input_path": "metrics.disk:<稳定标识>.values.io_busy_ratio.value",
+          "name": "磁盘 I/O 忙碌率",
+          "unit": "比例",
+          "range": "0–1",
+          "purpose": "同负载双向漂移"
+        }
+      ],
+      "judgment_rules": [
+        {
+          "title": "数据质量、身份与条件基线",
+          "items": [
+            "使用过去 14 天相同 identity、config_id、bindings 及组件 identity 的历史。缺失/替换过的组件不会视为已恢复。外部引擎绑定必须完整，并带齐已冻结的推理快照，才可比较同负载。",
+            "相似负载维度：traffic.qps、throughput.prompt_tps、throughput.generation_tps、requests.running、cache.kv_cache_hit_rate。缓存命中率绝对差 ≤ 0.15；其他维度与当前差 ≤ max(1, |当前值|×0.3)。",
+            "条件基线至少 8 点，8 点只代表最低计算门槛。最近最多 6 点留出作为观察序列，不立刻吸收进基线；历史/推理绑定不足则 NOT_READY。窗口间断超过 max(300秒, 前一窗口时长×2) 会截断连续序列。"
+          ]
+        },
+        {
+          "title": "双向条件漂移与确认",
+          "items": [
+            "最小绝对效应 floor：cpu_busy_ratio=0.1；io_busy_ratio=0.1；read_latency_avg_ms=2；write_latency_avg_ms=2。读/写吞吐 floor=1048576 bytes/秒；这些主机指标的相对最小效应 r=0.15。",
+            "M=median，MAD=median(|x−M|)，scale=max(1.4826×MAD, floor/3, |M|×r/3, 1e−9)，minimum=max(floor, |M|×r)。当 |x−M| > max(3×scale, minimum) 判定向上/向下越界。最近 3 点至少 2 点同方向且最后一点仍越界才 WARNING；最后一点越界但未确认为 PENDING。",
+            "CUSUM 同时累积双向标准化偏差 z=(x−M)/scale：positive=max(0, positive+z−0.5)，negative=min(0, negative+z+0.5)。序列至少 3 点，|最后值−M| ≥ minimum 且 max(positive, −negative) ≥ 5，可确认慢漂移 WARNING。",
+            "CPU、I/O 忙碌率及磁盘吞吐/延迟均按条件基线判断；当前实现没有通用固定高 CPU 告警阈值。单点容量不作为漂移异常。"
+          ]
+        },
+        {
+          "title": "内存/文件系统持续下降与保留空间",
+          "items": [
+            "组件连续历史至少 6 点；取最多 12 点，跨度至少 300 秒且可用容量全部有效。全段与最近 4 点使用成对斜率中位数。长短斜率均 < 0、短/长斜率比在 0.25–4 之间，且首尾下降量 > max(1048576 bytes, 首值×0.03)，才产生 P2 的 MEMORY_SUSTAINED_DECLINE / SPACE_DECLINE。",
+            "确认文件系统下降后 reserve=总容量×0.1，seconds_to_reserve=max(0, (当前可用−reserve)/−长斜率)。10% 是保留空间时间估计基准；当前实现不单凭空间低于 10% 触发告警。",
+            "读/写延迟确认向上漂移时，生成疑似 I/O 延迟退化关联；没有 IOPS/IO 大小不能确诊存储退化。"
+          ]
+        },
+        {
+          "title": "overall 与诊断覆盖边界",
+          "items": [
+            "逐指标 quality 支持 MISSING / RESET / UNSUPPORTED / VALID。非 VALID 必须 value=null，不用 0 替代；缺失或不支持不是健康。主机缺 filesystem/disk 组件会产生覆盖 MISSING。",
+            "overall 顺序：有 P1 问题 → CRITICAL；其他已确认问题 → WARNING；无问题但覆盖不完整或有 PENDING → UNKNOWN；否则 NORMAL。NOT_READY 诊断本身不会自动将 overall 改为 UNKNOWN，所以基础检查 PASS / NORMAL 时仍可能有高级诊断未就绪，必须逐项查看 coverage 与 diagnostics。",
+            "硬件快照时效当前实现固定 300 秒；超过该时效、缺失或冻结身份/版本/时效无效 → UNKNOWN。有效 CRITICAL / WARNING 映射 FAIL（P1 / P2），NORMAL 映射 PASS，其余 UNKNOWN。共享设备或归属不完整时仅报告设备级现象。"
+          ]
+        }
+      ],
+      "policy_profiles": [],
+      "input_contract": "外部采集系统推送 HARDWARE_SNAPSHOT；平台接收、校验和评估，不直接采集硬件指标。GPU 必须包含 gpu；HOST 必须包含 host，可同时推送 filesystem:<稳定标识>、disk:<稳定标识>。每个组件必须提供其全部指标和逐指标 value / quality / collected_at；ECC 另需 source_metric / semantics / scope=DRAM。"
+    },
+    {
+      "rule_code": "llm.performance_profile",
+      "name": "推理性能画像",
+      "rule_version": "1.0.0",
+      "plugin_id": "inference-performance",
+      "plugin_version": "1.0.0",
+      "operation_key": "evaluate",
+      "resource_types": [
+        "LLM_RUNTIME"
+      ],
+      "parameters": {},
+      "status": "ACTIVE",
+      "description": "基于真实推理快照的固定阈值、动态基线与趋势评估。",
+      "deterministic": true,
+      "input_source": "INFERENCE_SNAPSHOT",
+      "supported_metrics": [
+        {
+          "field": "ttft.avg_ms",
+          "input_path": "sample.ttft.avg_ms",
+          "name": "首 Token 延迟（TTFT） 平均值",
+          "unit": "ms",
+          "range": "≥ 0；P90 ≤ P95 ≤ P99",
+          "purpose": "分布背景观察，不直接提升 overall"
+        },
+        {
+          "field": "ttft.p90_ms",
+          "input_path": "sample.ttft.p90_ms",
+          "name": "首 Token 延迟（TTFT） P90",
+          "unit": "ms",
+          "range": "≥ 0；P90 ≤ P95 ≤ P99",
+          "purpose": "分布背景观察，不直接提升 overall"
+        },
+        {
+          "field": "ttft.p95_ms",
+          "input_path": "sample.ttft.p95_ms",
+          "name": "首 Token 延迟（TTFT） P95",
+          "unit": "ms",
+          "range": "≥ 0；P90 ≤ P95 ≤ P99",
+          "purpose": "主要指标：固定阈值、动态基线与趋势判定"
+        },
+        {
+          "field": "ttft.p99_ms",
+          "input_path": "sample.ttft.p99_ms",
+          "name": "首 Token 延迟（TTFT） P99",
+          "unit": "ms",
+          "range": "≥ 0；P90 ≤ P95 ≤ P99",
+          "purpose": "主要指标：固定阈值、动态基线与趋势判定"
+        },
+        {
+          "field": "ttft.e2e_ratio",
+          "input_path": "sample.ttft.e2e_ratio",
+          "name": "首 Token 延迟占端到端延迟比例",
+          "unit": "比例",
+          "range": "0–1",
+          "purpose": "辅助观察响应阶段占比；动态基线仅 OBSERVED，不直接提升 overall"
+        },
+        {
+          "field": "tpot.avg_ms",
+          "input_path": "sample.tpot.avg_ms",
+          "name": "每个输出 Token 延迟（TPOT） 平均值",
+          "unit": "ms/token",
+          "range": "≥ 0；P90 ≤ P95 ≤ P99",
+          "purpose": "分布背景观察，不直接提升 overall"
+        },
+        {
+          "field": "tpot.p90_ms",
+          "input_path": "sample.tpot.p90_ms",
+          "name": "每个输出 Token 延迟（TPOT） P90",
+          "unit": "ms/token",
+          "range": "≥ 0；P90 ≤ P95 ≤ P99",
+          "purpose": "分布背景观察，不直接提升 overall"
+        },
+        {
+          "field": "tpot.p95_ms",
+          "input_path": "sample.tpot.p95_ms",
+          "name": "每个输出 Token 延迟（TPOT） P95",
+          "unit": "ms/token",
+          "range": "≥ 0；P90 ≤ P95 ≤ P99",
+          "purpose": "主要指标：固定阈值、动态基线与趋势判定"
+        },
+        {
+          "field": "tpot.p99_ms",
+          "input_path": "sample.tpot.p99_ms",
+          "name": "每个输出 Token 延迟（TPOT） P99",
+          "unit": "ms/token",
+          "range": "≥ 0；P90 ≤ P95 ≤ P99",
+          "purpose": "主要指标：固定阈值、动态基线与趋势判定"
+        },
+        {
+          "field": "e2e.avg_ms",
+          "input_path": "sample.e2e.avg_ms",
+          "name": "端到端延迟 平均值",
+          "unit": "ms",
+          "range": "≥ 0；P90 ≤ P95 ≤ P99",
+          "purpose": "分布背景观察，不直接提升 overall"
+        },
+        {
+          "field": "e2e.p90_ms",
+          "input_path": "sample.e2e.p90_ms",
+          "name": "端到端延迟 P90",
+          "unit": "ms",
+          "range": "≥ 0；P90 ≤ P95 ≤ P99",
+          "purpose": "分布背景观察，不直接提升 overall"
+        },
+        {
+          "field": "e2e.p95_ms",
+          "input_path": "sample.e2e.p95_ms",
+          "name": "端到端延迟 P95",
+          "unit": "ms",
+          "range": "≥ 0；P90 ≤ P95 ≤ P99",
+          "purpose": "主要指标：固定阈值、动态基线与趋势判定"
+        },
+        {
+          "field": "e2e.p99_ms",
+          "input_path": "sample.e2e.p99_ms",
+          "name": "端到端延迟 P99",
+          "unit": "ms",
+          "range": "≥ 0；P90 ≤ P95 ≤ P99",
+          "purpose": "主要指标：固定阈值、动态基线与趋势判定"
+        },
+        {
+          "field": "traffic.qps",
+          "input_path": "sample.traffic.qps",
+          "name": "每秒请求数",
+          "unit": "请求/秒",
+          "range": "≥ 0",
+          "purpose": "动态基线的相似负载筛选及空闲识别"
+        },
+        {
+          "field": "traffic.qpm",
+          "input_path": "sample.traffic.qpm",
+          "name": "每分钟请求数",
+          "unit": "请求/分钟",
+          "range": "≥ 0",
+          "purpose": "流量背景观察"
+        },
+        {
+          "field": "throughput.generation_tps",
+          "input_path": "sample.throughput.generation_tps",
+          "name": "输出 Token 吞吐",
+          "unit": "Token/秒",
+          "range": "≥ 0",
+          "purpose": "辅助观察输出吞吐及空闲识别；动态基线仅 OBSERVED，不直接提升 overall"
+        },
+        {
+          "field": "throughput.prompt_tps",
+          "input_path": "sample.throughput.prompt_tps",
+          "name": "输入 Token 吞吐",
+          "unit": "Token/秒",
+          "range": "≥ 0",
+          "purpose": "辅助观察输入负载及空闲识别；动态基线仅 OBSERVED，不直接提升 overall"
+        },
+        {
+          "field": "cache.kv_cache_hit_rate",
+          "input_path": "sample.cache.kv_cache_hit_rate",
+          "name": "KV Cache 命中率",
+          "unit": "比例",
+          "range": "0–1",
+          "purpose": "辅助观察缓存与负载；动态基线仅 OBSERVED，不直接提升 overall"
+        },
+        {
+          "field": "requests.running",
+          "input_path": "sample.requests.running",
+          "name": "正在执行的请求数",
+          "unit": "请求",
+          "range": "≥ 0",
+          "purpose": "辅助观察并发及空闲识别；动态基线仅 OBSERVED，不直接提升 overall"
+        },
+        {
+          "field": "requests.waiting",
+          "input_path": "sample.requests.waiting",
+          "name": "正在排队的请求数",
+          "unit": "请求",
+          "range": "≥ 0",
+          "purpose": "主要指标：固定阈值、动态基线、趋势及空闲识别"
+        }
+      ],
+      "judgment_rules": [
+        {
+          "title": "策略选择与固定阈值",
+          "items": [
+            "优先选择 ENGINE_MODEL → ENGINE → DEFAULT；逐层深度合并，未覆盖的字段继承父级。下方表格展示当前配置的完整有效策略和模型覆盖。默认阈值属于平台当前策略，不是所有模型通用的 SLO。历史巡检以冻结的 resolved_policy 为准。",
+            "仅 7 个主要指标参与固定阈值：当前值 ≥ critical 为 CRITICAL；否则 ≥ warning 为 WARNING；低于 warning 为 NORMAL。固定和动态取最高严重度作为 overall，趋势独立展示。",
+            "固定阈值默认连续 2 个异常窗口才确认。严重级需连续 critical；若仅连续 warning 则最多 WARNING。窗口时长须一致、不得重叠，间隔不得超过 300 秒；否则中断连续计数。首次越界可能仍为内部 NORMAL，但 pending_confirmation=true；无其他已确认 WARNING / CRITICAL 时，巡检结论为 UNKNOWN。已确认异常优先于待确认状态，仍映射 FAIL。"
+          ]
+        },
+        {
+          "title": "14 天动态基线与正常边界",
+          "items": [
+            "同环境、engine_id、engine_type、model_name 的当前窗口之前 14 天历史；只保留相同窗口时长并排除空闲点。最多下采样 4096 点；至少 100 点且覆盖 3 个不同日期才 READY，否则 NOT_READY。",
+            "当当前 QPS > 0，优先保留历史 QPS 为当前的 0.5–1.5 倍且满足 100 点/3 日期的样本。相似负载不足则 FULL_HISTORY_FALLBACK；此时仅提供基线观察，不提升 overall。",
+            "中心 M=median，MAD=median(|x−M|)，σ=1.4826×MAD。当前默认 warning=max(M×(1+0.2), M+3.0×σ)，critical=max(M×(1+0.4), M+5.0×σ)。当前值 ≥ 边界即越界；此动态判定不应用固定阈值的连续确认。仅相似 QPS、非零 M 的主要指标可提升 overall。",
+            "M=0 时 NOT_EVALUABLE；辅助指标仅 OBSERVED。NOT_READY / NOT_EVALUABLE 表示这一诊断无法判定，不能据此确认健康；即使固定阈值通过、overall 为 NORMAL，也不代表动态和趋势覆盖已就绪。"
+          ]
+        },
+        {
+          "title": "趋势（独立观察）",
+          "items": [
+            "默认最近 60 分钟分为前后两半，各至少 3 点。比较主要指标两半中位数，变化率=(后半−前半)/前半；默认 ≥ 0.2 为 DEGRADING，≥ 0.1 为 WATCH，否则 STABLE。前半为零则 NOT_EVALUABLE；点数不足则 NOT_READY。趋势不抬高 overall。"
+          ]
+        },
+        {
+          "title": "质量、时效与最终巡检结论",
+          "items": [
+            "所有指标必须为有限非负数，比例为 0–1，P90 ≤ P95 ≤ P99。QPS、running、waiting、generation_tps、prompt_tps 全为 0 视为 IDLE；空闲无法确认性能，巡检为 UNKNOWN。默认快照超过 300 秒为 STALE；缺失、身份/版本不符或冻结数据无效也为 UNKNOWN。",
+            "非空闲的有效快照 WARNING / CRITICAL 映射 FAIL（P2 / P1），优先于其他指标的 pending_confirmation；READY 且无待确认、overall NORMAL 映射 PASS。规则详情描述当前配置，具体资源是否正常还需查看其当前值、质量、诊断就绪状态和冻结策略。"
+          ]
+        }
+      ],
+      "policy_profiles": [
+        {
+          "label": "DEFAULT · 默认策略",
+          "level": "DEFAULT",
+          "engine_type": null,
+          "model_name": null,
+          "overrides": {},
+          "policy": {
+            "fixed": {
+              "ttft.p95_ms": {
+                "warning": 800,
+                "critical": 1500
+              },
+              "ttft.p99_ms": {
+                "warning": 1500,
+                "critical": 3000
+              },
+              "tpot.p95_ms": {
+                "warning": 50,
+                "critical": 80
+              },
+              "tpot.p99_ms": {
+                "warning": 80,
+                "critical": 120
+              },
+              "e2e.p95_ms": {
+                "warning": 10000,
+                "critical": 20000
+              },
+              "e2e.p99_ms": {
+                "warning": 20000,
+                "critical": 30000
+              },
+              "requests.waiting": {
+                "warning": 10,
+                "critical": 30
+              }
+            },
+            "dynamic": {
+              "warning_z": 3.0,
+              "critical_z": 5.0,
+              "warning_change_ratio": 0.2,
+              "critical_change_ratio": 0.4
+            },
+            "trend": {
+              "window_minutes": 60,
+              "watch_change_ratio": 0.1,
+              "degrading_change_ratio": 0.2
+            },
+            "persistence": {
+              "consecutive_hits": 2
+            },
+            "quality": {
+              "max_age_seconds": 300,
+              "max_gap_seconds": 300
+            }
+          },
+          "fixed_thresholds": [
+            {
+              "field": "ttft.p95_ms",
+              "unit": "ms",
+              "warning": 800,
+              "critical": 1500
+            },
+            {
+              "field": "ttft.p99_ms",
+              "unit": "ms",
+              "warning": 1500,
+              "critical": 3000
+            },
+            {
+              "field": "tpot.p95_ms",
+              "unit": "ms/token",
+              "warning": 50,
+              "critical": 80
+            },
+            {
+              "field": "tpot.p99_ms",
+              "unit": "ms/token",
+              "warning": 80,
+              "critical": 120
+            },
+            {
+              "field": "e2e.p95_ms",
+              "unit": "ms",
+              "warning": 10000,
+              "critical": 20000
+            },
+            {
+              "field": "e2e.p99_ms",
+              "unit": "ms",
+              "warning": 20000,
+              "critical": 30000
+            },
+            {
+              "field": "requests.waiting",
+              "unit": "请求",
+              "warning": 10,
+              "critical": 30
+            }
+          ]
+        },
+        {
+          "label": "ENGINE · sglang",
+          "level": "ENGINE",
+          "engine_type": "sglang",
+          "model_name": null,
+          "overrides": {},
+          "policy": {
+            "fixed": {
+              "ttft.p95_ms": {
+                "warning": 800,
+                "critical": 1500
+              },
+              "ttft.p99_ms": {
+                "warning": 1500,
+                "critical": 3000
+              },
+              "tpot.p95_ms": {
+                "warning": 50,
+                "critical": 80
+              },
+              "tpot.p99_ms": {
+                "warning": 80,
+                "critical": 120
+              },
+              "e2e.p95_ms": {
+                "warning": 10000,
+                "critical": 20000
+              },
+              "e2e.p99_ms": {
+                "warning": 20000,
+                "critical": 30000
+              },
+              "requests.waiting": {
+                "warning": 10,
+                "critical": 30
+              }
+            },
+            "dynamic": {
+              "warning_z": 3.0,
+              "critical_z": 5.0,
+              "warning_change_ratio": 0.2,
+              "critical_change_ratio": 0.4
+            },
+            "trend": {
+              "window_minutes": 60,
+              "watch_change_ratio": 0.1,
+              "degrading_change_ratio": 0.2
+            },
+            "persistence": {
+              "consecutive_hits": 2
+            },
+            "quality": {
+              "max_age_seconds": 300,
+              "max_gap_seconds": 300
+            }
+          },
+          "fixed_thresholds": [
+            {
+              "field": "ttft.p95_ms",
+              "unit": "ms",
+              "warning": 800,
+              "critical": 1500
+            },
+            {
+              "field": "ttft.p99_ms",
+              "unit": "ms",
+              "warning": 1500,
+              "critical": 3000
+            },
+            {
+              "field": "tpot.p95_ms",
+              "unit": "ms/token",
+              "warning": 50,
+              "critical": 80
+            },
+            {
+              "field": "tpot.p99_ms",
+              "unit": "ms/token",
+              "warning": 80,
+              "critical": 120
+            },
+            {
+              "field": "e2e.p95_ms",
+              "unit": "ms",
+              "warning": 10000,
+              "critical": 20000
+            },
+            {
+              "field": "e2e.p99_ms",
+              "unit": "ms",
+              "warning": 20000,
+              "critical": 30000
+            },
+            {
+              "field": "requests.waiting",
+              "unit": "请求",
+              "warning": 10,
+              "critical": 30
+            }
+          ]
+        },
+        {
+          "label": "ENGINE · vllm",
+          "level": "ENGINE",
+          "engine_type": "vllm",
+          "model_name": null,
+          "overrides": {},
+          "policy": {
+            "fixed": {
+              "ttft.p95_ms": {
+                "warning": 800,
+                "critical": 1500
+              },
+              "ttft.p99_ms": {
+                "warning": 1500,
+                "critical": 3000
+              },
+              "tpot.p95_ms": {
+                "warning": 50,
+                "critical": 80
+              },
+              "tpot.p99_ms": {
+                "warning": 80,
+                "critical": 120
+              },
+              "e2e.p95_ms": {
+                "warning": 10000,
+                "critical": 20000
+              },
+              "e2e.p99_ms": {
+                "warning": 20000,
+                "critical": 30000
+              },
+              "requests.waiting": {
+                "warning": 10,
+                "critical": 30
+              }
+            },
+            "dynamic": {
+              "warning_z": 3.0,
+              "critical_z": 5.0,
+              "warning_change_ratio": 0.2,
+              "critical_change_ratio": 0.4
+            },
+            "trend": {
+              "window_minutes": 60,
+              "watch_change_ratio": 0.1,
+              "degrading_change_ratio": 0.2
+            },
+            "persistence": {
+              "consecutive_hits": 2
+            },
+            "quality": {
+              "max_age_seconds": 300,
+              "max_gap_seconds": 300
+            }
+          },
+          "fixed_thresholds": [
+            {
+              "field": "ttft.p95_ms",
+              "unit": "ms",
+              "warning": 800,
+              "critical": 1500
+            },
+            {
+              "field": "ttft.p99_ms",
+              "unit": "ms",
+              "warning": 1500,
+              "critical": 3000
+            },
+            {
+              "field": "tpot.p95_ms",
+              "unit": "ms/token",
+              "warning": 50,
+              "critical": 80
+            },
+            {
+              "field": "tpot.p99_ms",
+              "unit": "ms/token",
+              "warning": 80,
+              "critical": 120
+            },
+            {
+              "field": "e2e.p95_ms",
+              "unit": "ms",
+              "warning": 10000,
+              "critical": 20000
+            },
+            {
+              "field": "e2e.p99_ms",
+              "unit": "ms",
+              "warning": 20000,
+              "critical": 30000
+            },
+            {
+              "field": "requests.waiting",
+              "unit": "请求",
+              "warning": 10,
+              "critical": 30
+            }
+          ]
+        },
+        {
+          "label": "ENGINE_MODEL · vllm / Qwen/Qwen3-32B",
+          "level": "ENGINE_MODEL",
+          "engine_type": "vllm",
+          "model_name": "Qwen/Qwen3-32B",
+          "overrides": {
+            "fixed": {
+              "ttft.p95_ms": {
+                "warning": 500,
+                "critical": 900
+              }
+            }
+          },
+          "policy": {
+            "fixed": {
+              "ttft.p95_ms": {
+                "warning": 500,
+                "critical": 900
+              },
+              "ttft.p99_ms": {
+                "warning": 1500,
+                "critical": 3000
+              },
+              "tpot.p95_ms": {
+                "warning": 50,
+                "critical": 80
+              },
+              "tpot.p99_ms": {
+                "warning": 80,
+                "critical": 120
+              },
+              "e2e.p95_ms": {
+                "warning": 10000,
+                "critical": 20000
+              },
+              "e2e.p99_ms": {
+                "warning": 20000,
+                "critical": 30000
+              },
+              "requests.waiting": {
+                "warning": 10,
+                "critical": 30
+              }
+            },
+            "dynamic": {
+              "warning_z": 3.0,
+              "critical_z": 5.0,
+              "warning_change_ratio": 0.2,
+              "critical_change_ratio": 0.4
+            },
+            "trend": {
+              "window_minutes": 60,
+              "watch_change_ratio": 0.1,
+              "degrading_change_ratio": 0.2
+            },
+            "persistence": {
+              "consecutive_hits": 2
+            },
+            "quality": {
+              "max_age_seconds": 300,
+              "max_gap_seconds": 300
+            }
+          },
+          "fixed_thresholds": [
+            {
+              "field": "ttft.p95_ms",
+              "unit": "ms",
+              "warning": 500,
+              "critical": 900
+            },
+            {
+              "field": "ttft.p99_ms",
+              "unit": "ms",
+              "warning": 1500,
+              "critical": 3000
+            },
+            {
+              "field": "tpot.p95_ms",
+              "unit": "ms/token",
+              "warning": 50,
+              "critical": 80
+            },
+            {
+              "field": "tpot.p99_ms",
+              "unit": "ms/token",
+              "warning": 80,
+              "critical": 120
+            },
+            {
+              "field": "e2e.p95_ms",
+              "unit": "ms",
+              "warning": 10000,
+              "critical": 20000
+            },
+            {
+              "field": "e2e.p99_ms",
+              "unit": "ms",
+              "warning": 20000,
+              "critical": 30000
+            },
+            {
+              "field": "requests.waiting",
+              "unit": "请求",
+              "warning": 10,
+              "critical": 30
+            }
+          ]
+        }
+      ],
+      "input_contract": "外部采集系统计算并推送聚合快照（INFERENCE_SNAPSHOT）；平台接收、校验并评估，不直接采集引擎指标。20 个字段必须完整提供，不以 0 代替缺失数据。"
+    }
+  ]
+}

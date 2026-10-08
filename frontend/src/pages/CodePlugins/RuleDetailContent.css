@@ -1,0 +1,36 @@
+.rule-detail { min-width: 0; font-size: 13px; line-height: 1.8; color: var(--color-text-primary); }
+.rule-detail p { margin: 10px 0; }
+.rule-detail h5 { margin: 14px 0 8px; font-size: 13px; font-weight: 650; }
+.rule-detail code { overflow-wrap: anywhere; font-size: 11px; }
+.rule-detail .definition-list dd { overflow-wrap: anywhere; }
+.rule-detail-unavailable { padding: 12px 14px; border-left: 3px solid #d99029; background: #fff8eb; color: #75501c; }
+.rule-detail-table-scroll { max-width: 100%; overflow-x: auto; border: 1px solid var(--color-border); border-radius: 6px; }
+.rule-detail-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 12px; line-height: 1.65; }
+.rule-detail-table caption { padding: 10px 12px; text-align: left; font-weight: 600; color: var(--color-text-secondary); }
+.rule-detail-table th, .rule-detail-table td { padding: 10px 12px; border-top: 1px solid var(--color-border); vertical-align: top; }
+.rule-detail-table thead th { background: #f6f8fa; font-weight: 650; white-space: nowrap; }
+.rule-detail-table tbody th { font-weight: 500; }
+.rule-detail-table tbody th > code, .rule-detail-table small { display: block; margin-top: 4px; color: var(--color-text-secondary); font-weight: 400; }
+.rule-detail-metrics { min-width: 640px; }
+.rule-detail-metrics th:first-child { width: 40%; }
+.rule-detail-metrics td:nth-child(2) { width: 20%; }
+.rule-detail-thresholds { min-width: 570px; }
+.rule-detail-thresholds td:not(:first-child) { white-space: nowrap; }
+.rule-judgment-section { padding: 0 0 8px; border-bottom: 1px solid var(--color-border); }
+.rule-judgment-section ul { padding-left: 20px; margin: 8px 0; }
+.rule-judgment-section li + li { margin-top: 10px; }
+.rule-policy-profile { margin: 12px 0; border: 1px solid var(--color-border); border-radius: 6px; }
+.rule-policy-profile > summary { padding: 12px 14px; font-weight: 650; cursor: pointer; overflow-wrap: anywhere; }
+.rule-policy-profile[open] > summary { border-bottom: 1px solid var(--color-border); }
+.rule-policy-content { padding: 0 14px 12px; }
+.rule-policy-confirmation { color: var(--color-text-secondary); font-size: 12px; }
+.rule-policy-tuning { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 20px; margin: 16px 0; }
+.rule-policy-tuning div { border-bottom: 1px solid var(--color-border); padding-bottom: 8px; }
+.rule-policy-tuning dt { font-size: 11px; color: var(--color-text-secondary); }
+.rule-policy-tuning dd { margin: 4px 0 0; font-size: 12px; }
+.rule-policy-overrides ul { padding-left: 20px; }
+@media (max-width: 600px) {
+  .rule-policy-tuning { grid-template-columns: 1fr; }
+  .rule-policy-content { padding-inline: 10px; }
+  .rule-detail .definition-list div { flex-wrap: wrap; gap: 4px 12px; }
+}

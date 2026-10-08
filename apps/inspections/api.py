@@ -386,6 +386,7 @@ def code_plugins(request):
 
 
 def _serialize_rule(rule):
+    from .rules.catalog_details import get_catalog_details
     return {
         'rule_code': rule.rule_code,
         'name': rule.name,
@@ -398,6 +399,8 @@ def _serialize_rule(rule):
         'status': rule.status,
         'description': rule.description,
         'deterministic': True,
+        'input_source': rule.input_source,
+        **get_catalog_details(rule.rule_code),
     }
 
 
