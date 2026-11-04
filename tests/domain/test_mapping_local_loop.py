@@ -2,19 +2,20 @@
 import json,time,unittest
 from datetime import timedelta
 from unittest.mock import patch
-from django.test import SimpleTestCase,Client
+from django.test import TransactionTestCase,Client
 from django.utils import timezone
 from apps.core import mapping_loop as loop,mapping_services as store
 from apps.core.models import Environment,MappingValidation,MappingActivation,MappingCollection
 
 
-class MappingLocalLoopTests(SimpleTestCase):
+class MappingLocalLoopTests(TransactionTestCase):
     databases='__all__'
+    serialized_rollback=True
     sequence=0
     def setUp(self):
         type(self).sequence+=1
         self.env=Environment.objects.create(name='Loop mock',slug='loop-'+str(self.sequence),metadata={'local_mapping':store.MOCK_METADATA})
-        metrics=[{'standard_field':key,'source_metric':spec[0],'source_type':'GAUGE','source_unit':spec[1],'output_unit':spec[2],'conversion':spec[3],'labels':{},'window_seconds':300,'step_seconds':60}for key,spec in store.FIELD_SPECS.items()]
+        metrics=[{'standard_field':key,'source_metric':spec[0],'source_type':'GAUGE','source_unit':spec[1],'output_unit':spec[2],'conversion':spec[3],'labels':{},'window_seconds':300,'step_seconds':60}for key,spec in ((key,store.FIELD_SPECS[key]) for key in ('host.cpu_busy_ratio','gpu.temperature_celsius'))]
         self.content={'schema_version':store.SCHEMA_VERSION,'cluster':{'cluster_uid':'cluster-'+str(self.sequence),'monitor_cluster_id':'monitor-'+str(self.sequence),'display_name':'Synthetic loop'},'metrics':metrics}
         self.bundle=store.create_bundle(environment_id=self.env.pk,source_ref='demo-monitor',cluster_uid=self.content['cluster']['cluster_uid'],monitor_cluster_id=self.content['cluster']['monitor_cluster_id'],content=self.content,expected_head=0,reason='Initial',actor_label='self-described test')
         self.scope={'bundle_id':self.bundle.pk,'environment_id':self.env.pk,'source_ref':'demo-monitor','cluster_uid':self.bundle.cluster_uid}
