@@ -3,7 +3,7 @@ import json
 from datetime import timedelta
 from unittest.mock import patch
 from django.utils import timezone
-from new_loop_cases import MappingLocalLoopTests
+from tests.domain.test_mapping_local_loop import MappingLocalLoopTests
 from apps.core import mapping_loop as loop,mapping_services as store
 
 

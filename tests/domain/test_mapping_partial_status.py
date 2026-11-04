@@ -2,7 +2,7 @@
 import copy,json,uuid
 from datetime import timezone as utc
 from django.utils import timezone
-from new_fix_cases import MappingActivationFixTests
+from tests.domain.test_mapping_activation_fix import MappingActivationFixTests
 from apps.inspections.services.mapping_coverage import mapping_input_quality
 from apps.core.mapping_loop import versions
 
