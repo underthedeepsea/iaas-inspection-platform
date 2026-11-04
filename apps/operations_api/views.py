@@ -15,7 +15,7 @@ from functools import wraps
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import IntegrityError, transaction
-from django.http import JsonResponse
+from django.http import JsonResponse, StreamingHttpResponse
 from django.utils import timezone
 
 from apps.api.http import APIRequestError, api_error, parse_json_object, parse_positive_int
@@ -951,11 +951,8 @@ def inspection_run_result(request, run_id):
     return JsonResponse(read_result(run))
 
 
-@_boundary
-@_endpoint({'POST'})
-def dashboard_ask(request):
-    from apps.investigations.services.dashboard_explanation import COMPLETED_STATUSES, explain_dashboard, latest_completed_launch_run
-    from services.model_gateway.base import LLMUnavailableError
+def _dashboard_ask_input(request):
+    from apps.investigations.services.dashboard_explanation import COMPLETED_STATUSES, latest_completed_launch_run
     payload = parse_json_object(request)
     _reject_unknown(payload, {'environment_id', 'question', 'inspection_run_id'})
     environment = _environment(payload.get('environment_id'), required=True)
@@ -968,7 +965,59 @@ def dashboard_ask(request):
         run = latest_completed_launch_run(environment)
         if run is None:
             raise PublicAPIError('NO_COMPLETED_RUN', '当前环境还没有已完成的巡检，请先执行一次巡检。', status=409)
+    return run, question
+
+
+@_boundary
+@_endpoint({'POST'})
+def dashboard_ask(request):
+    from apps.investigations.services.dashboard_explanation import explain_dashboard
+    from services.model_gateway.base import LLMUnavailableError
+    run, question = _dashboard_ask_input(request)
     try:
-        return JsonResponse(explain_dashboard(run, question))
+        from apps.investigations.services.saved_explanations import explanation_write_transaction
+        with explanation_write_transaction():
+            return JsonResponse(explain_dashboard(run, question))
     except LLMUnavailableError as error:
         raise PublicAPIError('LLM_UNAVAILABLE', str(error), status=503) from None
+
+
+@_boundary
+@_endpoint({'POST'})
+def dashboard_ask_stream(request):
+    from apps.investigations.services.dashboard_stream import stream_dashboard_explanation
+    run, question = _dashboard_ask_input(request)
+    from apps.investigations.services.saved_explanations import explanation_write_transaction
+    def authorized_stream():
+        with explanation_write_transaction():
+            yield from stream_dashboard_explanation(run, question)
+    response = StreamingHttpResponse(authorized_stream(), content_type='text/event-stream; charset=utf-8')
+    response['Cache-Control'] = 'no-cache, no-transform'
+    response['X-Accel-Buffering'] = 'no'
+    return response
+
+
+@_boundary
+@_endpoint({'GET'})
+def dashboard_facts(request):
+    from apps.investigations.services.dashboard_explanation import COMPLETED_STATUSES, latest_completed_launch_run
+    from apps.inspections.services.run_result import inspection_run_result as read_result
+    environment = _environment(request.GET.get('environment_id'), required=True)
+    if request.GET.get('inspection_run_id'):
+        run = InspectionRun.objects.get(pk=_uuid(request.GET['inspection_run_id'], 'inspection_run_id'), environment=environment)
+        if run.status not in COMPLETED_STATUSES or run.finished_at is None:
+            raise PublicAPIError('RUN_NOT_COMPLETED', '请等待本次巡检完成。', status=409)
+    else:
+        run = latest_completed_launch_run(environment)
+        if run is None:
+            raise PublicAPIError('NO_COMPLETED_RUN', '当前环境还没有已完成的巡检。', status=409)
+    return JsonResponse(read_result(run)['fact_report'])
+
+
+@_boundary
+@_endpoint({'GET'})
+def inspection_run_explanation_latest(request, run_id):
+    from apps.investigations.services.saved_explanations import latest_answer
+    environment = _environment(request.GET.get('environment_id'), required=True)
+    run = InspectionRun.objects.get(pk=run_id, environment=environment)
+    return JsonResponse(latest_answer(run))

@@ -1,3 +1,4 @@
+import { InspectionFacts } from '../../features/inspection-history/InspectionFacts'
 import { CheckResultsTable } from '../../features/inspection-history/CheckResultsTable'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
@@ -34,6 +35,7 @@ export function ResourceRunDetailPage({ environmentId: providedEnvironmentId }: 
       </div>
       <div className="source-legend"><span><span className="analysis-source-code source-badge">CODE</span> 确定性规则判定</span><span><span className="analysis-source-ai source-badge">AI</span> 按需解释，不修改结果</span></div>
       <InspectionRunSummary detail={detail} />
+      {detail.fact_report ? <InspectionFacts report={detail.fact_report} environmentId={environmentId} /> : null}
       <CheckResultsTable results={detail.check_results} />
       <div className="content-grid">
         <section className="panel panel-large">

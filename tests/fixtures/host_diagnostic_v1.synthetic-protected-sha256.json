@@ -1,0 +1,4 @@
+{
+  "tests/fixtures/host_diagnostic_v1.synthetic.json": "a8a536d3c55bc2359d644424874e0655a3c690ae613ebcd4bce439f56d638607",
+  "tests/fixtures/host_diagnostic_v1.synthetic-baseline.json": "b7b8c7b1f5584104a25316d064a7aa6d790b63de6ac7fb0793e8caf37b914928"
+}

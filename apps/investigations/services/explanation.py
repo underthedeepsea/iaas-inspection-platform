@@ -2,53 +2,29 @@
 import json
 
 from django.db import transaction
-from django.db.models import Case, Count, When, Value, IntegerField
 from django.utils import timezone
 
-from apps.inspections.models import CheckResult, Finding, InspectionRun, ResourceInspectionSummary
+from apps.inspections.models import ResourceInspectionSummary
 from apps.investigations.models import Investigation
-from apps.risks.models import Evidence, Risk, RiskObservation
 from services.model_gateway.base import FinalAction, ModelRequest
-from .compact_context import build_compact_explanation_context, validate_explanation_answer
+from .compact_context import build_compact_explanation_context
+from .fact_projection import project_report, interpretation_choices, compose_grounded_explanation
 from .prompts import load_explanation_prompt, prompt_metadata, render_explanation_system_prompt
 
-
-MAX_CHECKS = 50
-
-
-def _check(row):
-    return {'id':str(row.pk), 'check':row.inspection_item_run.inspection_item.code, 'asset_id':str(row.asset_id), 'status':row.status, 'summary':row.summary, 'observed':row.observed_value, 'expected':row.expected_value, 'evidence':row.evidence, 'checked_at':row.checked_at.isoformat()}
 
 
 def build_resource_run_context(*, resource_type_code, inspection_run_id):
     summary = ResourceInspectionSummary.objects.select_related('inspection_run').get(inspection_run_id=inspection_run_id, resource_type__code=resource_type_code)
     run = summary.inspection_run
-    item_runs = [row for row in run.item_runs.select_related('inspection_item') if resource_type_code in (row.asset_scope or {}).get('resource_types', [])]
-    # Older summaries predate per-item resource codes. Bindings still constrain those records.
-    if not item_runs:
-        item_runs = list(run.item_runs.filter(inspection_item__resource_types__resource_type__code=resource_type_code).distinct())
-    asset_ids = {pk for row in item_runs for pk in (row.asset_scope or {}).get('asset_ids', [])}
-    checks = CheckResult.objects.filter(inspection_run=run, inspection_item_run__in=item_runs, asset_id__in=asset_ids).select_related('inspection_item_run__inspection_item').order_by('inspection_item_run__inspection_item__code','asset_id')
-    status_counts = dict(checks.order_by().values('status').annotate(count=Count('pk')).values_list('status', 'count'))
-    total_checks = sum(status_counts.values())
-    rows = list(checks.annotate(priority=Case(
-        When(status='FAIL', then=Value(0)), When(status='ERROR', then=Value(1)),
-        When(status='UNKNOWN', then=Value(2)), default=Value(3), output_field=IntegerField(),
-    )).order_by('priority', 'inspection_item_run__inspection_item__code', 'asset_id')[:MAX_CHECKS])
-    previous = ResourceInspectionSummary.objects.filter(resource_type__code=resource_type_code, inspection_run__environment_id=run.environment_id, inspection_run__created_at__lt=run.created_at).order_by('-inspection_run__created_at').first()
-    prior = []
-    if previous:
-        prior = [_check(row) for row in CheckResult.objects.filter(inspection_run_id=previous.inspection_run_id, inspection_item_run__inspection_item_id__in=[r.inspection_item_id for r in item_runs], asset_id__in=asset_ids).select_related('inspection_item_run__inspection_item').order_by('inspection_item_run__inspection_item__code','asset_id')[:MAX_CHECKS]]
-    risk_ids = RiskObservation.objects.filter(inspection_run=run, inspection_item_run__in=item_runs, detected=True).values_list('risk_id',flat=True)
-    return {
-        'inspection_run_id':str(run.pk), 'resource_type':resource_type_code,
-        'check_results':[_check(row) for row in rows], 'previous_check_results':prior,
-        'findings':list(Finding.objects.filter(inspection_item_run__in=item_runs, asset_id__in=asset_ids).values('finding_code','title','severity','value')[:MAX_CHECKS]),
-        'risks':[{'id':str(r.pk),'title':r.title,'severity':r.severity,'status':r.status} for r in Risk.objects.filter(pk__in=risk_ids, primary_asset_id__in=asset_ids)[:MAX_CHECKS]],
-        'evidence':[{'id':str(e.pk),'summary':e.summary} for e in Evidence.objects.filter(inspection_run=run, inspection_item_run__in=item_runs)[:MAX_CHECKS]],
-        'summary': {'check_count': total_checks, 'status_counts': {status: status_counts.get(status, 0) for status in CheckResult.Status.values}},
-        'truncated':total_checks > MAX_CHECKS,
-    }
+    from apps.inspections.services.run_result import resource_run_facts
+    report, checks = resource_run_facts(run, resource_type_code)
+    previous = ResourceInspectionSummary.objects.filter(resource_type__code=resource_type_code,
+        inspection_run__environment_id=run.environment_id, inspection_run__created_at__lt=run.created_at).order_by('-inspection_run__created_at').first()
+    return {'inspection_run_id': str(run.pk), 'resource_type': resource_type_code,
+            'check_results': checks, 'fact_report': report,
+            'summary': {'check_count': report['check_count'], 'status_counts': report['status_counts']},
+            'previous_run': {'run': {'id': str(previous.inspection_run_id)}, 'summary': {'status': previous.status}} if previous else None,
+            'truncated': False}
 
 
 def build_resource_type_context(*, environment_id, resource_type_code, date_from=None, date_to=None):
@@ -66,6 +42,8 @@ def build_resource_type_context(*, environment_id, resource_type_code, date_from
 def explain(investigation, context, *, gateway=None):
     prompt = load_explanation_prompt()
     compact = build_compact_explanation_context(context)
+    report = context.get('fact_report') or project_report(context.get('check_results') or [], run_id=context.get('inspection_run_id'))
+    choices = interpretation_choices(report, compact)
     with transaction.atomic():
         current = Investigation.objects.select_for_update().get(pk=investigation.pk)
         if current.status != 'CREATED':
@@ -78,21 +56,25 @@ def explain(investigation, context, *, gateway=None):
     gaps = ['部分检查证据不足'] if any(row['status'] in {'UNKNOWN','ERROR'} for row in checks) else []
     if not checks:
         gaps.append('本轮没有逐对象检查结果')
+    result = {'evidence_gaps':gaps, 'input_limits': [], 'check_result_ids':[row['id'] for row in compact['check_results']], 'root_cause_candidates':[], 'comparisons':[], 'priority_actions':[], 'fact_report': report, 'prompt': prompt_metadata(prompt)}
     if compact['truncated']:
-        gaps.append(f"省略了 {compact['omitted_count']} 条检查明细；汇总计数保留")
-    result = {'evidence_gaps':gaps, 'check_result_ids':[row['id'] for row in compact['check_results']], 'root_cause_candidates':[], 'comparisons':[], 'priority_actions':[], 'prompt': prompt_metadata(prompt)}
+        result['input_limits'].append(f"AI输入因预算省略 {compact['omitted_count']} 条检查；CODE完整事实保留。")
     try:
         if sufficient:
             if gateway is None:
                 from apps.conversations.services import _default_gateway
                 gateway = _default_gateway()
-            response = gateway.invoke(ModelRequest(messages=[{'role':'system','content':render_explanation_system_prompt(prompt)}, {'role':'user','content':json.dumps(compact, ensure_ascii=False, separators=(',', ':'))}], metadata={'purpose':'inspection_explanation'}))
+            response = gateway.invoke(ModelRequest(messages=[{'role':'system','content':render_explanation_system_prompt(prompt, choices=choices)}, {'role':'user','content':json.dumps(compact, ensure_ascii=False, separators=(',', ':'))}], metadata={'purpose':'inspection_explanation'}))
             current.rounds_used = 1
             current.model_provider, current.model_name = response.provider, response.model
             if isinstance(response.action, FinalAction):
-                validate_explanation_answer(response.action.summary, compact)
-                current.conclusion, current.confidence = response.action.summary, response.action.confidence
-                current.status = 'UNRESOLVED' if gaps else 'RESOLVED'
+                grounded = compose_grounded_explanation(report, compact, response.action.summary)
+                result['grounded_report'] = grounded
+                result['ai_status'] = grounded['ai_status']
+                result['priority_actions'] = [{'title': row['asset_name'], 'action': row['ai']['next_check']} for row in grounded['checks'] if row['ai']]
+                current.conclusion = grounded['text']
+                current.confidence = response.action.confidence if grounded['ai_status'] == 'ACCEPTED' else None
+                current.status = 'UNRESOLVED' if gaps or grounded['ai_status'] != 'ACCEPTED' else 'RESOLVED'
             else:
                 current.status, current.conclusion = 'UNRESOLVED', '现有证据不足以完成解释'
                 result['evidence_gaps'].append('模型请求了额外证据，首期不执行工具调查')

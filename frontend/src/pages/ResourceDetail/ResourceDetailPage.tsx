@@ -1,3 +1,4 @@
+import { PerformanceProfile } from './PerformanceProfile'
 import { HardwareHealthProfile } from '../../features/hardware-health/HardwareHealthProfile'
 import { CheckResultsTable } from '../../features/inspection-history/CheckResultsTable'
 import { useQuery } from '@tanstack/react-query'
@@ -86,18 +87,20 @@ function OverviewPanel({ code, environmentId, overview }: { code: string; enviro
   const latest = isRealLlmRun ? overview.latest : null
   const isNoData = overview.resource_type.data_state === 'NO_DATA' || latest?.summary?.data_state === 'NO_DATA'
   const metrics = [
-    ['健康度', latest?.health_score ?? '—', latest?.health_score == null ? '等待巡检结果' : '最近一轮巡检'],
-    ['巡检覆盖率', latest?.coverage_rate == null ? '—' : `${Math.round(latest.coverage_rate * 100)}%`, '已覆盖资源对象'],
+    ['健康度', latest?.health_score ?? '—', latest?.health_score == null ? latest?.finished_at ? '执行已结束；当前可判覆盖未满足评分条件' : latest ? '巡检执行中，尚无评分' : '等待巡检结果' : '最近一轮巡检'],
+    ['巡检覆盖率', latest?.coverage_rate == null ? '—' : `${Math.round(latest.coverage_rate * 100)}%`, '执行覆盖：已产生检查结果的对象'],
+    ['可判覆盖率', typeof latest?.summary?.conclusive_rate === 'number' ? `${Math.round(latest.summary.conclusive_rate * 100)}%` : '—', '沿本轮原始可判口径，未改变评分分母'],
     ['当前风险', latest?.risk_count ?? 0, '跨运行关联后的风险'],
     ['P1/P2', `${latest?.p1_count ?? 0} / ${latest?.p2_count ?? 0}`, '按严重级别统计'],
   ] as const
   return (
     <>
       <CheckResultsTable results={overview.check_results} />
+      {['HOST', 'LLM_RUNTIME', 'CONTROL_PLANE', 'CLUSTER'].includes(code) ? <PerformanceProfile environmentId={environmentId} resourceCode={code} /> : null}
       {['GPU_POOL', 'HOST'].includes(code) ? <HardwareHealthProfile environmentId={environmentId} resourceCode={code} /> : null}
       {code === 'LLM_RUNTIME' ? <InferencePerformanceProfile environmentId={environmentId} latestRunAt={latest?.finished_at} /> : null}
       {code === 'LLM_RUNTIME' && overview.latest && !isRealLlmRun ? <p role="status">最近记录来自已退场演示规则，仅可作历史查看；当前尚无正式插件巡检结论。</p> : null}
-      {latest?.summary?.data_state === 'UNKNOWN' ? <p role="status">证据不足，暂无可信健康分数</p> : null}
+      {latest?.finished_at ? <p role="status">执行已结束（{latest.status}）；已判异常 {overview.check_results?.filter(row => row.status === 'FAIL').length ?? 0} / 正常 {overview.check_results?.filter(row => row.status === 'PASS').length ?? 0} / 未能判定 {overview.check_results?.filter(row => row.status === 'UNKNOWN' || row.status === 'ERROR').length ?? 0}。{latest.health_score == null ? '评分暂不计算，具体缺项与原因见逐项检查。' : ''}已确认异常与风险仍按原结果显示。</p> : null}
       {isNoData ? <p className="no-data-banner" role="status">无可用资源数据</p> : null}
       <div className="metric-grid">{metrics.map(([label, value, detail]) => <article className="metric-card" key={label}><span>{label}</span><strong>{value}</strong><small>{detail}</small></article>)}</div>
       <div className="content-grid">

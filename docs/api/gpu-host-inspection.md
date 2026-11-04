@@ -13,6 +13,20 @@ GPU identity 为 `{gpu_uuid, model}`，HOST identity 为 `{}`。metrics 为以�
 | filesystem | available_bytes, size_bytes |
 | disk | read_bytes_per_second, write_bytes_per_second, read_latency_avg_ms, write_latency_avg_ms, io_busy_ratio |
 
+## Linux HOST 外部来源与内存单位
+
+巡检目标为 Linux 服务器；接入方负责从可信的目标服务器来源采集和聚合，再经现有快照 API 推送。服务端接收已换算为 bytes 的数值，本仓库不新增 proc、SSH 或 Prometheus 采集器，也不根据开发宿主操作系统推断服务器语义。
+
+- `metrics.host.values.memory_available_bytes` 对应 Linux `/proc/meminfo` 的 `MemAvailable`；该字段按 kB 输出时，外部采集方乘 **1024** 转为 bytes。
+- `metrics.host.values.memory_total_bytes` 对应同一来源的 `MemTotal`；kB 输出同样乘 **1024**。
+- 上游监控已经输出 bytes 时直接使用，**不得再次乘 1024**。受控单位示例：`MemAvailable: 4096 kB` 对应 `4194304 bytes`，`MemTotal: 16384 kB` 对应 `16777216 bytes`；这些示例不是服务器实测。
+- `MemAvailable` 是内核对无需交换即可供新应用使用内存的估计，考虑 MemFree、可回收 slab、LRU 及水位；它不是 `MemFree + Inactive`，也不保证立即可分配。缺测或不支持时，按原契约使用 `quality=MISSING` / `UNSUPPORTED`、`value=null`，不使用 `MemFree + Inactive` 或 `free + inactive` 兜底，不补零。
+- `source`、`config_id` 应标识实际外部来源及采集配置，保留该来源的窗口和 `collected_at`。报告通用显示冻结来源，不把旧历史值或来源重标为 Linux。数据如自带语义说明则原文展示；来源未核实的历史数据不作为 Linux 服务器验收。
+
+依据：[Linux proc meminfo 文档](https://docs.kernel.org/filesystems/proc.html#meminfo) 定义 `MemAvailable`；[Linux meminfo 实现](https://raw.githubusercontent.com/torvalds/linux/master/fs/proc/meminfo.c) 中 `show_val_kb` 使用 `PAGE_SHIFT - 10` 输出 kB，`MemAvailable` 来自 `si_mem_available`，即这里的 kB 为 1024 bytes。接入方须核对其实际上游单位，不因名称相近重复换算。
+
+旧开发宿主机采样、Run 和报告作为历史记录原样保留，不作为 Linux 默认入口或服务器验收依据。当前只有输入契约和受控离线验证；真实 Linux 服务器端到端验证为 **NOT_RUN**。旧冻结 Run 保持原规则和来源，不因新规则重算；新 HOST v2 契约与历史记录分开。
+
 两组 used/total、available/total分别属于已批准的配对指标；Xid窗口事件替代旧last值，不新增指标。比例0到1，字节/延迟/速率非负，ECC为整数delta。ECC值额外要求 `source_metric`、`semantics`（SINGLE_BIT/DOUBLE_BIT）和 `scope`（DRAM）；采集方必须证实来源等价，不能将通用 corrected/uncorrected 直接更名。重置窗口 quality=RESET，不比较为增长或恢复。
 
 Xid value 是 `[{event_id,code,occurred_at}]`，event_id 应来自持久日志标识；相同事件跨投递去重，标识相同但内容冲突拒绝。事件时间必须在本窗口内。ECC的事件证据键由快照身份、GPU和指标组成。
@@ -30,3 +44,18 @@ bindings为 `{complete:boolean,engines:[{engine_id,engine_type,model_name}]}`；
 批量导入：POST `/api/v1/hardware-health/snapshots/batch`，`{samples:[完整请求,...]}`，最多500条，按设备时间升序，整个批次事务原子提交，重复样本只返回原快照、不重评估。定时API `/api/internal/v1/batch/inspection-runs` 可传 source_type=HARDWARE_SNAPSHOT（GPU/HOST）或EXTERNAL_SNAPSHOTS（混合）及resource_types；默认INFERENCE_SNAPSHOT仍兼容旧LLM调度。
 
 Xid分类依据 [NVIDIA Xid Catalog](https://docs.nvidia.com/deploy/xid-errors/analyzing-xid-catalog.html) 与 [GPU Node Triage](https://docs.nvidia.com/deploy/gpu-debug-guidelines/gpu-node-triage.html)。48/63/64/92/94/95为内存相关，79为设备掉总线，119/120为GSP通信/执行错误；未知代码保留原值并标记UNCLASSIFIED。严重级别是本产品保守运营策略，不等于根因确诊或厂商RMA结论。单次SBE为偶发告警、复发/加速另有代码；硬件事件均需处置复验，模型不自动执行设备操作。
+
+
+## HOST v2 已批准静态规则与当前边界
+
+新HOST快照评估冻结 `gpu-host-health/2.0.0`；GPU及旧Run的1.0.0不重算。新请求可加 `host_semantics={"os":"LINUX","memory_available":"MemAvailable","memory_total":"MemTotal","unit":"bytes"}`。这是外部接入方语义声明，不是服务端已经验证Linux来源的证明；无声明仍可接收旧payload，CPU/内存静态项为NOT_READY，不根据source名字或开发宿主OS推断Linux。
+
+CPU >=80%警告、>=90%严重；MemAvailable/MemTotal <=20%警告、<=10%严重；各连续3有效点，60秒相邻，首末120秒。CPU严重退出<85%、警告解除<75%；内存严重退出>15%、警告解除>25%；各连续5有效点，首末240秒。严重可降警告。缺测、同点、断点、来源/配置变化打断确认；已确认事件保持，缺测不恢复。静态项独立于LLM绑定、漂移样本和磁盘覆盖。事件与阈值冻结于现有evaluation；风险复验必须满足同规则、同事件的五点恢复证据及原处置后时间/组件要求，删除规则或事件不构成恢复。
+
+外部采集合同为60秒采集一次、每次入库评估一次；严格按原collected_at验证60秒连续性。仓库没有新增采集器或60秒调度服务，配置值不是实际节拍运行证明。显式Linux输入入库新鲜度和v2 Run读取均为180秒（包含180秒）；旧冻结1.0.0保留300秒读取边界。内存容量配对要求有效、同采集时刻，字节值不再换算。
+
+HOST/文件系统下降窗口最多1800秒31点、最少600秒11点；保持Theil–Sen双负斜率及[0.25,4]比例，下降量严格>max(1MiB,首值3%)，文件系统保留水位10%。
+
+CPU新漂移使用14天30可比点、最低效应>=max(0.20,基线绝对值15%)、稳健倍数3、CUSUM k0.5/h5。单点路径逐点满足最低效应且严格越过3倍尺度；CUSUM逐点满足最低效应及同方向累计得分>=5，不再套单点波动门槛；每路径各连续3个有效可比同方向点。近期序列从原调用6点提升至原函数已有的有界12点，使慢漂移有机会在第10至12点累计满足连续确认；没有无限累计。每事件冻结实际命中分支的threshold/base/scale；同时命中保留所有分支义务，恢复要求偏离<=各分支threshold×70%连续5有效可比点，不使用尖峰实际偏离或新基线。必要的原绑定和CPU/IO负载可比性保留。
+
+固定30天当前仅落实无副作用候选界限：`apps.hardware_health.host_policy.retention_candidates(rows, as_of=...)` 返回window_end严格早于as_of−30天的ID。它不查询/删除数据库，不启动清理或调度，调用方仍须保护引用及冻结证据；真实保留清理为PARTIAL/NOT_RUN。本批没有删除任何真实Run、快照或历史证据。所有验证为受控纯函数/投影/前端测试；真实Linux及HTTP/DOM端到端为NOT_RUN。

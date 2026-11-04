@@ -6,7 +6,7 @@
 
 `v0.4.0` 发布内容包含推理性能画像、GPU / 宿主机健康巡检、风险与复验流程，以及 AI 解读和提示词管理。本轮补充了规则详情中的可采集指标与具体判定规则、[20 项推理性能指标清单](docs/api/inference-performance-metrics.md)，并统一 `VERSION` 和前端项目版本为 `0.4.0`。完整变化及升级要求见 [v0.4.0 发布说明](docs/release/v0.4.0.md)。此前 `v0.3.0` 覆盖推理性能插件与提示词管理；GPU / 宿主机巡检由其后的主分支更新加入。
 
-正式巡检使用外部监控程序推送的聚合快照；平台负责保存、评估、展示和风险闭环。当前代码不直接连接 Prometheus、Kubernetes、CMDB、日志平台、GPU 驱动或 SSH。仓库保留模拟数据工具用于开发和测试，正式数据路径不会默认生成模拟数据。已有代码与本地检查不代表生产采集接入、迁移或性能验收已经完成。
+产品巡检目标是 Linux 服务器，开发宿主的操作系统不决定服务器输入语义。正式巡检使用外部监控程序推送的聚合快照；平台负责保存、评估、展示和风险闭环。当前代码不直接连接 Prometheus、Kubernetes、CMDB、日志平台、GPU 驱动或 SSH。仓库保留模拟数据工具用于开发和测试，正式数据路径不会默认生成模拟数据。已有代码与本地检查不代表生产采集接入、迁移或性能验收已经完成。
 
 ## 当前支持
 
@@ -23,6 +23,10 @@
 - Airflow 通过内部 HTTP API 驱动巡检；本地开发可使用本地后台任务。定时输入支持推理、硬件以及混合外部快照。
 
 详细字段及接入约束见 [推理性能指标与 API](docs/api/inference-performance-metrics.md) 和 [GPU / 宿主机巡检接入](docs/api/gpu-host-inspection.md)。
+
+Linux HOST 的外部采集方应按 [GPU / 宿主机接入约定](docs/api/gpu-host-inspection.md) 推送 `MemAvailable` / `MemTotal` 对应的字节值；本仓库不提供 Linux proc、SSH 或 Prometheus 采集器。来源、配置和原始数据时间随历史报告保留，来源未核实的数据不作为 Linux 服务器验收。
+
+旧开发宿主机采样、Run 和报告作为历史记录原样保留，不作为 Linux 默认入口或服务器验收依据。当前只有输入契约和受控离线验证；真实 Linux 服务器端到端验证为 **NOT_RUN**。旧冻结 Run 保持原规则和来源，不因新规则重算；新 HOST v2 契约与历史记录分开。
 
 ## 核心思路
 
@@ -62,10 +66,9 @@ VERSION                           项目版本号（0.4.0）
 
 ## 命令行启动
 
-以下命令在仓库根目录执行。macOS 使用 Docker Desktop 时先启动引擎，再启动 PostgreSQL：
+以下为已有本地开发环境的启动示例，在仓库根目录执行；使用已可用的 Docker Engine 和 Compose，已有数据库可直接复用。该开发 Compose 示例不代表生产部署已经验证。
 
 ```bash
-docker desktop start
 docker compose up -d postgres
 ```
 
@@ -134,3 +137,5 @@ python -m pytest -q
 ## 安全提示
 
 本地密钥、数据库密码和 Ollama 配置应通过环境变量提供，不要提交到仓库。项目中的默认密钥仅用于本地开发占位，不能用于生产环境。
+
+Linux HOST v2 的CPU/可用内存静态阈值、3点触发/5点恢复、180秒新鲜度及下降窗口见[接入契约](docs/api/gpu-host-inspection.md#host-v2-已批准静态规则与当前边界)。60秒为外部输入合同，未新增采集/调度服务；30天仅有无副作用候选界限，实际清理未运行。CPU漂移以各分支完整条件连续3点确认，冻结分支门槛的70%连续5点恢复；真实Linux验收尚未执行。

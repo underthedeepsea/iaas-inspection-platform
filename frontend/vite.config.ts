@@ -12,6 +12,7 @@ export default defineConfig({
     },
   },
   test: {
+    css: { include: [/\/src\/features\/inspection-history\/CheckResultsTable\.css(?:\?.*)?$/] },
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
     globals: true,

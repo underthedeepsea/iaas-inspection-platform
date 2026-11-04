@@ -68,6 +68,17 @@ export function InferencePerformanceProfile({ environmentId, latestRunAt }: { en
         <div><dt>Engine ID</dt><dd>{profile.engine.engine_id}</dd></div><div><dt>Model</dt><dd>{profile.engine.model_name}</dd></div><div><dt>Engine Type</dt><dd>{profile.engine.engine_type}</dd></div>
         <div><dt>Fixed</dt><dd>{profile.fixed.status ?? '—'}</dd></div><div><dt>Dynamic 14d</dt><dd>{profile.dynamic.status === 'NOT_READY' ? '历史基线建立中' : profile.dynamic.status ?? '—'}</dd></div><div><dt>Trend</dt><dd>{profile.trend.status ?? '—'}</dd></div><div><dt>Policy</dt><dd>{profile.policy_source.level ?? '—'}</dd></div>
       </dl></section></div>
+      <section aria-label="逐项推理诊断"><h4>逐项规则结果与覆盖</h4><p>层级状态只汇总可评估项。NOT_READY 表示无法评估，NOT_EVALUABLE 不作为正常；首次越界等待原规则连续确认。</p>
+        {(['fixed', 'dynamic', 'trend'] as const).map(layer => <article key={layer}><h5>{layer}</h5>
+          <dl className="definition-list">{Object.entries(profile[layer]).filter(([field]) => field !== 'metrics').map(([field, value]) => <div key={field}><dt>{field}</dt><dd>{value == null ? '—' : typeof value === 'object' ? JSON.stringify(value) : String(value)}</dd></div>)}</dl>
+          {Object.entries(profile[layer].metrics ?? {}).map(([metric, result]) => <article key={metric}><h5>{metric}</h5>
+            {layer === 'fixed' && result.raw_status !== 'NORMAL' && result.effective_status === 'NORMAL' ? <p>已 {String(result.consecutive_hits ?? '未记录')}/{profile.resolved_policy?.persistence?.consecutive_hits ?? '原记录未标注所需点数'} 点，待后续有效观测确认。</p> : null}
+            {result.quality_reason === 'ZERO_BASELINE' ? <p>零基线，比例变化不可评估；仅展示原始差值。</p> : null}
+            <dl className="definition-list">{Object.entries(result).map(([field, value]) => <div key={field}><dt>{field}</dt><dd>{value == null ? '—' : typeof value === 'object' ? JSON.stringify(value) : String(value)}</dd></div>)}</dl>
+          </article>)}
+          {!Object.keys(profile[layer].metrics ?? {}).length ? <p>此层未记录逐项结果；不据层级状态补造已通过项。核对历史覆盖及原输入后复查。</p> : null}
+        </article>)}
+      </section>
       <details><summary>全部当前指标</summary><dl className="definition-list">
         <div><dt>QPS / QPM</dt><dd>{display(profile.current_metrics.traffic.qps)} / {display(profile.current_metrics.traffic.qpm)}</dd></div>
         <div><dt>Generation / Prompt TPS</dt><dd>{display(profile.current_metrics.throughput.generation_tps)} / {display(profile.current_metrics.throughput.prompt_tps)}</dd></div>

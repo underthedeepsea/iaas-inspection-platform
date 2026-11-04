@@ -262,6 +262,8 @@ def resource_run_detail(request, resource_type_code, run_id):
         "P3": summary.p3_count,
         "P4": summary.p4_count,
     }
+    from apps.inspections.services.run_result import resource_run_facts
+    fact_report, frozen_checks = resource_run_facts(summary.inspection_run, resource_type.code)
     return JsonResponse(
         {
             "resource_type": resource_type.code,
@@ -277,7 +279,8 @@ def resource_run_detail(request, resource_type_code, run_id):
                 "assets_covered": summary.assets_covered,
                 "rate": summary.assets_covered / summary.assets_total if summary.assets_total else None,
             },
-            "check_results": resource_check_results(summary.inspection_run, resource_type),
+            "check_results": frozen_checks,
+            "fact_report": fact_report,
             "inspection_item_status_counts": dict(status_counts),
             "inspection_item_count": summary.inspection_item_count,
             "finding_count": summary.finding_count,

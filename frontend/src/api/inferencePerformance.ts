@@ -31,6 +31,8 @@ export interface InferenceReason {
   change_ratio?: number
 }
 
+export type EvaluationLayer = { metrics?: Record<string, Record<string, unknown>>; [key: string]: unknown }
+
 export interface InferenceProfile {
   snapshot_id: string
   engine: { engine_id: string; engine_type: string; model_name: string }
@@ -41,9 +43,10 @@ export interface InferenceProfile {
   plugin?: { id?: string; version?: string; rule_code?: string }
   quality?: { state?: string; pending_confirmation?: boolean }
   current_metrics: CurrentInferenceMetrics
-  fixed: { status?: InferenceStatus }
-  dynamic: { status?: EvaluationStatus; baseline_state?: 'READY' | 'NOT_READY' }
-  trend: { status?: 'STABLE' | 'WATCH' | 'DEGRADING' | 'NOT_READY' }
+  fixed: EvaluationLayer & { status?: InferenceStatus }
+  dynamic: EvaluationLayer & { status?: EvaluationStatus; baseline_state?: 'READY' | 'NOT_READY' }
+  trend: EvaluationLayer & { status?: 'STABLE' | 'WATCH' | 'DEGRADING' | 'NOT_READY' | 'NOT_EVALUABLE' }
+  resolved_policy?: { persistence?: { consecutive_hits?: number }; [key: string]: unknown }
   policy_source: { level?: 'DEFAULT' | 'ENGINE' | 'ENGINE_MODEL'; config_hash?: string }
   reasons: InferenceReason[]
 }

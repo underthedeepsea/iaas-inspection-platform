@@ -1,6 +1,7 @@
 """Conservative device diagnostics; statistical readiness is separate from health."""
 from datetime import timedelta
 from statistics import median
+from .host_policy import HOST_PLUGIN, POLICY, static_rules, cpu_rules
 
 PLUGIN = {'id':'gpu-host-health','version':'1.0.0'}
 LOAD_FIELDS = [('traffic','qps'),('throughput','prompt_tps'),('throughput','generation_tps'),('requests','running'),('cache','kv_cache_hit_rate')]
@@ -78,15 +79,30 @@ def slope(points):
 
 
 def declining(rows,component,metric):
-    if len(rows)<6: return {'status':'NOT_READY','sample_count':len(rows)}
-    points=[(r.window_end.timestamp(),value(r,component,metric)) for r in rows[-12:]]
-    if any(v is None for _,v in points) or points[-1][0]-points[0][0]<300:
-        return {'status':'NOT_READY','sample_count':len(points)}
+    # Collected timestamps, rather than call time, define the strict 60s grid.
+    points=[]
+    for row in reversed(rows):
+        point=row.payload['metrics'].get(component,{}).get('values',{}).get(metric,{})
+        from datetime import datetime
+        try:
+            collected=datetime.fromisoformat(point['collected_at'])
+            stamp=collected.timestamp()
+            valid=point.get('quality')=='VALID' and 0<=(row.window_end-collected).total_seconds()<=180
+        except (KeyError,TypeError,ValueError): break
+        if not valid or (points and points[-1][0]-stamp!=60): break
+        if points and points[0][0]-stamp>1800: break
+        points.append((stamp,point['value']))
+        if len(points)==31: break
+    points.reverse()
+    span=points[-1][0]-points[0][0] if points else 0
+    details={'sample_count':len(points),'window_seconds':span,'minimum_points':11,'minimum_seconds':600,'maximum_points':31,'maximum_seconds':1800}
+    if len(points)<11 or span<600:
+        return {'status':'NOT_READY','reason':'INSUFFICIENT_CONTIGUOUS_WINDOW',**details}
     long,short=slope(points),slope(points[-4:])
     drop=points[0][1]-points[-1][1]
     consistent=long<0 and short<0 and .25<=short/long<=4 and drop>max(1024**2,abs(points[0][1])*.03)
-    return {'status':'WARNING' if consistent else 'NORMAL','sample_count':len(points),'long_slope_bytes_per_second':long,
-            'short_slope_bytes_per_second':short,'consistent_decline':consistent}
+    return {'status':'WARNING' if consistent else 'NORMAL','current':points[-1][1],'unit':'bytes',**details,
+            'long_slope_bytes_per_second':long,'short_slope_bytes_per_second':short,'consistent_decline':consistent}
 
 
 def evaluate(snapshot, previous):
@@ -119,6 +135,8 @@ def evaluate(snapshot, previous):
                 diagnostics[key]={'status':point['quality'],'sample_count':0};continue
             diagnostics[key]={'status':'NORMAL','current':point['value']}
             if metric not in DRIFT_METRICS: continue
+            if family=='host' and metric=='cpu_busy_ratio':
+                continue  # New CPU paths and frozen recovery are evaluated independently below.
             eligible=[r for r in history if comparable(snapshot,r) and r.payload['metrics'].get(component,{}).get('identity')==body['identity']]
             # Hold out the recent tail so a slow drift cannot immediately redefine normal.
             recent=component_rows[-6:]
@@ -147,6 +165,15 @@ def evaluate(snapshot, previous):
                         result['reserve_bytes']=reserve
                         result['seconds_to_reserve']=max(0.,(value(snapshot,component,metric)-reserve)/-result['long_slope_bytes_per_second'])
                 issue(key,'SPACE_DECLINE' if family=='filesystem' else 'MEMORY_SUSTAINED_DECLINE',**result)
+    host_states={};host_events={}
+    if current['kind']=='HOST':
+        static,static_issues,host_states,host_events=static_rules(snapshot,all_history)
+        diagnostics.update(static);issues.extend(static_issues)
+        cpu,cpu_issue=cpu_rules(snapshot,all_history,host_states,host_events,comparable=comparable)
+        diagnostics['host/cpu_busy_ratio']=cpu
+        if cpu_issue:issues.append(cpu_issue)
+        pending |= cpu['status'] in {'PENDING','NOT_READY'}
+        pending |= any(x['status'] in {'PENDING','NOT_READY'} for x in static.values())
     # Sticky hardware event state is independent of baseline horizon/config changes.
     hardware=dict((all_history[-1].evaluation or {}).get('pending_hardware_events',{})) if all_history else {}
     att=current.get('hardware_reverification',{})
@@ -215,9 +242,10 @@ def evaluate(snapshot, previous):
     critical=any(x['severity']=='P1' for x in issues)
     incomplete=any(x!='READY' for x in coverage.values())
     status='CRITICAL' if critical else 'WARNING' if issues else 'UNKNOWN' if incomplete or pending else 'NORMAL'
-    return {'plugin':PLUGIN,'input':{'snapshot_id':str(snapshot.pk)},'status':status,
+    return {'plugin':HOST_PLUGIN if current['kind']=='HOST' else PLUGIN,
+            **({'resolved_policy':POLICY,'host_rule_states':host_states,'host_rule_events':host_events} if current['kind']=='HOST' else {}),'input':{'snapshot_id':str(snapshot.pk)},'status':status,
             'quality':{'state':'INCOMPLETE' if incomplete else 'READY','pending_confirmation':pending},
             'coverage':coverage,'diagnostics':diagnostics,'issues':issues,'pending_hardware_events':hardware,
             'correlations':correlations,'reasons':[{**x,'window_start':snapshot.window_start.isoformat(),'window_end':snapshot.window_end.isoformat()} for x in issues+correlations],
             'limitations':['疑似相关性不等同根因；无频率/功耗不能诊断热降频；无IOPS/IO大小不能确诊存储退化。',
-                            '8点仅最低计算门槛，NOT_READY不表示该诊断健康。','共享或归属不完整的设备仅报告设备级现象。']}
+                            'CPU须30个可比历史点；其他高级项8点仅最低门槛，NOT_READY不表示健康。','共享或归属不完整的设备仅报告设备级现象。']}

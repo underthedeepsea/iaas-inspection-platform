@@ -44,8 +44,12 @@ it('uses the document visual hierarchy for a resource overview', async () => {
         p2_count: 1,
         last_inspection_at: '2026-08-25T10:00:00Z',
       },
+      check_results: [{ id: 'check-fail', inspection_item_code: 'llm.performance_profile', inspection_item_name: '性能', asset_id: 'a', asset_name: 'Service', status: 'FAIL', summary: '已确认超限', source: { plugin_id: 'inference-performance' }, observed_value: {}, expected_value: {}, evidence: {}, checked_at: 'now' }],
       latest: {
-        health_score: 92,
+        health_score: null,
+        status: 'SUCCEEDED',
+        finished_at: '2026-08-25T10:00:00Z',
+        summary: { conclusive_rate: 0, data_state: 'UNKNOWN' },
         coverage_rate: 1,
         risk_count: 1,
         p1_count: 0,
@@ -69,6 +73,10 @@ it('uses the document visual hierarchy for a resource overview', async () => {
 
   expect(await screen.findByRole('heading', { name: '大模型运行时' })).toBeInTheDocument()
   expect(screen.getByText('巡检覆盖率')).toBeInTheDocument()
+  expect(screen.getByText('可判覆盖率')).toBeInTheDocument()
+  expect(screen.getByText('执行已结束；当前可判覆盖未满足评分条件')).toBeInTheDocument()
+  expect(screen.getByText(/执行已结束（SUCCEEDED）；已判异常 1/)).toBeInTheDocument()
+  expect(screen.getByText('已确认超限')).toBeInTheDocument()
   expect(screen.getAllByText('当前风险').length).toBeGreaterThan(1)
   expect(screen.getByText('健康趋势')).toBeInTheDocument()
   expect(screen.getByRole('tab', { name: '概览' })).toHaveAttribute('aria-selected', 'true')

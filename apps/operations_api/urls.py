@@ -6,6 +6,10 @@ from . import views
 
 
 urlpatterns = [
+    path("inspection-runs/<uuid:run_id>/explanations/latest", views.inspection_run_explanation_latest, name="inspection-run-explanation-latest"),
+    path("dashboard/facts", views.dashboard_facts, name="dashboard-facts"),
+    path("dashboard/facts/", views.dashboard_facts, name="dashboard-facts-slash"),
+    path("dashboard/ask/stream", views.dashboard_ask_stream, name="dashboard-ask-stream"),
     path("dashboard/ask", views.dashboard_ask, name="dashboard-ask"),
     path("inspection-runs/<uuid:run_id>/result", views.inspection_run_result, name="inspection-run-result"),
     path("environments", views.environments, name="environments"),

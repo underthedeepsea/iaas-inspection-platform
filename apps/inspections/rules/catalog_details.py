@@ -6,6 +6,7 @@ from copy import deepcopy
 
 from apps.hardware_health.evaluator import LOAD_FIELDS, MIN_EFFECT
 from apps.hardware_health.schemas import FIELDS, QUALITIES
+from apps.hardware_health.host_policy import POLICY, RULES
 from apps.inference_performance.schemas import METRIC_FIELDS
 from apps.inference_performance.services.baseline import SUPPORT_METRICS
 from apps.inference_performance.services.fixed import PRIMARY_METRICS
@@ -132,6 +133,8 @@ def _hardware_details(kind):
             if field not in FIELDS[family]:
                 continue
             component = family if family in {'gpu', 'host'} else f'{family}:<稳定标识>'
+            if kind == 'host' and family == 'host' and field == 'cpu_busy_ratio':
+                purpose = 'Linux CPU固定阈值（连续确认/严格恢复）及同负载条件漂移'
             metrics.append({'field': f'{family}.{field}', 'input_path': f'metrics.{component}.values.{field}.value',
                             'name': name, 'unit': unit, 'range': value_range, 'purpose': purpose})
     effects = '；'.join(f'{field}={effect:g}' for field, effect in MIN_EFFECT.items()
@@ -170,11 +173,26 @@ def _hardware_details(kind):
                      '确认文件系统下降后 reserve=总容量×0.1，seconds_to_reserve=max(0, (当前可用−reserve)/−长斜率)。10% 是保留空间时间估计基准；当前实现不单凭空间低于 10% 触发告警。',
                      '读/写延迟确认向上漂移时，生成疑似 I/O 延迟退化关联；没有 IOPS/IO 大小不能确诊存储退化。'),
         ]
+    if kind == 'host':
+        cpu=RULES['host/cpu_static'];memory=RULES['host/memory_static'];drift=POLICY['cpu_drift']
+        rules[:2] = [
+            _section('HOST v2 固定阈值与恢复',
+                f"Linux显式语义，采集间隔 {POLICY['collection_seconds']} 秒；CPU >= {cpu['warning']:.0%} 警告、>= {cpu['critical']:.0%} 严重；MemAvailable/MemTotal <= {memory['warning']:.0%} 警告、<= {memory['critical']:.0%} 严重；各连续 {POLICY['trigger_points']} 点（120秒）。",
+                f"严重退出 CPU < {cpu['critical_exit']:.0%}、内存 > {memory['critical_exit']:.0%}；警告解除 CPU < {cpu['warning_exit']:.0%}、内存 > {memory['warning_exit']:.0%}；均连续 {POLICY['recovery_points']} 点（240秒），边界严格。"),
+            _section('HOST v2 CPU条件漂移',
+                f"过去 {drift['history_days']} 天至少 {drift['history_points']} 个同来源、身份、配置及可比LLM负载历史点；最近最多 {drift['maximum_series_points']} 点留出。各分支连续 {drift['confirmation_points']} 个60秒有效点确认。",
+                'DIRECT：偏差绝对值 >= max(0.20, 基线15%) 且严格 > 3×robust_scale；CUSUM：同方向得分 >= 5 且各点达到最小效应。冻结各触发分支门槛后，偏差 <= 原门槛70% 连续5点恢复；NOT_READY 表示无法评估。'),
+            _section('磁盘条件基线（原规则）', '磁盘仍要求至少 8 点、最近最多6点；最近 3 点至少 2 点同向越界或CUSUM确认。' + effect_details + '最小绝对效应 floor：' + effects),
+        ]
+        rules[3] = _section('HOST v2 内存/文件系统持续下降与保留空间',
+            f"主机内存与文件系统均要求{POLICY['collection_seconds']}秒连续点，至少 {POLICY['decline_min_points']} 点 / {POLICY['decline_min_seconds']} 秒，最多 {POLICY['decline_max_points']} 点 / {POLICY['decline_max_seconds']} 秒。全段与最近4点Theil–Sen负斜率比 0.25–4，下降严格超过 max(1MiB, 首值×0.03)。",
+            '确认文件系统下降后，10%仅用于保留空间时间估计，不单凭空间低于 10% 判定异常。')
     rules += [
         _section('overall 与诊断覆盖边界',
                  f"逐指标 quality 支持 {' / '.join(sorted(QUALITIES))}。非 VALID 必须 value=null，不用 0 替代；缺失或不支持不是健康。主机缺 filesystem/disk 组件会产生覆盖 MISSING。",
-                 'overall 顺序：有 P1 问题 → CRITICAL；其他已确认问题 → WARNING；无问题但覆盖不完整或有 PENDING → UNKNOWN；否则 NORMAL。NOT_READY 诊断本身不会自动将 overall 改为 UNKNOWN，所以基础检查 PASS / NORMAL 时仍可能有高级诊断未就绪，必须逐项查看 coverage 与 diagnostics。',
-                 '硬件快照时效当前实现固定 300 秒；超过该时效、缺失或冻结身份/版本/时效无效 → UNKNOWN。有效 CRITICAL / WARNING 映射 FAIL（P1 / P2），NORMAL 映射 PASS，其余 UNKNOWN。共享设备或归属不完整时仅报告设备级现象。'),
+                 ('overall 顺序：有 P1 问题 → CRITICAL；其他已确认问题 → WARNING；无问题但覆盖不完整，或 HOST CPU漂移或静态诊断为 PENDING / NOT_READY → UNKNOWN；否则 NORMAL。其他高级诊断的 NOT_READY 本身不会自动将 overall 改为 UNKNOWN；必须逐项查看 coverage 与 diagnostics，已确认异常仍优先。'
+                  if kind == 'host' else 'overall 顺序：有 P1 问题 → CRITICAL；其他已确认问题 → WARNING；无问题但覆盖不完整或有 PENDING → UNKNOWN；否则 NORMAL。NOT_READY 诊断本身不会自动将 overall 改为 UNKNOWN，所以基础检查 PASS / NORMAL 时仍可能有高级诊断未就绪，必须逐项查看 coverage 与 diagnostics。'),
+                 f"硬件快照时效当前实现固定 {POLICY['freshness_seconds'] if kind == 'host' else 300} 秒；超过该时效、缺失或冻结身份/版本/时效无效 → UNKNOWN。有效 CRITICAL / WARNING 映射 FAIL（P1 / P2），NORMAL 映射 PASS，其余 UNKNOWN。共享设备或归属不完整时仅报告设备级现象。"),
     ]
     return {'supported_metrics': metrics, 'judgment_rules': rules, 'policy_profiles': [],
             'input_contract': '外部采集系统推送 HARDWARE_SNAPSHOT；平台接收、校验和评估，不直接采集硬件指标。GPU 必须包含 gpu；HOST 必须包含 host，可同时推送 filesystem:<稳定标识>、disk:<稳定标识>。每个组件必须提供其全部指标和逐指标 value / quality / collected_at；ECC 另需 source_metric / semantics / scope=DRAM。'}

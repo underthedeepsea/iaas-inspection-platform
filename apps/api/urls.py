@@ -19,5 +19,7 @@ urlpatterns = [
     re_path(r"^feedback(?:/|$)", include("apps.feedback.urls")),
     path("", include("apps.experiences.urls")),
     re_path(r"^mock-datasets(?:/|$)", include("apps.mockdata.public_urls")),
+    path("mappings/", include("apps.core.mapping_urls")),
+    path("local-monitor/", include("apps.core.local_monitor_urls")),
     path("<path:resource>", views.not_found, name="api-not-found"),
 ]

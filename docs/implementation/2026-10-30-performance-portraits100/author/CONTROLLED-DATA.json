@@ -1,0 +1,4918 @@
+{
+  "resource_type": "HOST",
+  "generated_at": "2026-10-29T04:00:00+00:00",
+  "history_days": 14,
+  "llm": [
+    {
+      "current_asset_configuration": {},
+      "id": "[\"engine/encoded\",\"vllm\",\"org/model\"]",
+      "name": "engine/encoded · vllm · org/model",
+      "context": {
+        "source": "source-A",
+        "engine_id": "engine/encoded",
+        "engine_type": "vllm",
+        "model_name": "org/model"
+      },
+      "missing_context": [
+        "model_version",
+        "quantization",
+        "tensor_parallel_size",
+        "pipeline_parallel_size"
+      ],
+      "value_kind": "WINDOW_STATISTIC",
+      "window_start": "2026-10-29T03:59:00+00:00",
+      "window_end": "2026-10-29T04:00:00+00:00",
+      "freshness": "CURRENT_WINDOW_STATISTIC",
+      "metrics": [
+        {
+          "key": "ttft.p95_ms",
+          "label": "TTFT窗口p95",
+          "unit": "ms",
+          "current": 100.0,
+          "latest_observed": 100.0,
+          "observed_at": "2026-10-29T04:00:00+00:00",
+          "collected_at": null,
+          "value_kind": "WINDOW_STATISTIC",
+          "window_start": "2026-10-29T03:59:00+00:00",
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "CURRENT_WINDOW_STATISTIC",
+          "history": {
+            "n": 2,
+            "start": "2026-10-29T03:58:00+00:00",
+            "end": "2026-10-29T03:59:00+00:00",
+            "median": 98.5,
+            "min": 98.0,
+            "max": 99.0,
+            "time_basis": "WINDOW_STATISTIC",
+            "state": "KNOWN_CONTEXT_ONLY"
+          },
+          "difference": 1.5,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "model_version",
+            "quantization",
+            "tensor_parallel_size",
+            "pipeline_parallel_size"
+          ],
+          "high_observation": {
+            "at": "2026-10-29T04:00:00+00:00",
+            "value": 100.0,
+            "value_kind": "WINDOW_STATISTIC",
+            "window_start": "2026-10-29T03:59:00+00:00",
+            "window_end": "2026-10-29T04:00:00+00:00"
+          },
+          "low_observation": {
+            "at": "2026-10-29T03:58:00+00:00",
+            "value": 98.0,
+            "value_kind": "WINDOW_STATISTIC",
+            "window_start": "2026-10-29T03:57:00+00:00",
+            "window_end": "2026-10-29T03:58:00+00:00"
+          },
+          "series": [
+            {
+              "snapshot_id": "source-A-2",
+              "at": "2026-10-29T03:58:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:57:00+00:00",
+              "window_end": "2026-10-29T03:58:00+00:00",
+              "value": 98.0,
+              "unit": "ms",
+              "source": "source-A",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "source-A-1",
+              "at": "2026-10-29T03:59:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:58:00+00:00",
+              "window_end": "2026-10-29T03:59:00+00:00",
+              "value": 99.0,
+              "unit": "ms",
+              "source": "source-A",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "source-A0",
+              "at": "2026-10-29T04:00:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:59:00+00:00",
+              "window_end": "2026-10-29T04:00:00+00:00",
+              "value": 100.0,
+              "unit": "ms",
+              "source": "source-A",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": true,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            }
+          ],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        },
+        {
+          "key": "tpot.p95_ms",
+          "label": "TPOT窗口p95",
+          "unit": "ms/token",
+          "current": null,
+          "latest_observed": null,
+          "observed_at": "2026-10-29T04:00:00+00:00",
+          "collected_at": null,
+          "value_kind": "WINDOW_STATISTIC",
+          "window_start": "2026-10-29T03:59:00+00:00",
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "HISTORICAL_OR_UNAVAILABLE",
+          "history": {
+            "n": 0,
+            "start": null,
+            "end": null,
+            "median": null,
+            "min": null,
+            "max": null,
+            "time_basis": "WINDOW_STATISTIC",
+            "state": "INSUFFICIENT_HISTORY"
+          },
+          "difference": null,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "model_version",
+            "quantization",
+            "tensor_parallel_size",
+            "pipeline_parallel_size"
+          ],
+          "high_observation": null,
+          "low_observation": null,
+          "series": [
+            {
+              "snapshot_id": "source-A-2",
+              "at": "2026-10-29T03:58:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:57:00+00:00",
+              "window_end": "2026-10-29T03:58:00+00:00",
+              "value": null,
+              "unit": "ms/token",
+              "source": "source-A",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "source-A-1",
+              "at": "2026-10-29T03:59:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:58:00+00:00",
+              "window_end": "2026-10-29T03:59:00+00:00",
+              "value": null,
+              "unit": "ms/token",
+              "source": "source-A",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "source-A0",
+              "at": "2026-10-29T04:00:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:59:00+00:00",
+              "window_end": "2026-10-29T04:00:00+00:00",
+              "value": null,
+              "unit": "ms/token",
+              "source": "source-A",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            }
+          ],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        },
+        {
+          "key": "e2e.p95_ms",
+          "label": "E2E窗口p95",
+          "unit": "ms",
+          "current": null,
+          "latest_observed": null,
+          "observed_at": "2026-10-29T04:00:00+00:00",
+          "collected_at": null,
+          "value_kind": "WINDOW_STATISTIC",
+          "window_start": "2026-10-29T03:59:00+00:00",
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "HISTORICAL_OR_UNAVAILABLE",
+          "history": {
+            "n": 0,
+            "start": null,
+            "end": null,
+            "median": null,
+            "min": null,
+            "max": null,
+            "time_basis": "WINDOW_STATISTIC",
+            "state": "INSUFFICIENT_HISTORY"
+          },
+          "difference": null,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "model_version",
+            "quantization",
+            "tensor_parallel_size",
+            "pipeline_parallel_size"
+          ],
+          "high_observation": null,
+          "low_observation": null,
+          "series": [
+            {
+              "snapshot_id": "source-A-2",
+              "at": "2026-10-29T03:58:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:57:00+00:00",
+              "window_end": "2026-10-29T03:58:00+00:00",
+              "value": null,
+              "unit": "ms",
+              "source": "source-A",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "source-A-1",
+              "at": "2026-10-29T03:59:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:58:00+00:00",
+              "window_end": "2026-10-29T03:59:00+00:00",
+              "value": null,
+              "unit": "ms",
+              "source": "source-A",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "source-A0",
+              "at": "2026-10-29T04:00:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:59:00+00:00",
+              "window_end": "2026-10-29T04:00:00+00:00",
+              "value": null,
+              "unit": "ms",
+              "source": "source-A",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            }
+          ],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        },
+        {
+          "key": "traffic.qps",
+          "label": "QPS",
+          "unit": "requests/s",
+          "current": null,
+          "latest_observed": null,
+          "observed_at": "2026-10-29T04:00:00+00:00",
+          "collected_at": null,
+          "value_kind": "WINDOW_STATISTIC",
+          "window_start": "2026-10-29T03:59:00+00:00",
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "HISTORICAL_OR_UNAVAILABLE",
+          "history": {
+            "n": 0,
+            "start": null,
+            "end": null,
+            "median": null,
+            "min": null,
+            "max": null,
+            "time_basis": "WINDOW_STATISTIC",
+            "state": "INSUFFICIENT_HISTORY"
+          },
+          "difference": null,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "model_version",
+            "quantization",
+            "tensor_parallel_size",
+            "pipeline_parallel_size"
+          ],
+          "high_observation": null,
+          "low_observation": null,
+          "series": [
+            {
+              "snapshot_id": "source-A-2",
+              "at": "2026-10-29T03:58:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:57:00+00:00",
+              "window_end": "2026-10-29T03:58:00+00:00",
+              "value": null,
+              "unit": "requests/s",
+              "source": "source-A",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "source-A-1",
+              "at": "2026-10-29T03:59:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:58:00+00:00",
+              "window_end": "2026-10-29T03:59:00+00:00",
+              "value": null,
+              "unit": "requests/s",
+              "source": "source-A",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "source-A0",
+              "at": "2026-10-29T04:00:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:59:00+00:00",
+              "window_end": "2026-10-29T04:00:00+00:00",
+              "value": null,
+              "unit": "requests/s",
+              "source": "source-A",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            }
+          ],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        },
+        {
+          "key": "throughput.generation_tps",
+          "label": "生成吞吐",
+          "unit": "tokens/s",
+          "current": null,
+          "latest_observed": null,
+          "observed_at": "2026-10-29T04:00:00+00:00",
+          "collected_at": null,
+          "value_kind": "WINDOW_STATISTIC",
+          "window_start": "2026-10-29T03:59:00+00:00",
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "HISTORICAL_OR_UNAVAILABLE",
+          "history": {
+            "n": 0,
+            "start": null,
+            "end": null,
+            "median": null,
+            "min": null,
+            "max": null,
+            "time_basis": "WINDOW_STATISTIC",
+            "state": "INSUFFICIENT_HISTORY"
+          },
+          "difference": null,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "model_version",
+            "quantization",
+            "tensor_parallel_size",
+            "pipeline_parallel_size"
+          ],
+          "high_observation": null,
+          "low_observation": null,
+          "series": [
+            {
+              "snapshot_id": "source-A-2",
+              "at": "2026-10-29T03:58:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:57:00+00:00",
+              "window_end": "2026-10-29T03:58:00+00:00",
+              "value": null,
+              "unit": "tokens/s",
+              "source": "source-A",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "source-A-1",
+              "at": "2026-10-29T03:59:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:58:00+00:00",
+              "window_end": "2026-10-29T03:59:00+00:00",
+              "value": null,
+              "unit": "tokens/s",
+              "source": "source-A",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "source-A0",
+              "at": "2026-10-29T04:00:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:59:00+00:00",
+              "window_end": "2026-10-29T04:00:00+00:00",
+              "value": null,
+              "unit": "tokens/s",
+              "source": "source-A",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            }
+          ],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        },
+        {
+          "key": "throughput.prompt_tps",
+          "label": "输入吞吐",
+          "unit": "tokens/s",
+          "current": null,
+          "latest_observed": null,
+          "observed_at": "2026-10-29T04:00:00+00:00",
+          "collected_at": null,
+          "value_kind": "WINDOW_STATISTIC",
+          "window_start": "2026-10-29T03:59:00+00:00",
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "HISTORICAL_OR_UNAVAILABLE",
+          "history": {
+            "n": 0,
+            "start": null,
+            "end": null,
+            "median": null,
+            "min": null,
+            "max": null,
+            "time_basis": "WINDOW_STATISTIC",
+            "state": "INSUFFICIENT_HISTORY"
+          },
+          "difference": null,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "model_version",
+            "quantization",
+            "tensor_parallel_size",
+            "pipeline_parallel_size"
+          ],
+          "high_observation": null,
+          "low_observation": null,
+          "series": [
+            {
+              "snapshot_id": "source-A-2",
+              "at": "2026-10-29T03:58:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:57:00+00:00",
+              "window_end": "2026-10-29T03:58:00+00:00",
+              "value": null,
+              "unit": "tokens/s",
+              "source": "source-A",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "source-A-1",
+              "at": "2026-10-29T03:59:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:58:00+00:00",
+              "window_end": "2026-10-29T03:59:00+00:00",
+              "value": null,
+              "unit": "tokens/s",
+              "source": "source-A",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "source-A0",
+              "at": "2026-10-29T04:00:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:59:00+00:00",
+              "window_end": "2026-10-29T04:00:00+00:00",
+              "value": null,
+              "unit": "tokens/s",
+              "source": "source-A",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            }
+          ],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        },
+        {
+          "key": "requests.waiting",
+          "label": "等待队列",
+          "unit": "requests",
+          "current": null,
+          "latest_observed": null,
+          "observed_at": "2026-10-29T04:00:00+00:00",
+          "collected_at": null,
+          "value_kind": "WINDOW_STATISTIC",
+          "window_start": "2026-10-29T03:59:00+00:00",
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "HISTORICAL_OR_UNAVAILABLE",
+          "history": {
+            "n": 0,
+            "start": null,
+            "end": null,
+            "median": null,
+            "min": null,
+            "max": null,
+            "time_basis": "WINDOW_STATISTIC",
+            "state": "INSUFFICIENT_HISTORY"
+          },
+          "difference": null,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "model_version",
+            "quantization",
+            "tensor_parallel_size",
+            "pipeline_parallel_size"
+          ],
+          "high_observation": null,
+          "low_observation": null,
+          "series": [
+            {
+              "snapshot_id": "source-A-2",
+              "at": "2026-10-29T03:58:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:57:00+00:00",
+              "window_end": "2026-10-29T03:58:00+00:00",
+              "value": null,
+              "unit": "requests",
+              "source": "source-A",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "source-A-1",
+              "at": "2026-10-29T03:59:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:58:00+00:00",
+              "window_end": "2026-10-29T03:59:00+00:00",
+              "value": null,
+              "unit": "requests",
+              "source": "source-A",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "source-A0",
+              "at": "2026-10-29T04:00:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:59:00+00:00",
+              "window_end": "2026-10-29T04:00:00+00:00",
+              "value": null,
+              "unit": "requests",
+              "source": "source-A",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            }
+          ],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        },
+        {
+          "key": "requests.running",
+          "label": "运行请求",
+          "unit": "requests",
+          "current": null,
+          "latest_observed": null,
+          "observed_at": "2026-10-29T04:00:00+00:00",
+          "collected_at": null,
+          "value_kind": "WINDOW_STATISTIC",
+          "window_start": "2026-10-29T03:59:00+00:00",
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "HISTORICAL_OR_UNAVAILABLE",
+          "history": {
+            "n": 0,
+            "start": null,
+            "end": null,
+            "median": null,
+            "min": null,
+            "max": null,
+            "time_basis": "WINDOW_STATISTIC",
+            "state": "INSUFFICIENT_HISTORY"
+          },
+          "difference": null,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "model_version",
+            "quantization",
+            "tensor_parallel_size",
+            "pipeline_parallel_size"
+          ],
+          "high_observation": null,
+          "low_observation": null,
+          "series": [
+            {
+              "snapshot_id": "source-A-2",
+              "at": "2026-10-29T03:58:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:57:00+00:00",
+              "window_end": "2026-10-29T03:58:00+00:00",
+              "value": null,
+              "unit": "requests",
+              "source": "source-A",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "source-A-1",
+              "at": "2026-10-29T03:59:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:58:00+00:00",
+              "window_end": "2026-10-29T03:59:00+00:00",
+              "value": null,
+              "unit": "requests",
+              "source": "source-A",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "source-A0",
+              "at": "2026-10-29T04:00:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:59:00+00:00",
+              "window_end": "2026-10-29T04:00:00+00:00",
+              "value": null,
+              "unit": "requests",
+              "source": "source-A",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            }
+          ],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        }
+      ],
+      "note": "仅匹配冻结的引擎/模型/来源；未记录版本、量化及并行配置。窗口p95的历史中位数/观察范围不是总体请求p95。",
+      "portrait_id": "[\"llm-one\",\"source-A\",\"engine/encoded\",\"vllm\",\"org/model\"]",
+      "asset_id": "llm-one",
+      "relationships": [
+        {
+          "kind": "node",
+          "id": "node-a",
+          "name": "node-a"
+        }
+      ]
+    },
+    {
+      "current_asset_configuration": {},
+      "id": "[\"engine/encoded\",\"vllm\",\"org/model\"]",
+      "name": "engine/encoded · vllm · org/model",
+      "context": {
+        "source": "source-B",
+        "engine_id": "engine/encoded",
+        "engine_type": "vllm",
+        "model_name": "org/model"
+      },
+      "missing_context": [
+        "model_version",
+        "quantization",
+        "tensor_parallel_size",
+        "pipeline_parallel_size"
+      ],
+      "value_kind": "WINDOW_STATISTIC",
+      "window_start": "2026-10-29T03:59:00+00:00",
+      "window_end": "2026-10-29T04:00:00+00:00",
+      "freshness": "CURRENT_WINDOW_STATISTIC",
+      "metrics": [
+        {
+          "key": "ttft.p95_ms",
+          "label": "TTFT窗口p95",
+          "unit": "ms",
+          "current": 200.0,
+          "latest_observed": 200.0,
+          "observed_at": "2026-10-29T04:00:00+00:00",
+          "collected_at": null,
+          "value_kind": "WINDOW_STATISTIC",
+          "window_start": "2026-10-29T03:59:00+00:00",
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "CURRENT_WINDOW_STATISTIC",
+          "history": {
+            "n": 2,
+            "start": "2026-10-29T03:58:00+00:00",
+            "end": "2026-10-29T03:59:00+00:00",
+            "median": 198.5,
+            "min": 198.0,
+            "max": 199.0,
+            "time_basis": "WINDOW_STATISTIC",
+            "state": "KNOWN_CONTEXT_ONLY"
+          },
+          "difference": 1.5,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "model_version",
+            "quantization",
+            "tensor_parallel_size",
+            "pipeline_parallel_size"
+          ],
+          "high_observation": {
+            "at": "2026-10-29T04:00:00+00:00",
+            "value": 200.0,
+            "value_kind": "WINDOW_STATISTIC",
+            "window_start": "2026-10-29T03:59:00+00:00",
+            "window_end": "2026-10-29T04:00:00+00:00"
+          },
+          "low_observation": {
+            "at": "2026-10-29T03:58:00+00:00",
+            "value": 198.0,
+            "value_kind": "WINDOW_STATISTIC",
+            "window_start": "2026-10-29T03:57:00+00:00",
+            "window_end": "2026-10-29T03:58:00+00:00"
+          },
+          "series": [
+            {
+              "snapshot_id": "source-B-2",
+              "at": "2026-10-29T03:58:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:57:00+00:00",
+              "window_end": "2026-10-29T03:58:00+00:00",
+              "value": 198.0,
+              "unit": "ms",
+              "source": "source-B",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "source-B-1",
+              "at": "2026-10-29T03:59:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:58:00+00:00",
+              "window_end": "2026-10-29T03:59:00+00:00",
+              "value": 199.0,
+              "unit": "ms",
+              "source": "source-B",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "source-B0",
+              "at": "2026-10-29T04:00:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:59:00+00:00",
+              "window_end": "2026-10-29T04:00:00+00:00",
+              "value": 200.0,
+              "unit": "ms",
+              "source": "source-B",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": true,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            }
+          ],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        },
+        {
+          "key": "tpot.p95_ms",
+          "label": "TPOT窗口p95",
+          "unit": "ms/token",
+          "current": null,
+          "latest_observed": null,
+          "observed_at": "2026-10-29T04:00:00+00:00",
+          "collected_at": null,
+          "value_kind": "WINDOW_STATISTIC",
+          "window_start": "2026-10-29T03:59:00+00:00",
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "HISTORICAL_OR_UNAVAILABLE",
+          "history": {
+            "n": 0,
+            "start": null,
+            "end": null,
+            "median": null,
+            "min": null,
+            "max": null,
+            "time_basis": "WINDOW_STATISTIC",
+            "state": "INSUFFICIENT_HISTORY"
+          },
+          "difference": null,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "model_version",
+            "quantization",
+            "tensor_parallel_size",
+            "pipeline_parallel_size"
+          ],
+          "high_observation": null,
+          "low_observation": null,
+          "series": [
+            {
+              "snapshot_id": "source-B-2",
+              "at": "2026-10-29T03:58:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:57:00+00:00",
+              "window_end": "2026-10-29T03:58:00+00:00",
+              "value": null,
+              "unit": "ms/token",
+              "source": "source-B",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "source-B-1",
+              "at": "2026-10-29T03:59:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:58:00+00:00",
+              "window_end": "2026-10-29T03:59:00+00:00",
+              "value": null,
+              "unit": "ms/token",
+              "source": "source-B",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "source-B0",
+              "at": "2026-10-29T04:00:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:59:00+00:00",
+              "window_end": "2026-10-29T04:00:00+00:00",
+              "value": null,
+              "unit": "ms/token",
+              "source": "source-B",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            }
+          ],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        },
+        {
+          "key": "e2e.p95_ms",
+          "label": "E2E窗口p95",
+          "unit": "ms",
+          "current": null,
+          "latest_observed": null,
+          "observed_at": "2026-10-29T04:00:00+00:00",
+          "collected_at": null,
+          "value_kind": "WINDOW_STATISTIC",
+          "window_start": "2026-10-29T03:59:00+00:00",
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "HISTORICAL_OR_UNAVAILABLE",
+          "history": {
+            "n": 0,
+            "start": null,
+            "end": null,
+            "median": null,
+            "min": null,
+            "max": null,
+            "time_basis": "WINDOW_STATISTIC",
+            "state": "INSUFFICIENT_HISTORY"
+          },
+          "difference": null,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "model_version",
+            "quantization",
+            "tensor_parallel_size",
+            "pipeline_parallel_size"
+          ],
+          "high_observation": null,
+          "low_observation": null,
+          "series": [
+            {
+              "snapshot_id": "source-B-2",
+              "at": "2026-10-29T03:58:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:57:00+00:00",
+              "window_end": "2026-10-29T03:58:00+00:00",
+              "value": null,
+              "unit": "ms",
+              "source": "source-B",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "source-B-1",
+              "at": "2026-10-29T03:59:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:58:00+00:00",
+              "window_end": "2026-10-29T03:59:00+00:00",
+              "value": null,
+              "unit": "ms",
+              "source": "source-B",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "source-B0",
+              "at": "2026-10-29T04:00:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:59:00+00:00",
+              "window_end": "2026-10-29T04:00:00+00:00",
+              "value": null,
+              "unit": "ms",
+              "source": "source-B",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            }
+          ],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        },
+        {
+          "key": "traffic.qps",
+          "label": "QPS",
+          "unit": "requests/s",
+          "current": null,
+          "latest_observed": null,
+          "observed_at": "2026-10-29T04:00:00+00:00",
+          "collected_at": null,
+          "value_kind": "WINDOW_STATISTIC",
+          "window_start": "2026-10-29T03:59:00+00:00",
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "HISTORICAL_OR_UNAVAILABLE",
+          "history": {
+            "n": 0,
+            "start": null,
+            "end": null,
+            "median": null,
+            "min": null,
+            "max": null,
+            "time_basis": "WINDOW_STATISTIC",
+            "state": "INSUFFICIENT_HISTORY"
+          },
+          "difference": null,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "model_version",
+            "quantization",
+            "tensor_parallel_size",
+            "pipeline_parallel_size"
+          ],
+          "high_observation": null,
+          "low_observation": null,
+          "series": [
+            {
+              "snapshot_id": "source-B-2",
+              "at": "2026-10-29T03:58:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:57:00+00:00",
+              "window_end": "2026-10-29T03:58:00+00:00",
+              "value": null,
+              "unit": "requests/s",
+              "source": "source-B",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "source-B-1",
+              "at": "2026-10-29T03:59:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:58:00+00:00",
+              "window_end": "2026-10-29T03:59:00+00:00",
+              "value": null,
+              "unit": "requests/s",
+              "source": "source-B",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "source-B0",
+              "at": "2026-10-29T04:00:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:59:00+00:00",
+              "window_end": "2026-10-29T04:00:00+00:00",
+              "value": null,
+              "unit": "requests/s",
+              "source": "source-B",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            }
+          ],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        },
+        {
+          "key": "throughput.generation_tps",
+          "label": "生成吞吐",
+          "unit": "tokens/s",
+          "current": null,
+          "latest_observed": null,
+          "observed_at": "2026-10-29T04:00:00+00:00",
+          "collected_at": null,
+          "value_kind": "WINDOW_STATISTIC",
+          "window_start": "2026-10-29T03:59:00+00:00",
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "HISTORICAL_OR_UNAVAILABLE",
+          "history": {
+            "n": 0,
+            "start": null,
+            "end": null,
+            "median": null,
+            "min": null,
+            "max": null,
+            "time_basis": "WINDOW_STATISTIC",
+            "state": "INSUFFICIENT_HISTORY"
+          },
+          "difference": null,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "model_version",
+            "quantization",
+            "tensor_parallel_size",
+            "pipeline_parallel_size"
+          ],
+          "high_observation": null,
+          "low_observation": null,
+          "series": [
+            {
+              "snapshot_id": "source-B-2",
+              "at": "2026-10-29T03:58:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:57:00+00:00",
+              "window_end": "2026-10-29T03:58:00+00:00",
+              "value": null,
+              "unit": "tokens/s",
+              "source": "source-B",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "source-B-1",
+              "at": "2026-10-29T03:59:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:58:00+00:00",
+              "window_end": "2026-10-29T03:59:00+00:00",
+              "value": null,
+              "unit": "tokens/s",
+              "source": "source-B",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "source-B0",
+              "at": "2026-10-29T04:00:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:59:00+00:00",
+              "window_end": "2026-10-29T04:00:00+00:00",
+              "value": null,
+              "unit": "tokens/s",
+              "source": "source-B",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            }
+          ],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        },
+        {
+          "key": "throughput.prompt_tps",
+          "label": "输入吞吐",
+          "unit": "tokens/s",
+          "current": null,
+          "latest_observed": null,
+          "observed_at": "2026-10-29T04:00:00+00:00",
+          "collected_at": null,
+          "value_kind": "WINDOW_STATISTIC",
+          "window_start": "2026-10-29T03:59:00+00:00",
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "HISTORICAL_OR_UNAVAILABLE",
+          "history": {
+            "n": 0,
+            "start": null,
+            "end": null,
+            "median": null,
+            "min": null,
+            "max": null,
+            "time_basis": "WINDOW_STATISTIC",
+            "state": "INSUFFICIENT_HISTORY"
+          },
+          "difference": null,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "model_version",
+            "quantization",
+            "tensor_parallel_size",
+            "pipeline_parallel_size"
+          ],
+          "high_observation": null,
+          "low_observation": null,
+          "series": [
+            {
+              "snapshot_id": "source-B-2",
+              "at": "2026-10-29T03:58:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:57:00+00:00",
+              "window_end": "2026-10-29T03:58:00+00:00",
+              "value": null,
+              "unit": "tokens/s",
+              "source": "source-B",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "source-B-1",
+              "at": "2026-10-29T03:59:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:58:00+00:00",
+              "window_end": "2026-10-29T03:59:00+00:00",
+              "value": null,
+              "unit": "tokens/s",
+              "source": "source-B",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "source-B0",
+              "at": "2026-10-29T04:00:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:59:00+00:00",
+              "window_end": "2026-10-29T04:00:00+00:00",
+              "value": null,
+              "unit": "tokens/s",
+              "source": "source-B",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            }
+          ],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        },
+        {
+          "key": "requests.waiting",
+          "label": "等待队列",
+          "unit": "requests",
+          "current": null,
+          "latest_observed": null,
+          "observed_at": "2026-10-29T04:00:00+00:00",
+          "collected_at": null,
+          "value_kind": "WINDOW_STATISTIC",
+          "window_start": "2026-10-29T03:59:00+00:00",
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "HISTORICAL_OR_UNAVAILABLE",
+          "history": {
+            "n": 0,
+            "start": null,
+            "end": null,
+            "median": null,
+            "min": null,
+            "max": null,
+            "time_basis": "WINDOW_STATISTIC",
+            "state": "INSUFFICIENT_HISTORY"
+          },
+          "difference": null,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "model_version",
+            "quantization",
+            "tensor_parallel_size",
+            "pipeline_parallel_size"
+          ],
+          "high_observation": null,
+          "low_observation": null,
+          "series": [
+            {
+              "snapshot_id": "source-B-2",
+              "at": "2026-10-29T03:58:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:57:00+00:00",
+              "window_end": "2026-10-29T03:58:00+00:00",
+              "value": null,
+              "unit": "requests",
+              "source": "source-B",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "source-B-1",
+              "at": "2026-10-29T03:59:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:58:00+00:00",
+              "window_end": "2026-10-29T03:59:00+00:00",
+              "value": null,
+              "unit": "requests",
+              "source": "source-B",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "source-B0",
+              "at": "2026-10-29T04:00:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:59:00+00:00",
+              "window_end": "2026-10-29T04:00:00+00:00",
+              "value": null,
+              "unit": "requests",
+              "source": "source-B",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            }
+          ],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        },
+        {
+          "key": "requests.running",
+          "label": "运行请求",
+          "unit": "requests",
+          "current": null,
+          "latest_observed": null,
+          "observed_at": "2026-10-29T04:00:00+00:00",
+          "collected_at": null,
+          "value_kind": "WINDOW_STATISTIC",
+          "window_start": "2026-10-29T03:59:00+00:00",
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "HISTORICAL_OR_UNAVAILABLE",
+          "history": {
+            "n": 0,
+            "start": null,
+            "end": null,
+            "median": null,
+            "min": null,
+            "max": null,
+            "time_basis": "WINDOW_STATISTIC",
+            "state": "INSUFFICIENT_HISTORY"
+          },
+          "difference": null,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "model_version",
+            "quantization",
+            "tensor_parallel_size",
+            "pipeline_parallel_size"
+          ],
+          "high_observation": null,
+          "low_observation": null,
+          "series": [
+            {
+              "snapshot_id": "source-B-2",
+              "at": "2026-10-29T03:58:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:57:00+00:00",
+              "window_end": "2026-10-29T03:58:00+00:00",
+              "value": null,
+              "unit": "requests",
+              "source": "source-B",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "source-B-1",
+              "at": "2026-10-29T03:59:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:58:00+00:00",
+              "window_end": "2026-10-29T03:59:00+00:00",
+              "value": null,
+              "unit": "requests",
+              "source": "source-B",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "source-B0",
+              "at": "2026-10-29T04:00:00+00:00",
+              "collected_at": null,
+              "window_start": "2026-10-29T03:59:00+00:00",
+              "window_end": "2026-10-29T04:00:00+00:00",
+              "value": null,
+              "unit": "requests",
+              "source": "source-B",
+              "value_kind": "WINDOW_STATISTIC",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            }
+          ],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        }
+      ],
+      "note": "仅匹配冻结的引擎/模型/来源；未记录版本、量化及并行配置。窗口p95的历史中位数/观察范围不是总体请求p95。",
+      "portrait_id": "[\"llm-one\",\"source-B\",\"engine/encoded\",\"vllm\",\"org/model\"]",
+      "asset_id": "llm-one",
+      "relationships": [
+        {
+          "kind": "node",
+          "id": "node-a",
+          "name": "node-a"
+        }
+      ]
+    },
+    {
+      "id": "llm-empty",
+      "portrait_id": "[\"llm-empty\",\"NO_SNAPSHOT\"]",
+      "asset_id": "llm-empty",
+      "name": "llm-empty",
+      "context": {},
+      "current_asset_configuration": {
+        "host_id": "llm-empty",
+        "roles": [
+          "WORKER"
+        ],
+        "cpu_cores": 4
+      },
+      "freshness": "MISSING",
+      "missing_context": [
+        "source",
+        "model_version",
+        "quantization",
+        "tensor_parallel_size",
+        "pipeline_parallel_size"
+      ],
+      "note": "真实已登记资产；未收到推理快照，当前资产标签不能证明历史引擎/模型配置。",
+      "metrics": [
+        {
+          "key": "ttft.p95_ms",
+          "label": "TTFT窗口p95",
+          "unit": "ms",
+          "current": null,
+          "latest_observed": null,
+          "observed_at": null,
+          "collected_at": null,
+          "value_kind": "WINDOW_STATISTIC",
+          "window_start": null,
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "HISTORICAL_OR_UNAVAILABLE",
+          "history": {
+            "n": 0,
+            "start": null,
+            "end": null,
+            "median": null,
+            "min": null,
+            "max": null,
+            "time_basis": "WINDOW_STATISTIC",
+            "state": "INSUFFICIENT_HISTORY"
+          },
+          "difference": null,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "snapshot"
+          ],
+          "high_observation": null,
+          "low_observation": null,
+          "series": [],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        },
+        {
+          "key": "tpot.p95_ms",
+          "label": "TPOT窗口p95",
+          "unit": "ms/token",
+          "current": null,
+          "latest_observed": null,
+          "observed_at": null,
+          "collected_at": null,
+          "value_kind": "WINDOW_STATISTIC",
+          "window_start": null,
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "HISTORICAL_OR_UNAVAILABLE",
+          "history": {
+            "n": 0,
+            "start": null,
+            "end": null,
+            "median": null,
+            "min": null,
+            "max": null,
+            "time_basis": "WINDOW_STATISTIC",
+            "state": "INSUFFICIENT_HISTORY"
+          },
+          "difference": null,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "snapshot"
+          ],
+          "high_observation": null,
+          "low_observation": null,
+          "series": [],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        },
+        {
+          "key": "e2e.p95_ms",
+          "label": "E2E窗口p95",
+          "unit": "ms",
+          "current": null,
+          "latest_observed": null,
+          "observed_at": null,
+          "collected_at": null,
+          "value_kind": "WINDOW_STATISTIC",
+          "window_start": null,
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "HISTORICAL_OR_UNAVAILABLE",
+          "history": {
+            "n": 0,
+            "start": null,
+            "end": null,
+            "median": null,
+            "min": null,
+            "max": null,
+            "time_basis": "WINDOW_STATISTIC",
+            "state": "INSUFFICIENT_HISTORY"
+          },
+          "difference": null,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "snapshot"
+          ],
+          "high_observation": null,
+          "low_observation": null,
+          "series": [],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        },
+        {
+          "key": "traffic.qps",
+          "label": "QPS",
+          "unit": "requests/s",
+          "current": null,
+          "latest_observed": null,
+          "observed_at": null,
+          "collected_at": null,
+          "value_kind": "WINDOW_STATISTIC",
+          "window_start": null,
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "HISTORICAL_OR_UNAVAILABLE",
+          "history": {
+            "n": 0,
+            "start": null,
+            "end": null,
+            "median": null,
+            "min": null,
+            "max": null,
+            "time_basis": "WINDOW_STATISTIC",
+            "state": "INSUFFICIENT_HISTORY"
+          },
+          "difference": null,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "snapshot"
+          ],
+          "high_observation": null,
+          "low_observation": null,
+          "series": [],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        },
+        {
+          "key": "throughput.generation_tps",
+          "label": "生成吞吐",
+          "unit": "tokens/s",
+          "current": null,
+          "latest_observed": null,
+          "observed_at": null,
+          "collected_at": null,
+          "value_kind": "WINDOW_STATISTIC",
+          "window_start": null,
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "HISTORICAL_OR_UNAVAILABLE",
+          "history": {
+            "n": 0,
+            "start": null,
+            "end": null,
+            "median": null,
+            "min": null,
+            "max": null,
+            "time_basis": "WINDOW_STATISTIC",
+            "state": "INSUFFICIENT_HISTORY"
+          },
+          "difference": null,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "snapshot"
+          ],
+          "high_observation": null,
+          "low_observation": null,
+          "series": [],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        },
+        {
+          "key": "throughput.prompt_tps",
+          "label": "输入吞吐",
+          "unit": "tokens/s",
+          "current": null,
+          "latest_observed": null,
+          "observed_at": null,
+          "collected_at": null,
+          "value_kind": "WINDOW_STATISTIC",
+          "window_start": null,
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "HISTORICAL_OR_UNAVAILABLE",
+          "history": {
+            "n": 0,
+            "start": null,
+            "end": null,
+            "median": null,
+            "min": null,
+            "max": null,
+            "time_basis": "WINDOW_STATISTIC",
+            "state": "INSUFFICIENT_HISTORY"
+          },
+          "difference": null,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "snapshot"
+          ],
+          "high_observation": null,
+          "low_observation": null,
+          "series": [],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        },
+        {
+          "key": "requests.waiting",
+          "label": "等待队列",
+          "unit": "requests",
+          "current": null,
+          "latest_observed": null,
+          "observed_at": null,
+          "collected_at": null,
+          "value_kind": "WINDOW_STATISTIC",
+          "window_start": null,
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "HISTORICAL_OR_UNAVAILABLE",
+          "history": {
+            "n": 0,
+            "start": null,
+            "end": null,
+            "median": null,
+            "min": null,
+            "max": null,
+            "time_basis": "WINDOW_STATISTIC",
+            "state": "INSUFFICIENT_HISTORY"
+          },
+          "difference": null,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "snapshot"
+          ],
+          "high_observation": null,
+          "low_observation": null,
+          "series": [],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        },
+        {
+          "key": "requests.running",
+          "label": "运行请求",
+          "unit": "requests",
+          "current": null,
+          "latest_observed": null,
+          "observed_at": null,
+          "collected_at": null,
+          "value_kind": "WINDOW_STATISTIC",
+          "window_start": null,
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "HISTORICAL_OR_UNAVAILABLE",
+          "history": {
+            "n": 0,
+            "start": null,
+            "end": null,
+            "median": null,
+            "min": null,
+            "max": null,
+            "time_basis": "WINDOW_STATISTIC",
+            "state": "INSUFFICIENT_HISTORY"
+          },
+          "difference": null,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "snapshot"
+          ],
+          "high_observation": null,
+          "low_observation": null,
+          "series": [],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        }
+      ],
+      "relationships": [
+        {
+          "kind": "node",
+          "id": "node-c",
+          "name": "受控超长节点 LongIdentityWithoutBreakLongIdentityWithoutBreakLongIdentityWithoutBreakLongIdentityWithoutBreakLongIdentityWithoutBreakLongIdentityWithoutBreakLongIdentityWithoutBreakLongIdentityWithoutBreakLongIdentityWithoutBreakLongIdentityWithoutBreak"
+        }
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "id": "node-a",
+      "name": "node-a",
+      "roles": [
+        "API_SERVER",
+        "ETCD"
+      ],
+      "asset_ids": [
+        "node-a"
+      ],
+      "metrics": [
+        {
+          "key": "host.cpu_busy_ratio",
+          "label": "CPU忙碌比例",
+          "unit": "ratio",
+          "current": 0.4,
+          "latest_observed": 0.4,
+          "observed_at": "2026-10-29T04:00:00+00:00",
+          "collected_at": "2026-10-29T04:00:00+00:00",
+          "value_kind": "POINT",
+          "window_start": "2026-10-29T03:59:00+00:00",
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "CURRENT",
+          "history": {
+            "n": 2,
+            "start": "2026-10-29T03:57:00+00:00",
+            "end": "2026-10-29T03:59:00+00:00",
+            "median": 0.38,
+            "min": 0.37,
+            "max": 0.39,
+            "time_basis": "POINT",
+            "state": "KNOWN_CONTEXT_ONLY"
+          },
+          "difference": 0.020000000000000018,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "historical_roles",
+            "historical_cluster_membership",
+            "historical_cpu_cores"
+          ],
+          "high_observation": {
+            "at": "2026-10-29T04:00:00+00:00",
+            "value": 0.4,
+            "value_kind": "POINT",
+            "window_start": "2026-10-29T03:59:00+00:00",
+            "window_end": "2026-10-29T04:00:00+00:00"
+          },
+          "low_observation": {
+            "at": "2026-10-29T03:57:00+00:00",
+            "value": 0.37,
+            "value_kind": "POINT",
+            "window_start": "2026-10-29T03:56:00+00:00",
+            "window_end": "2026-10-29T03:57:00+00:00"
+          },
+          "series": [
+            {
+              "snapshot_id": "node-a-3",
+              "at": "2026-10-29T03:57:00+00:00",
+              "collected_at": "2026-10-29T03:57:00+00:00",
+              "window_start": "2026-10-29T03:56:00+00:00",
+              "window_end": "2026-10-29T03:57:00+00:00",
+              "value": 0.37,
+              "unit": "ratio",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-a-2",
+              "at": "2026-10-29T03:58:00+00:00",
+              "collected_at": "2026-10-29T03:58:00+00:00",
+              "window_start": "2026-10-29T03:57:00+00:00",
+              "window_end": "2026-10-29T03:58:00+00:00",
+              "value": null,
+              "unit": "ratio",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-a-1",
+              "at": "2026-10-29T03:59:00+00:00",
+              "collected_at": "2026-10-29T03:59:00+00:00",
+              "window_start": "2026-10-29T03:58:00+00:00",
+              "window_end": "2026-10-29T03:59:00+00:00",
+              "value": 0.39,
+              "unit": "ratio",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-a0",
+              "at": "2026-10-29T04:00:00+00:00",
+              "collected_at": "2026-10-29T04:00:00+00:00",
+              "window_start": "2026-10-29T03:59:00+00:00",
+              "window_end": "2026-10-29T04:00:00+00:00",
+              "value": 0.4,
+              "unit": "ratio",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": true,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            }
+          ],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        },
+        {
+          "key": "host.memory_available_bytes",
+          "label": "Linux MemAvailable",
+          "unit": "bytes",
+          "current": 50.0,
+          "latest_observed": 50.0,
+          "observed_at": "2026-10-29T04:00:00+00:00",
+          "collected_at": "2026-10-29T04:00:00+00:00",
+          "value_kind": "POINT",
+          "window_start": "2026-10-29T03:59:00+00:00",
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "CURRENT",
+          "history": {
+            "n": 3,
+            "start": "2026-10-29T03:57:00+00:00",
+            "end": "2026-10-29T03:59:00+00:00",
+            "median": 50.0,
+            "min": 50.0,
+            "max": 50.0,
+            "time_basis": "POINT",
+            "state": "KNOWN_CONTEXT_ONLY"
+          },
+          "difference": 0.0,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "historical_roles",
+            "historical_cluster_membership",
+            "historical_cpu_cores"
+          ],
+          "high_observation": {
+            "at": "2026-10-29T03:57:00+00:00",
+            "value": 50.0,
+            "value_kind": "POINT",
+            "window_start": "2026-10-29T03:56:00+00:00",
+            "window_end": "2026-10-29T03:57:00+00:00"
+          },
+          "low_observation": {
+            "at": "2026-10-29T03:57:00+00:00",
+            "value": 50.0,
+            "value_kind": "POINT",
+            "window_start": "2026-10-29T03:56:00+00:00",
+            "window_end": "2026-10-29T03:57:00+00:00"
+          },
+          "series": [
+            {
+              "snapshot_id": "node-a-3",
+              "at": "2026-10-29T03:57:00+00:00",
+              "collected_at": "2026-10-29T03:57:00+00:00",
+              "window_start": "2026-10-29T03:56:00+00:00",
+              "window_end": "2026-10-29T03:57:00+00:00",
+              "value": 50.0,
+              "unit": "bytes",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-a-2",
+              "at": "2026-10-29T03:58:00+00:00",
+              "collected_at": "2026-10-29T03:58:00+00:00",
+              "window_start": "2026-10-29T03:57:00+00:00",
+              "window_end": "2026-10-29T03:58:00+00:00",
+              "value": 50.0,
+              "unit": "bytes",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-a-1",
+              "at": "2026-10-29T03:59:00+00:00",
+              "collected_at": "2026-10-29T03:59:00+00:00",
+              "window_start": "2026-10-29T03:58:00+00:00",
+              "window_end": "2026-10-29T03:59:00+00:00",
+              "value": 50.0,
+              "unit": "bytes",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-a0",
+              "at": "2026-10-29T04:00:00+00:00",
+              "collected_at": "2026-10-29T04:00:00+00:00",
+              "window_start": "2026-10-29T03:59:00+00:00",
+              "window_end": "2026-10-29T04:00:00+00:00",
+              "value": 50.0,
+              "unit": "bytes",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": true,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            }
+          ],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        },
+        {
+          "key": "host.memory_total_bytes",
+          "label": "内存总量",
+          "unit": "bytes",
+          "current": 100.0,
+          "latest_observed": 100.0,
+          "observed_at": "2026-10-29T04:00:00+00:00",
+          "collected_at": "2026-10-29T04:00:00+00:00",
+          "value_kind": "POINT",
+          "window_start": "2026-10-29T03:59:00+00:00",
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "CURRENT",
+          "history": {
+            "n": 3,
+            "start": "2026-10-29T03:57:00+00:00",
+            "end": "2026-10-29T03:59:00+00:00",
+            "median": 100.0,
+            "min": 100.0,
+            "max": 100.0,
+            "time_basis": "POINT",
+            "state": "KNOWN_CONTEXT_ONLY"
+          },
+          "difference": 0.0,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "historical_roles",
+            "historical_cluster_membership",
+            "historical_cpu_cores"
+          ],
+          "high_observation": {
+            "at": "2026-10-29T03:57:00+00:00",
+            "value": 100.0,
+            "value_kind": "POINT",
+            "window_start": "2026-10-29T03:56:00+00:00",
+            "window_end": "2026-10-29T03:57:00+00:00"
+          },
+          "low_observation": {
+            "at": "2026-10-29T03:57:00+00:00",
+            "value": 100.0,
+            "value_kind": "POINT",
+            "window_start": "2026-10-29T03:56:00+00:00",
+            "window_end": "2026-10-29T03:57:00+00:00"
+          },
+          "series": [
+            {
+              "snapshot_id": "node-a-3",
+              "at": "2026-10-29T03:57:00+00:00",
+              "collected_at": "2026-10-29T03:57:00+00:00",
+              "window_start": "2026-10-29T03:56:00+00:00",
+              "window_end": "2026-10-29T03:57:00+00:00",
+              "value": 100.0,
+              "unit": "bytes",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-a-2",
+              "at": "2026-10-29T03:58:00+00:00",
+              "collected_at": "2026-10-29T03:58:00+00:00",
+              "window_start": "2026-10-29T03:57:00+00:00",
+              "window_end": "2026-10-29T03:58:00+00:00",
+              "value": 100.0,
+              "unit": "bytes",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-a-1",
+              "at": "2026-10-29T03:59:00+00:00",
+              "collected_at": "2026-10-29T03:59:00+00:00",
+              "window_start": "2026-10-29T03:58:00+00:00",
+              "window_end": "2026-10-29T03:59:00+00:00",
+              "value": 100.0,
+              "unit": "bytes",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-a0",
+              "at": "2026-10-29T04:00:00+00:00",
+              "collected_at": "2026-10-29T04:00:00+00:00",
+              "window_start": "2026-10-29T03:59:00+00:00",
+              "window_end": "2026-10-29T04:00:00+00:00",
+              "value": 100.0,
+              "unit": "bytes",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": true,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            }
+          ],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        },
+        {
+          "key": "disk:sda.io_busy_ratio",
+          "label": "disk:sda · IO忙碌比例",
+          "unit": "ratio",
+          "current": 0.8,
+          "latest_observed": 0.8,
+          "observed_at": "2026-10-29T04:00:00+00:00",
+          "collected_at": "2026-10-29T04:00:00+00:00",
+          "value_kind": "POINT",
+          "window_start": "2026-10-29T03:59:00+00:00",
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "CURRENT",
+          "history": {
+            "n": 3,
+            "start": "2026-10-29T03:57:00+00:00",
+            "end": "2026-10-29T03:59:00+00:00",
+            "median": 0.8,
+            "min": 0.8,
+            "max": 0.8,
+            "time_basis": "POINT",
+            "state": "KNOWN_CONTEXT_ONLY"
+          },
+          "difference": 0.0,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "historical_roles",
+            "historical_cluster_membership",
+            "historical_cpu_cores"
+          ],
+          "high_observation": {
+            "at": "2026-10-29T03:57:00+00:00",
+            "value": 0.8,
+            "value_kind": "POINT",
+            "window_start": "2026-10-29T03:56:00+00:00",
+            "window_end": "2026-10-29T03:57:00+00:00"
+          },
+          "low_observation": {
+            "at": "2026-10-29T03:57:00+00:00",
+            "value": 0.8,
+            "value_kind": "POINT",
+            "window_start": "2026-10-29T03:56:00+00:00",
+            "window_end": "2026-10-29T03:57:00+00:00"
+          },
+          "series": [
+            {
+              "snapshot_id": "node-a-3",
+              "at": "2026-10-29T03:57:00+00:00",
+              "collected_at": "2026-10-29T03:57:00+00:00",
+              "window_start": "2026-10-29T03:56:00+00:00",
+              "window_end": "2026-10-29T03:57:00+00:00",
+              "value": 0.8,
+              "unit": "ratio",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-a-2",
+              "at": "2026-10-29T03:58:00+00:00",
+              "collected_at": "2026-10-29T03:58:00+00:00",
+              "window_start": "2026-10-29T03:57:00+00:00",
+              "window_end": "2026-10-29T03:58:00+00:00",
+              "value": 0.8,
+              "unit": "ratio",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-a-1",
+              "at": "2026-10-29T03:59:00+00:00",
+              "collected_at": "2026-10-29T03:59:00+00:00",
+              "window_start": "2026-10-29T03:58:00+00:00",
+              "window_end": "2026-10-29T03:59:00+00:00",
+              "value": 0.8,
+              "unit": "ratio",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-a0",
+              "at": "2026-10-29T04:00:00+00:00",
+              "collected_at": "2026-10-29T04:00:00+00:00",
+              "window_start": "2026-10-29T03:59:00+00:00",
+              "window_end": "2026-10-29T04:00:00+00:00",
+              "value": 0.8,
+              "unit": "ratio",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": true,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            }
+          ],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        },
+        {
+          "key": "disk:sda.read_bytes_per_second",
+          "label": "disk:sda · 读取吞吐",
+          "unit": "bytes/s",
+          "current": 10.0,
+          "latest_observed": 10.0,
+          "observed_at": "2026-10-29T04:00:00+00:00",
+          "collected_at": "2026-10-29T04:00:00+00:00",
+          "value_kind": "POINT",
+          "window_start": "2026-10-29T03:59:00+00:00",
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "CURRENT",
+          "history": {
+            "n": 3,
+            "start": "2026-10-29T03:57:00+00:00",
+            "end": "2026-10-29T03:59:00+00:00",
+            "median": 10.0,
+            "min": 10.0,
+            "max": 10.0,
+            "time_basis": "POINT",
+            "state": "KNOWN_CONTEXT_ONLY"
+          },
+          "difference": 0.0,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "historical_roles",
+            "historical_cluster_membership",
+            "historical_cpu_cores"
+          ],
+          "high_observation": {
+            "at": "2026-10-29T03:57:00+00:00",
+            "value": 10.0,
+            "value_kind": "POINT",
+            "window_start": "2026-10-29T03:56:00+00:00",
+            "window_end": "2026-10-29T03:57:00+00:00"
+          },
+          "low_observation": {
+            "at": "2026-10-29T03:57:00+00:00",
+            "value": 10.0,
+            "value_kind": "POINT",
+            "window_start": "2026-10-29T03:56:00+00:00",
+            "window_end": "2026-10-29T03:57:00+00:00"
+          },
+          "series": [
+            {
+              "snapshot_id": "node-a-3",
+              "at": "2026-10-29T03:57:00+00:00",
+              "collected_at": "2026-10-29T03:57:00+00:00",
+              "window_start": "2026-10-29T03:56:00+00:00",
+              "window_end": "2026-10-29T03:57:00+00:00",
+              "value": 10.0,
+              "unit": "bytes/s",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-a-2",
+              "at": "2026-10-29T03:58:00+00:00",
+              "collected_at": "2026-10-29T03:58:00+00:00",
+              "window_start": "2026-10-29T03:57:00+00:00",
+              "window_end": "2026-10-29T03:58:00+00:00",
+              "value": 10.0,
+              "unit": "bytes/s",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-a-1",
+              "at": "2026-10-29T03:59:00+00:00",
+              "collected_at": "2026-10-29T03:59:00+00:00",
+              "window_start": "2026-10-29T03:58:00+00:00",
+              "window_end": "2026-10-29T03:59:00+00:00",
+              "value": 10.0,
+              "unit": "bytes/s",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-a0",
+              "at": "2026-10-29T04:00:00+00:00",
+              "collected_at": "2026-10-29T04:00:00+00:00",
+              "window_start": "2026-10-29T03:59:00+00:00",
+              "window_end": "2026-10-29T04:00:00+00:00",
+              "value": 10.0,
+              "unit": "bytes/s",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": true,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            }
+          ],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        },
+        {
+          "key": "disk:sda.write_bytes_per_second",
+          "label": "disk:sda · 写入吞吐",
+          "unit": "bytes/s",
+          "current": 20.0,
+          "latest_observed": 20.0,
+          "observed_at": "2026-10-29T04:00:00+00:00",
+          "collected_at": "2026-10-29T04:00:00+00:00",
+          "value_kind": "POINT",
+          "window_start": "2026-10-29T03:59:00+00:00",
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "CURRENT",
+          "history": {
+            "n": 3,
+            "start": "2026-10-29T03:57:00+00:00",
+            "end": "2026-10-29T03:59:00+00:00",
+            "median": 20.0,
+            "min": 20.0,
+            "max": 20.0,
+            "time_basis": "POINT",
+            "state": "KNOWN_CONTEXT_ONLY"
+          },
+          "difference": 0.0,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "historical_roles",
+            "historical_cluster_membership",
+            "historical_cpu_cores"
+          ],
+          "high_observation": {
+            "at": "2026-10-29T03:57:00+00:00",
+            "value": 20.0,
+            "value_kind": "POINT",
+            "window_start": "2026-10-29T03:56:00+00:00",
+            "window_end": "2026-10-29T03:57:00+00:00"
+          },
+          "low_observation": {
+            "at": "2026-10-29T03:57:00+00:00",
+            "value": 20.0,
+            "value_kind": "POINT",
+            "window_start": "2026-10-29T03:56:00+00:00",
+            "window_end": "2026-10-29T03:57:00+00:00"
+          },
+          "series": [
+            {
+              "snapshot_id": "node-a-3",
+              "at": "2026-10-29T03:57:00+00:00",
+              "collected_at": "2026-10-29T03:57:00+00:00",
+              "window_start": "2026-10-29T03:56:00+00:00",
+              "window_end": "2026-10-29T03:57:00+00:00",
+              "value": 20.0,
+              "unit": "bytes/s",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-a-2",
+              "at": "2026-10-29T03:58:00+00:00",
+              "collected_at": "2026-10-29T03:58:00+00:00",
+              "window_start": "2026-10-29T03:57:00+00:00",
+              "window_end": "2026-10-29T03:58:00+00:00",
+              "value": 20.0,
+              "unit": "bytes/s",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-a-1",
+              "at": "2026-10-29T03:59:00+00:00",
+              "collected_at": "2026-10-29T03:59:00+00:00",
+              "window_start": "2026-10-29T03:58:00+00:00",
+              "window_end": "2026-10-29T03:59:00+00:00",
+              "value": 20.0,
+              "unit": "bytes/s",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-a0",
+              "at": "2026-10-29T04:00:00+00:00",
+              "collected_at": "2026-10-29T04:00:00+00:00",
+              "window_start": "2026-10-29T03:59:00+00:00",
+              "window_end": "2026-10-29T04:00:00+00:00",
+              "value": 20.0,
+              "unit": "bytes/s",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": true,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            }
+          ],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        }
+      ],
+      "shared_load": true,
+      "missing_context": [
+        "historical_roles",
+        "historical_cluster_membership",
+        "historical_cpu_cores"
+      ],
+      "capacity_source": "current Asset labels/topology; not historical configuration evidence",
+      "context": {
+        "source": "collector",
+        "host_id": "node-a",
+        "config_id": "cfg",
+        "identity": {},
+        "host_semantics": {
+          "os": "LINUX",
+          "memory_available": "MemAvailable",
+          "memory_total": "MemTotal",
+          "unit": "bytes"
+        },
+        "memory_total_bytes": 100.0
+      },
+      "window_start": "2026-10-29T03:59:00+00:00",
+      "window_end": "2026-10-29T04:00:00+00:00",
+      "frozen_diagnostics": {},
+      "diagnostic_note": "仅复用已冻结2.0诊断；VALID和旧capacity NORMAL均不表示健康正常",
+      "memory_semantics": "LINUX_MEMAVAILABLE",
+      "freshness": "FRESH",
+      "cpu_cores": 2.0,
+      "stable_identity": "node-a",
+      "portrait_id": "node-a",
+      "current_asset_configuration": {
+        "labels": {
+          "host_id": "node-a",
+          "roles": [
+            "API_SERVER",
+            "ETCD"
+          ],
+          "cpu_cores": 2
+        },
+        "topology": {},
+        "external_key": "node-a"
+      },
+      "relationships": [
+        {
+          "kind": "cluster",
+          "id": "cluster",
+          "name": "受控 control-plane A"
+        },
+        {
+          "kind": "llm",
+          "id": "[\"llm-one\",\"source-A\",\"engine/encoded\",\"vllm\",\"org/model\"]",
+          "name": "engine/encoded · vllm · org/model"
+        },
+        {
+          "kind": "llm",
+          "id": "[\"llm-one\",\"source-B\",\"engine/encoded\",\"vllm\",\"org/model\"]",
+          "name": "engine/encoded · vllm · org/model"
+        }
+      ]
+    },
+    {
+      "id": "node-b",
+      "name": "node-b",
+      "roles": [
+        "WORKER"
+      ],
+      "asset_ids": [
+        "node-b"
+      ],
+      "metrics": [
+        {
+          "key": "host.cpu_busy_ratio",
+          "label": "CPU忙碌比例",
+          "unit": "ratio",
+          "current": 0.7,
+          "latest_observed": 0.7,
+          "observed_at": "2026-10-29T04:00:00+00:00",
+          "collected_at": "2026-10-29T04:00:00+00:00",
+          "value_kind": "POINT",
+          "window_start": "2026-10-29T03:59:00+00:00",
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "CURRENT",
+          "history": {
+            "n": 3,
+            "start": "2026-10-29T03:57:00+00:00",
+            "end": "2026-10-29T03:59:00+00:00",
+            "median": 0.6799999999999999,
+            "min": 0.6699999999999999,
+            "max": 0.69,
+            "time_basis": "POINT",
+            "state": "KNOWN_CONTEXT_ONLY"
+          },
+          "difference": 0.020000000000000018,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "historical_roles",
+            "historical_cluster_membership",
+            "historical_cpu_cores"
+          ],
+          "high_observation": {
+            "at": "2026-10-29T04:00:00+00:00",
+            "value": 0.7,
+            "value_kind": "POINT",
+            "window_start": "2026-10-29T03:59:00+00:00",
+            "window_end": "2026-10-29T04:00:00+00:00"
+          },
+          "low_observation": {
+            "at": "2026-10-29T03:57:00+00:00",
+            "value": 0.6699999999999999,
+            "value_kind": "POINT",
+            "window_start": "2026-10-29T03:56:00+00:00",
+            "window_end": "2026-10-29T03:57:00+00:00"
+          },
+          "series": [
+            {
+              "snapshot_id": "node-b-3",
+              "at": "2026-10-29T03:57:00+00:00",
+              "collected_at": "2026-10-29T03:57:00+00:00",
+              "window_start": "2026-10-29T03:56:00+00:00",
+              "window_end": "2026-10-29T03:57:00+00:00",
+              "value": 0.6699999999999999,
+              "unit": "ratio",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-b-2",
+              "at": "2026-10-29T03:58:00+00:00",
+              "collected_at": "2026-10-29T03:58:00+00:00",
+              "window_start": "2026-10-29T03:57:00+00:00",
+              "window_end": "2026-10-29T03:58:00+00:00",
+              "value": 0.6799999999999999,
+              "unit": "ratio",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-b-1",
+              "at": "2026-10-29T03:59:00+00:00",
+              "collected_at": "2026-10-29T03:59:00+00:00",
+              "window_start": "2026-10-29T03:58:00+00:00",
+              "window_end": "2026-10-29T03:59:00+00:00",
+              "value": 0.69,
+              "unit": "ratio",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-b0",
+              "at": "2026-10-29T04:00:00+00:00",
+              "collected_at": "2026-10-29T04:00:00+00:00",
+              "window_start": "2026-10-29T03:59:00+00:00",
+              "window_end": "2026-10-29T04:00:00+00:00",
+              "value": 0.7,
+              "unit": "ratio",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": true,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            }
+          ],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        },
+        {
+          "key": "host.memory_available_bytes",
+          "label": "Linux MemAvailable",
+          "unit": "bytes",
+          "current": 180.0,
+          "latest_observed": 180.0,
+          "observed_at": "2026-10-29T04:00:00+00:00",
+          "collected_at": "2026-10-29T04:00:00+00:00",
+          "value_kind": "POINT",
+          "window_start": "2026-10-29T03:59:00+00:00",
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "CURRENT",
+          "history": {
+            "n": 3,
+            "start": "2026-10-29T03:57:00+00:00",
+            "end": "2026-10-29T03:59:00+00:00",
+            "median": 180.0,
+            "min": 180.0,
+            "max": 180.0,
+            "time_basis": "POINT",
+            "state": "KNOWN_CONTEXT_ONLY"
+          },
+          "difference": 0.0,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "historical_roles",
+            "historical_cluster_membership",
+            "historical_cpu_cores"
+          ],
+          "high_observation": {
+            "at": "2026-10-29T03:57:00+00:00",
+            "value": 180.0,
+            "value_kind": "POINT",
+            "window_start": "2026-10-29T03:56:00+00:00",
+            "window_end": "2026-10-29T03:57:00+00:00"
+          },
+          "low_observation": {
+            "at": "2026-10-29T03:57:00+00:00",
+            "value": 180.0,
+            "value_kind": "POINT",
+            "window_start": "2026-10-29T03:56:00+00:00",
+            "window_end": "2026-10-29T03:57:00+00:00"
+          },
+          "series": [
+            {
+              "snapshot_id": "node-b-3",
+              "at": "2026-10-29T03:57:00+00:00",
+              "collected_at": "2026-10-29T03:57:00+00:00",
+              "window_start": "2026-10-29T03:56:00+00:00",
+              "window_end": "2026-10-29T03:57:00+00:00",
+              "value": 180.0,
+              "unit": "bytes",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-b-2",
+              "at": "2026-10-29T03:58:00+00:00",
+              "collected_at": "2026-10-29T03:58:00+00:00",
+              "window_start": "2026-10-29T03:57:00+00:00",
+              "window_end": "2026-10-29T03:58:00+00:00",
+              "value": 180.0,
+              "unit": "bytes",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-b-1",
+              "at": "2026-10-29T03:59:00+00:00",
+              "collected_at": "2026-10-29T03:59:00+00:00",
+              "window_start": "2026-10-29T03:58:00+00:00",
+              "window_end": "2026-10-29T03:59:00+00:00",
+              "value": 180.0,
+              "unit": "bytes",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-b0",
+              "at": "2026-10-29T04:00:00+00:00",
+              "collected_at": "2026-10-29T04:00:00+00:00",
+              "window_start": "2026-10-29T03:59:00+00:00",
+              "window_end": "2026-10-29T04:00:00+00:00",
+              "value": 180.0,
+              "unit": "bytes",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": true,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            }
+          ],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        },
+        {
+          "key": "host.memory_total_bytes",
+          "label": "内存总量",
+          "unit": "bytes",
+          "current": 300.0,
+          "latest_observed": 300.0,
+          "observed_at": "2026-10-29T04:00:00+00:00",
+          "collected_at": "2026-10-29T04:00:00+00:00",
+          "value_kind": "POINT",
+          "window_start": "2026-10-29T03:59:00+00:00",
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "CURRENT",
+          "history": {
+            "n": 3,
+            "start": "2026-10-29T03:57:00+00:00",
+            "end": "2026-10-29T03:59:00+00:00",
+            "median": 300.0,
+            "min": 300.0,
+            "max": 300.0,
+            "time_basis": "POINT",
+            "state": "KNOWN_CONTEXT_ONLY"
+          },
+          "difference": 0.0,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "historical_roles",
+            "historical_cluster_membership",
+            "historical_cpu_cores"
+          ],
+          "high_observation": {
+            "at": "2026-10-29T03:57:00+00:00",
+            "value": 300.0,
+            "value_kind": "POINT",
+            "window_start": "2026-10-29T03:56:00+00:00",
+            "window_end": "2026-10-29T03:57:00+00:00"
+          },
+          "low_observation": {
+            "at": "2026-10-29T03:57:00+00:00",
+            "value": 300.0,
+            "value_kind": "POINT",
+            "window_start": "2026-10-29T03:56:00+00:00",
+            "window_end": "2026-10-29T03:57:00+00:00"
+          },
+          "series": [
+            {
+              "snapshot_id": "node-b-3",
+              "at": "2026-10-29T03:57:00+00:00",
+              "collected_at": "2026-10-29T03:57:00+00:00",
+              "window_start": "2026-10-29T03:56:00+00:00",
+              "window_end": "2026-10-29T03:57:00+00:00",
+              "value": 300.0,
+              "unit": "bytes",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-b-2",
+              "at": "2026-10-29T03:58:00+00:00",
+              "collected_at": "2026-10-29T03:58:00+00:00",
+              "window_start": "2026-10-29T03:57:00+00:00",
+              "window_end": "2026-10-29T03:58:00+00:00",
+              "value": 300.0,
+              "unit": "bytes",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-b-1",
+              "at": "2026-10-29T03:59:00+00:00",
+              "collected_at": "2026-10-29T03:59:00+00:00",
+              "window_start": "2026-10-29T03:58:00+00:00",
+              "window_end": "2026-10-29T03:59:00+00:00",
+              "value": 300.0,
+              "unit": "bytes",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-b0",
+              "at": "2026-10-29T04:00:00+00:00",
+              "collected_at": "2026-10-29T04:00:00+00:00",
+              "window_start": "2026-10-29T03:59:00+00:00",
+              "window_end": "2026-10-29T04:00:00+00:00",
+              "value": 300.0,
+              "unit": "bytes",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": true,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            }
+          ],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        },
+        {
+          "key": "disk:sda.io_busy_ratio",
+          "label": "disk:sda · IO忙碌比例",
+          "unit": "ratio",
+          "current": 0.8,
+          "latest_observed": 0.8,
+          "observed_at": "2026-10-29T04:00:00+00:00",
+          "collected_at": "2026-10-29T04:00:00+00:00",
+          "value_kind": "POINT",
+          "window_start": "2026-10-29T03:59:00+00:00",
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "CURRENT",
+          "history": {
+            "n": 3,
+            "start": "2026-10-29T03:57:00+00:00",
+            "end": "2026-10-29T03:59:00+00:00",
+            "median": 0.8,
+            "min": 0.8,
+            "max": 0.8,
+            "time_basis": "POINT",
+            "state": "KNOWN_CONTEXT_ONLY"
+          },
+          "difference": 0.0,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "historical_roles",
+            "historical_cluster_membership",
+            "historical_cpu_cores"
+          ],
+          "high_observation": {
+            "at": "2026-10-29T03:57:00+00:00",
+            "value": 0.8,
+            "value_kind": "POINT",
+            "window_start": "2026-10-29T03:56:00+00:00",
+            "window_end": "2026-10-29T03:57:00+00:00"
+          },
+          "low_observation": {
+            "at": "2026-10-29T03:57:00+00:00",
+            "value": 0.8,
+            "value_kind": "POINT",
+            "window_start": "2026-10-29T03:56:00+00:00",
+            "window_end": "2026-10-29T03:57:00+00:00"
+          },
+          "series": [
+            {
+              "snapshot_id": "node-b-3",
+              "at": "2026-10-29T03:57:00+00:00",
+              "collected_at": "2026-10-29T03:57:00+00:00",
+              "window_start": "2026-10-29T03:56:00+00:00",
+              "window_end": "2026-10-29T03:57:00+00:00",
+              "value": 0.8,
+              "unit": "ratio",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-b-2",
+              "at": "2026-10-29T03:58:00+00:00",
+              "collected_at": "2026-10-29T03:58:00+00:00",
+              "window_start": "2026-10-29T03:57:00+00:00",
+              "window_end": "2026-10-29T03:58:00+00:00",
+              "value": 0.8,
+              "unit": "ratio",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-b-1",
+              "at": "2026-10-29T03:59:00+00:00",
+              "collected_at": "2026-10-29T03:59:00+00:00",
+              "window_start": "2026-10-29T03:58:00+00:00",
+              "window_end": "2026-10-29T03:59:00+00:00",
+              "value": 0.8,
+              "unit": "ratio",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-b0",
+              "at": "2026-10-29T04:00:00+00:00",
+              "collected_at": "2026-10-29T04:00:00+00:00",
+              "window_start": "2026-10-29T03:59:00+00:00",
+              "window_end": "2026-10-29T04:00:00+00:00",
+              "value": 0.8,
+              "unit": "ratio",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": true,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            }
+          ],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        },
+        {
+          "key": "disk:sda.read_bytes_per_second",
+          "label": "disk:sda · 读取吞吐",
+          "unit": "bytes/s",
+          "current": 10.0,
+          "latest_observed": 10.0,
+          "observed_at": "2026-10-29T04:00:00+00:00",
+          "collected_at": "2026-10-29T04:00:00+00:00",
+          "value_kind": "POINT",
+          "window_start": "2026-10-29T03:59:00+00:00",
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "CURRENT",
+          "history": {
+            "n": 3,
+            "start": "2026-10-29T03:57:00+00:00",
+            "end": "2026-10-29T03:59:00+00:00",
+            "median": 10.0,
+            "min": 10.0,
+            "max": 10.0,
+            "time_basis": "POINT",
+            "state": "KNOWN_CONTEXT_ONLY"
+          },
+          "difference": 0.0,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "historical_roles",
+            "historical_cluster_membership",
+            "historical_cpu_cores"
+          ],
+          "high_observation": {
+            "at": "2026-10-29T03:57:00+00:00",
+            "value": 10.0,
+            "value_kind": "POINT",
+            "window_start": "2026-10-29T03:56:00+00:00",
+            "window_end": "2026-10-29T03:57:00+00:00"
+          },
+          "low_observation": {
+            "at": "2026-10-29T03:57:00+00:00",
+            "value": 10.0,
+            "value_kind": "POINT",
+            "window_start": "2026-10-29T03:56:00+00:00",
+            "window_end": "2026-10-29T03:57:00+00:00"
+          },
+          "series": [
+            {
+              "snapshot_id": "node-b-3",
+              "at": "2026-10-29T03:57:00+00:00",
+              "collected_at": "2026-10-29T03:57:00+00:00",
+              "window_start": "2026-10-29T03:56:00+00:00",
+              "window_end": "2026-10-29T03:57:00+00:00",
+              "value": 10.0,
+              "unit": "bytes/s",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-b-2",
+              "at": "2026-10-29T03:58:00+00:00",
+              "collected_at": "2026-10-29T03:58:00+00:00",
+              "window_start": "2026-10-29T03:57:00+00:00",
+              "window_end": "2026-10-29T03:58:00+00:00",
+              "value": 10.0,
+              "unit": "bytes/s",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-b-1",
+              "at": "2026-10-29T03:59:00+00:00",
+              "collected_at": "2026-10-29T03:59:00+00:00",
+              "window_start": "2026-10-29T03:58:00+00:00",
+              "window_end": "2026-10-29T03:59:00+00:00",
+              "value": 10.0,
+              "unit": "bytes/s",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-b0",
+              "at": "2026-10-29T04:00:00+00:00",
+              "collected_at": "2026-10-29T04:00:00+00:00",
+              "window_start": "2026-10-29T03:59:00+00:00",
+              "window_end": "2026-10-29T04:00:00+00:00",
+              "value": 10.0,
+              "unit": "bytes/s",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": true,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            }
+          ],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        },
+        {
+          "key": "disk:sda.write_bytes_per_second",
+          "label": "disk:sda · 写入吞吐",
+          "unit": "bytes/s",
+          "current": 20.0,
+          "latest_observed": 20.0,
+          "observed_at": "2026-10-29T04:00:00+00:00",
+          "collected_at": "2026-10-29T04:00:00+00:00",
+          "value_kind": "POINT",
+          "window_start": "2026-10-29T03:59:00+00:00",
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "CURRENT",
+          "history": {
+            "n": 3,
+            "start": "2026-10-29T03:57:00+00:00",
+            "end": "2026-10-29T03:59:00+00:00",
+            "median": 20.0,
+            "min": 20.0,
+            "max": 20.0,
+            "time_basis": "POINT",
+            "state": "KNOWN_CONTEXT_ONLY"
+          },
+          "difference": 0.0,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "historical_roles",
+            "historical_cluster_membership",
+            "historical_cpu_cores"
+          ],
+          "high_observation": {
+            "at": "2026-10-29T03:57:00+00:00",
+            "value": 20.0,
+            "value_kind": "POINT",
+            "window_start": "2026-10-29T03:56:00+00:00",
+            "window_end": "2026-10-29T03:57:00+00:00"
+          },
+          "low_observation": {
+            "at": "2026-10-29T03:57:00+00:00",
+            "value": 20.0,
+            "value_kind": "POINT",
+            "window_start": "2026-10-29T03:56:00+00:00",
+            "window_end": "2026-10-29T03:57:00+00:00"
+          },
+          "series": [
+            {
+              "snapshot_id": "node-b-3",
+              "at": "2026-10-29T03:57:00+00:00",
+              "collected_at": "2026-10-29T03:57:00+00:00",
+              "window_start": "2026-10-29T03:56:00+00:00",
+              "window_end": "2026-10-29T03:57:00+00:00",
+              "value": 20.0,
+              "unit": "bytes/s",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-b-2",
+              "at": "2026-10-29T03:58:00+00:00",
+              "collected_at": "2026-10-29T03:58:00+00:00",
+              "window_start": "2026-10-29T03:57:00+00:00",
+              "window_end": "2026-10-29T03:58:00+00:00",
+              "value": 20.0,
+              "unit": "bytes/s",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-b-1",
+              "at": "2026-10-29T03:59:00+00:00",
+              "collected_at": "2026-10-29T03:59:00+00:00",
+              "window_start": "2026-10-29T03:58:00+00:00",
+              "window_end": "2026-10-29T03:59:00+00:00",
+              "value": 20.0,
+              "unit": "bytes/s",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-b0",
+              "at": "2026-10-29T04:00:00+00:00",
+              "collected_at": "2026-10-29T04:00:00+00:00",
+              "window_start": "2026-10-29T03:59:00+00:00",
+              "window_end": "2026-10-29T04:00:00+00:00",
+              "value": 20.0,
+              "unit": "bytes/s",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": true,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            }
+          ],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        }
+      ],
+      "shared_load": false,
+      "missing_context": [
+        "historical_roles",
+        "historical_cluster_membership",
+        "historical_cpu_cores"
+      ],
+      "capacity_source": "current Asset labels/topology; not historical configuration evidence",
+      "context": {
+        "source": "collector",
+        "host_id": "node-b",
+        "config_id": "cfg",
+        "identity": {},
+        "host_semantics": {
+          "os": "LINUX",
+          "memory_available": "MemAvailable",
+          "memory_total": "MemTotal",
+          "unit": "bytes"
+        },
+        "memory_total_bytes": 300.0
+      },
+      "window_start": "2026-10-29T03:59:00+00:00",
+      "window_end": "2026-10-29T04:00:00+00:00",
+      "frozen_diagnostics": {},
+      "diagnostic_note": "仅复用已冻结2.0诊断；VALID和旧capacity NORMAL均不表示健康正常",
+      "memory_semantics": "LINUX_MEMAVAILABLE",
+      "freshness": "FRESH",
+      "cpu_cores": 6.0,
+      "stable_identity": "node-b",
+      "portrait_id": "node-b",
+      "current_asset_configuration": {
+        "labels": {
+          "host_id": "node-b",
+          "roles": [
+            "WORKER"
+          ],
+          "cpu_cores": 6
+        },
+        "topology": {},
+        "external_key": "node-b"
+      },
+      "relationships": [
+        {
+          "kind": "cluster",
+          "id": "cluster",
+          "name": "受控 control-plane A"
+        }
+      ]
+    },
+    {
+      "id": "node-c",
+      "name": "受控超长节点 LongIdentityWithoutBreakLongIdentityWithoutBreakLongIdentityWithoutBreakLongIdentityWithoutBreakLongIdentityWithoutBreakLongIdentityWithoutBreakLongIdentityWithoutBreakLongIdentityWithoutBreakLongIdentityWithoutBreakLongIdentityWithoutBreak",
+      "roles": [
+        "WORKER"
+      ],
+      "asset_ids": [
+        "node-c"
+      ],
+      "metrics": [
+        {
+          "key": "host.cpu_busy_ratio",
+          "label": "CPU忙碌比例",
+          "unit": "ratio",
+          "current": null,
+          "latest_observed": 0.3,
+          "observed_at": null,
+          "collected_at": null,
+          "value_kind": "POINT",
+          "window_start": "2026-10-29T03:59:00+00:00",
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "HISTORICAL_OR_UNAVAILABLE",
+          "history": {
+            "n": 3,
+            "start": "2026-10-29T03:57:00+00:00",
+            "end": "2026-10-29T03:59:00+00:00",
+            "median": 0.27999999999999997,
+            "min": 0.27,
+            "max": 0.29,
+            "time_basis": "POINT",
+            "state": "KNOWN_CONTEXT_ONLY"
+          },
+          "difference": null,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "historical_roles",
+            "historical_cluster_membership",
+            "historical_cpu_cores"
+          ],
+          "high_observation": {
+            "at": "2026-10-29T03:59:00+00:00",
+            "value": 0.29,
+            "value_kind": "POINT",
+            "window_start": "2026-10-29T03:58:00+00:00",
+            "window_end": "2026-10-29T03:59:00+00:00"
+          },
+          "low_observation": {
+            "at": "2026-10-29T03:57:00+00:00",
+            "value": 0.27,
+            "value_kind": "POINT",
+            "window_start": "2026-10-29T03:56:00+00:00",
+            "window_end": "2026-10-29T03:57:00+00:00"
+          },
+          "series": [
+            {
+              "snapshot_id": "node-c-3",
+              "at": "2026-10-29T03:57:00+00:00",
+              "collected_at": "2026-10-29T03:57:00+00:00",
+              "window_start": "2026-10-29T03:56:00+00:00",
+              "window_end": "2026-10-29T03:57:00+00:00",
+              "value": 0.27,
+              "unit": "ratio",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-c-2",
+              "at": "2026-10-29T03:58:00+00:00",
+              "collected_at": "2026-10-29T03:58:00+00:00",
+              "window_start": "2026-10-29T03:57:00+00:00",
+              "window_end": "2026-10-29T03:58:00+00:00",
+              "value": 0.27999999999999997,
+              "unit": "ratio",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-c-1",
+              "at": "2026-10-29T03:59:00+00:00",
+              "collected_at": "2026-10-29T03:59:00+00:00",
+              "window_start": "2026-10-29T03:58:00+00:00",
+              "window_end": "2026-10-29T03:59:00+00:00",
+              "value": 0.29,
+              "unit": "ratio",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-c0",
+              "at": null,
+              "collected_at": null,
+              "window_start": "2026-10-29T03:59:00+00:00",
+              "window_end": "2026-10-29T04:00:00+00:00",
+              "value": null,
+              "unit": "ratio",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "UNAVAILABLE",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            }
+          ],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        },
+        {
+          "key": "host.memory_available_bytes",
+          "label": "Linux MemAvailable",
+          "unit": "bytes",
+          "current": 80.0,
+          "latest_observed": 80.0,
+          "observed_at": "2026-10-29T04:00:00+00:00",
+          "collected_at": "2026-10-29T04:00:00+00:00",
+          "value_kind": "POINT",
+          "window_start": "2026-10-29T03:59:00+00:00",
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "CURRENT",
+          "history": {
+            "n": 3,
+            "start": "2026-10-29T03:57:00+00:00",
+            "end": "2026-10-29T03:59:00+00:00",
+            "median": 80.0,
+            "min": 80.0,
+            "max": 80.0,
+            "time_basis": "POINT",
+            "state": "KNOWN_CONTEXT_ONLY"
+          },
+          "difference": 0.0,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "historical_roles",
+            "historical_cluster_membership",
+            "historical_cpu_cores"
+          ],
+          "high_observation": {
+            "at": "2026-10-29T03:57:00+00:00",
+            "value": 80.0,
+            "value_kind": "POINT",
+            "window_start": "2026-10-29T03:56:00+00:00",
+            "window_end": "2026-10-29T03:57:00+00:00"
+          },
+          "low_observation": {
+            "at": "2026-10-29T03:57:00+00:00",
+            "value": 80.0,
+            "value_kind": "POINT",
+            "window_start": "2026-10-29T03:56:00+00:00",
+            "window_end": "2026-10-29T03:57:00+00:00"
+          },
+          "series": [
+            {
+              "snapshot_id": "node-c-3",
+              "at": "2026-10-29T03:57:00+00:00",
+              "collected_at": "2026-10-29T03:57:00+00:00",
+              "window_start": "2026-10-29T03:56:00+00:00",
+              "window_end": "2026-10-29T03:57:00+00:00",
+              "value": 80.0,
+              "unit": "bytes",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-c-2",
+              "at": "2026-10-29T03:58:00+00:00",
+              "collected_at": "2026-10-29T03:58:00+00:00",
+              "window_start": "2026-10-29T03:57:00+00:00",
+              "window_end": "2026-10-29T03:58:00+00:00",
+              "value": 80.0,
+              "unit": "bytes",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-c-1",
+              "at": "2026-10-29T03:59:00+00:00",
+              "collected_at": "2026-10-29T03:59:00+00:00",
+              "window_start": "2026-10-29T03:58:00+00:00",
+              "window_end": "2026-10-29T03:59:00+00:00",
+              "value": 80.0,
+              "unit": "bytes",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-c0",
+              "at": "2026-10-29T04:00:00+00:00",
+              "collected_at": "2026-10-29T04:00:00+00:00",
+              "window_start": "2026-10-29T03:59:00+00:00",
+              "window_end": "2026-10-29T04:00:00+00:00",
+              "value": 80.0,
+              "unit": "bytes",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": true,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            }
+          ],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        },
+        {
+          "key": "host.memory_total_bytes",
+          "label": "内存总量",
+          "unit": "bytes",
+          "current": 100.0,
+          "latest_observed": 100.0,
+          "observed_at": "2026-10-29T04:00:00+00:00",
+          "collected_at": "2026-10-29T04:00:00+00:00",
+          "value_kind": "POINT",
+          "window_start": "2026-10-29T03:59:00+00:00",
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "CURRENT",
+          "history": {
+            "n": 3,
+            "start": "2026-10-29T03:57:00+00:00",
+            "end": "2026-10-29T03:59:00+00:00",
+            "median": 100.0,
+            "min": 100.0,
+            "max": 100.0,
+            "time_basis": "POINT",
+            "state": "KNOWN_CONTEXT_ONLY"
+          },
+          "difference": 0.0,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "historical_roles",
+            "historical_cluster_membership",
+            "historical_cpu_cores"
+          ],
+          "high_observation": {
+            "at": "2026-10-29T03:57:00+00:00",
+            "value": 100.0,
+            "value_kind": "POINT",
+            "window_start": "2026-10-29T03:56:00+00:00",
+            "window_end": "2026-10-29T03:57:00+00:00"
+          },
+          "low_observation": {
+            "at": "2026-10-29T03:57:00+00:00",
+            "value": 100.0,
+            "value_kind": "POINT",
+            "window_start": "2026-10-29T03:56:00+00:00",
+            "window_end": "2026-10-29T03:57:00+00:00"
+          },
+          "series": [
+            {
+              "snapshot_id": "node-c-3",
+              "at": "2026-10-29T03:57:00+00:00",
+              "collected_at": "2026-10-29T03:57:00+00:00",
+              "window_start": "2026-10-29T03:56:00+00:00",
+              "window_end": "2026-10-29T03:57:00+00:00",
+              "value": 100.0,
+              "unit": "bytes",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-c-2",
+              "at": "2026-10-29T03:58:00+00:00",
+              "collected_at": "2026-10-29T03:58:00+00:00",
+              "window_start": "2026-10-29T03:57:00+00:00",
+              "window_end": "2026-10-29T03:58:00+00:00",
+              "value": 100.0,
+              "unit": "bytes",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-c-1",
+              "at": "2026-10-29T03:59:00+00:00",
+              "collected_at": "2026-10-29T03:59:00+00:00",
+              "window_start": "2026-10-29T03:58:00+00:00",
+              "window_end": "2026-10-29T03:59:00+00:00",
+              "value": 100.0,
+              "unit": "bytes",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-c0",
+              "at": "2026-10-29T04:00:00+00:00",
+              "collected_at": "2026-10-29T04:00:00+00:00",
+              "window_start": "2026-10-29T03:59:00+00:00",
+              "window_end": "2026-10-29T04:00:00+00:00",
+              "value": 100.0,
+              "unit": "bytes",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": true,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            }
+          ],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        },
+        {
+          "key": "disk:sda.io_busy_ratio",
+          "label": "disk:sda · IO忙碌比例",
+          "unit": "ratio",
+          "current": 0.8,
+          "latest_observed": 0.8,
+          "observed_at": "2026-10-29T04:00:00+00:00",
+          "collected_at": "2026-10-29T04:00:00+00:00",
+          "value_kind": "POINT",
+          "window_start": "2026-10-29T03:59:00+00:00",
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "CURRENT",
+          "history": {
+            "n": 3,
+            "start": "2026-10-29T03:57:00+00:00",
+            "end": "2026-10-29T03:59:00+00:00",
+            "median": 0.8,
+            "min": 0.8,
+            "max": 0.8,
+            "time_basis": "POINT",
+            "state": "KNOWN_CONTEXT_ONLY"
+          },
+          "difference": 0.0,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "historical_roles",
+            "historical_cluster_membership",
+            "historical_cpu_cores"
+          ],
+          "high_observation": {
+            "at": "2026-10-29T03:57:00+00:00",
+            "value": 0.8,
+            "value_kind": "POINT",
+            "window_start": "2026-10-29T03:56:00+00:00",
+            "window_end": "2026-10-29T03:57:00+00:00"
+          },
+          "low_observation": {
+            "at": "2026-10-29T03:57:00+00:00",
+            "value": 0.8,
+            "value_kind": "POINT",
+            "window_start": "2026-10-29T03:56:00+00:00",
+            "window_end": "2026-10-29T03:57:00+00:00"
+          },
+          "series": [
+            {
+              "snapshot_id": "node-c-3",
+              "at": "2026-10-29T03:57:00+00:00",
+              "collected_at": "2026-10-29T03:57:00+00:00",
+              "window_start": "2026-10-29T03:56:00+00:00",
+              "window_end": "2026-10-29T03:57:00+00:00",
+              "value": 0.8,
+              "unit": "ratio",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-c-2",
+              "at": "2026-10-29T03:58:00+00:00",
+              "collected_at": "2026-10-29T03:58:00+00:00",
+              "window_start": "2026-10-29T03:57:00+00:00",
+              "window_end": "2026-10-29T03:58:00+00:00",
+              "value": 0.8,
+              "unit": "ratio",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-c-1",
+              "at": "2026-10-29T03:59:00+00:00",
+              "collected_at": "2026-10-29T03:59:00+00:00",
+              "window_start": "2026-10-29T03:58:00+00:00",
+              "window_end": "2026-10-29T03:59:00+00:00",
+              "value": 0.8,
+              "unit": "ratio",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-c0",
+              "at": "2026-10-29T04:00:00+00:00",
+              "collected_at": "2026-10-29T04:00:00+00:00",
+              "window_start": "2026-10-29T03:59:00+00:00",
+              "window_end": "2026-10-29T04:00:00+00:00",
+              "value": 0.8,
+              "unit": "ratio",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": true,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            }
+          ],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        },
+        {
+          "key": "disk:sda.read_bytes_per_second",
+          "label": "disk:sda · 读取吞吐",
+          "unit": "bytes/s",
+          "current": 10.0,
+          "latest_observed": 10.0,
+          "observed_at": "2026-10-29T04:00:00+00:00",
+          "collected_at": "2026-10-29T04:00:00+00:00",
+          "value_kind": "POINT",
+          "window_start": "2026-10-29T03:59:00+00:00",
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "CURRENT",
+          "history": {
+            "n": 3,
+            "start": "2026-10-29T03:57:00+00:00",
+            "end": "2026-10-29T03:59:00+00:00",
+            "median": 10.0,
+            "min": 10.0,
+            "max": 10.0,
+            "time_basis": "POINT",
+            "state": "KNOWN_CONTEXT_ONLY"
+          },
+          "difference": 0.0,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "historical_roles",
+            "historical_cluster_membership",
+            "historical_cpu_cores"
+          ],
+          "high_observation": {
+            "at": "2026-10-29T03:57:00+00:00",
+            "value": 10.0,
+            "value_kind": "POINT",
+            "window_start": "2026-10-29T03:56:00+00:00",
+            "window_end": "2026-10-29T03:57:00+00:00"
+          },
+          "low_observation": {
+            "at": "2026-10-29T03:57:00+00:00",
+            "value": 10.0,
+            "value_kind": "POINT",
+            "window_start": "2026-10-29T03:56:00+00:00",
+            "window_end": "2026-10-29T03:57:00+00:00"
+          },
+          "series": [
+            {
+              "snapshot_id": "node-c-3",
+              "at": "2026-10-29T03:57:00+00:00",
+              "collected_at": "2026-10-29T03:57:00+00:00",
+              "window_start": "2026-10-29T03:56:00+00:00",
+              "window_end": "2026-10-29T03:57:00+00:00",
+              "value": 10.0,
+              "unit": "bytes/s",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-c-2",
+              "at": "2026-10-29T03:58:00+00:00",
+              "collected_at": "2026-10-29T03:58:00+00:00",
+              "window_start": "2026-10-29T03:57:00+00:00",
+              "window_end": "2026-10-29T03:58:00+00:00",
+              "value": 10.0,
+              "unit": "bytes/s",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-c-1",
+              "at": "2026-10-29T03:59:00+00:00",
+              "collected_at": "2026-10-29T03:59:00+00:00",
+              "window_start": "2026-10-29T03:58:00+00:00",
+              "window_end": "2026-10-29T03:59:00+00:00",
+              "value": 10.0,
+              "unit": "bytes/s",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-c0",
+              "at": "2026-10-29T04:00:00+00:00",
+              "collected_at": "2026-10-29T04:00:00+00:00",
+              "window_start": "2026-10-29T03:59:00+00:00",
+              "window_end": "2026-10-29T04:00:00+00:00",
+              "value": 10.0,
+              "unit": "bytes/s",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": true,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            }
+          ],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        },
+        {
+          "key": "disk:sda.write_bytes_per_second",
+          "label": "disk:sda · 写入吞吐",
+          "unit": "bytes/s",
+          "current": 20.0,
+          "latest_observed": 20.0,
+          "observed_at": "2026-10-29T04:00:00+00:00",
+          "collected_at": "2026-10-29T04:00:00+00:00",
+          "value_kind": "POINT",
+          "window_start": "2026-10-29T03:59:00+00:00",
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "CURRENT",
+          "history": {
+            "n": 3,
+            "start": "2026-10-29T03:57:00+00:00",
+            "end": "2026-10-29T03:59:00+00:00",
+            "median": 20.0,
+            "min": 20.0,
+            "max": 20.0,
+            "time_basis": "POINT",
+            "state": "KNOWN_CONTEXT_ONLY"
+          },
+          "difference": 0.0,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "historical_roles",
+            "historical_cluster_membership",
+            "historical_cpu_cores"
+          ],
+          "high_observation": {
+            "at": "2026-10-29T03:57:00+00:00",
+            "value": 20.0,
+            "value_kind": "POINT",
+            "window_start": "2026-10-29T03:56:00+00:00",
+            "window_end": "2026-10-29T03:57:00+00:00"
+          },
+          "low_observation": {
+            "at": "2026-10-29T03:57:00+00:00",
+            "value": 20.0,
+            "value_kind": "POINT",
+            "window_start": "2026-10-29T03:56:00+00:00",
+            "window_end": "2026-10-29T03:57:00+00:00"
+          },
+          "series": [
+            {
+              "snapshot_id": "node-c-3",
+              "at": "2026-10-29T03:57:00+00:00",
+              "collected_at": "2026-10-29T03:57:00+00:00",
+              "window_start": "2026-10-29T03:56:00+00:00",
+              "window_end": "2026-10-29T03:57:00+00:00",
+              "value": 20.0,
+              "unit": "bytes/s",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-c-2",
+              "at": "2026-10-29T03:58:00+00:00",
+              "collected_at": "2026-10-29T03:58:00+00:00",
+              "window_start": "2026-10-29T03:57:00+00:00",
+              "window_end": "2026-10-29T03:58:00+00:00",
+              "value": 20.0,
+              "unit": "bytes/s",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-c-1",
+              "at": "2026-10-29T03:59:00+00:00",
+              "collected_at": "2026-10-29T03:59:00+00:00",
+              "window_start": "2026-10-29T03:58:00+00:00",
+              "window_end": "2026-10-29T03:59:00+00:00",
+              "value": 20.0,
+              "unit": "bytes/s",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": false,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            },
+            {
+              "snapshot_id": "node-c0",
+              "at": "2026-10-29T04:00:00+00:00",
+              "collected_at": "2026-10-29T04:00:00+00:00",
+              "window_start": "2026-10-29T03:59:00+00:00",
+              "window_end": "2026-10-29T04:00:00+00:00",
+              "value": 20.0,
+              "unit": "bytes/s",
+              "source": "collector",
+              "value_kind": "POINT",
+              "is_current": true,
+              "quality": "RECORDED_VALID",
+              "continuity": "UNKNOWN",
+              "reference_bounds": null
+            }
+          ],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        }
+      ],
+      "shared_load": false,
+      "missing_context": [
+        "historical_roles",
+        "historical_cluster_membership",
+        "historical_cpu_cores"
+      ],
+      "capacity_source": "current Asset labels/topology; not historical configuration evidence",
+      "context": {
+        "source": "collector",
+        "host_id": "node-c",
+        "config_id": "cfg",
+        "identity": {},
+        "host_semantics": {
+          "os": "LINUX",
+          "memory_available": "MemAvailable",
+          "memory_total": "MemTotal",
+          "unit": "bytes"
+        },
+        "memory_total_bytes": 100.0
+      },
+      "window_start": "2026-10-29T03:59:00+00:00",
+      "window_end": "2026-10-29T04:00:00+00:00",
+      "frozen_diagnostics": {},
+      "diagnostic_note": "仅复用已冻结2.0诊断；VALID和旧capacity NORMAL均不表示健康正常",
+      "memory_semantics": "LINUX_MEMAVAILABLE",
+      "freshness": "MIXED",
+      "cpu_cores": null,
+      "stable_identity": "node-c",
+      "portrait_id": "node-c",
+      "current_asset_configuration": {
+        "labels": {
+          "host_id": "node-c",
+          "roles": [
+            "WORKER"
+          ],
+          "cpu_cores": null
+        },
+        "topology": {},
+        "external_key": "node-c"
+      },
+      "relationships": [
+        {
+          "kind": "cluster",
+          "id": "cluster-b",
+          "name": "受控 control-plane B"
+        },
+        {
+          "kind": "llm",
+          "id": "[\"llm-empty\",\"NO_SNAPSHOT\"]",
+          "name": "llm-empty"
+        }
+      ]
+    },
+    {
+      "id": "missing-node",
+      "name": "missing-node",
+      "roles": [
+        "WORKER"
+      ],
+      "asset_ids": [
+        "missing-node"
+      ],
+      "metrics": [
+        {
+          "key": "host.cpu_busy_ratio",
+          "label": "CPU忙碌比例",
+          "unit": "ratio",
+          "current": null,
+          "latest_observed": null,
+          "observed_at": null,
+          "collected_at": null,
+          "value_kind": "POINT",
+          "window_start": null,
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "HISTORICAL_OR_UNAVAILABLE",
+          "history": {
+            "n": 0,
+            "start": null,
+            "end": null,
+            "median": null,
+            "min": null,
+            "max": null,
+            "time_basis": "POINT",
+            "state": "INSUFFICIENT_HISTORY"
+          },
+          "difference": null,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "historical_roles",
+            "historical_cluster_membership",
+            "historical_cpu_cores"
+          ],
+          "high_observation": null,
+          "low_observation": null,
+          "series": [],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        },
+        {
+          "key": "host.memory_available_bytes",
+          "label": "Linux MemAvailable（语义未知）",
+          "unit": "bytes",
+          "current": null,
+          "latest_observed": null,
+          "observed_at": null,
+          "collected_at": null,
+          "value_kind": "POINT",
+          "window_start": null,
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "HISTORICAL_OR_UNAVAILABLE",
+          "history": {
+            "n": 0,
+            "start": null,
+            "end": null,
+            "median": null,
+            "min": null,
+            "max": null,
+            "time_basis": "POINT",
+            "state": "INSUFFICIENT_HISTORY"
+          },
+          "difference": null,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "historical_roles",
+            "historical_cluster_membership",
+            "historical_cpu_cores"
+          ],
+          "high_observation": null,
+          "low_observation": null,
+          "series": [],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        },
+        {
+          "key": "host.memory_total_bytes",
+          "label": "内存总量",
+          "unit": "bytes",
+          "current": null,
+          "latest_observed": null,
+          "observed_at": null,
+          "collected_at": null,
+          "value_kind": "POINT",
+          "window_start": null,
+          "window_end": "2026-10-29T04:00:00+00:00",
+          "state": "HISTORICAL_OR_UNAVAILABLE",
+          "history": {
+            "n": 0,
+            "start": null,
+            "end": null,
+            "median": null,
+            "min": null,
+            "max": null,
+            "time_basis": "POINT",
+            "state": "INSUFFICIENT_HISTORY"
+          },
+          "difference": null,
+          "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+          "missing_context": [
+            "historical_roles",
+            "historical_cluster_membership",
+            "historical_cpu_cores"
+          ],
+          "high_observation": null,
+          "low_observation": null,
+          "series": [],
+          "series_truncated": false,
+          "series_note": "原始离散观测，不推断连续性；未记录逐点同钟点参考上下界，不能生成历史带或连续偏离片段。"
+        }
+      ],
+      "shared_load": false,
+      "missing_context": [
+        "historical_roles",
+        "historical_cluster_membership",
+        "historical_cpu_cores"
+      ],
+      "capacity_source": "current Asset labels/topology; not historical configuration evidence",
+      "freshness": "MISSING",
+      "context": {},
+      "memory_semantics": "UNKNOWN",
+      "frozen_diagnostics": {},
+      "diagnostic_note": "没有硬件快照；基础指标不依赖LLM绑定",
+      "cpu_cores": 4.0,
+      "stable_identity": "missing-node",
+      "portrait_id": "missing-node",
+      "current_asset_configuration": {
+        "labels": {
+          "host_id": "missing-node",
+          "roles": [
+            "WORKER"
+          ],
+          "cpu_cores": 4
+        },
+        "topology": {},
+        "external_key": "missing-node"
+      },
+      "relationships": [
+        {
+          "kind": "cluster",
+          "id": "cluster-b",
+          "name": "受控 control-plane B"
+        }
+      ]
+    }
+  ],
+  "clusters": [
+    {
+      "id": "cluster",
+      "name": "受控 control-plane A",
+      "control_plane_deployment": "MIXED",
+      "groups": [
+        {
+          "role": "API_SERVER",
+          "node_ids": [
+            "node-a"
+          ],
+          "node_count": 1,
+          "metrics": [
+            {
+              "key": "cluster.cpu_busy_ratio",
+              "label": "CPU容量加权",
+              "unit": "ratio",
+              "current": 0.4,
+              "latest_observed": 0.4,
+              "observed_at": "2026-10-29T04:00:00+00:00",
+              "collected_at": null,
+              "value_kind": "POINT_AGGREGATE",
+              "participating_collected_at": [
+                "2026-10-29T04:00:00+00:00"
+              ],
+              "window_start": "2026-10-29T03:59:00+00:00",
+              "window_end": "2026-10-29T04:00:00+00:00",
+              "state": "CURRENT",
+              "history": {
+                "n": 0,
+                "median": null,
+                "min": null,
+                "max": null,
+                "start": null,
+                "end": null,
+                "time_basis": "POINT_AGGREGATE",
+                "state": "INSUFFICIENT_HISTORY"
+              },
+              "difference": null,
+              "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+              "missing_context": [
+                "historical_node_membership",
+                "historical_cpu_cores"
+              ],
+              "coverage": {
+                "covered": 1,
+                "total": 1
+              },
+              "high_observation": null,
+              "low_observation": null
+            },
+            {
+              "key": "cluster.memory_used_ratio",
+              "label": "Linux内存已用比例（容量加权）",
+              "unit": "ratio",
+              "current": 0.5,
+              "latest_observed": 0.5,
+              "observed_at": "2026-10-29T04:00:00+00:00",
+              "collected_at": null,
+              "value_kind": "POINT_AGGREGATE",
+              "participating_collected_at": [
+                "2026-10-29T04:00:00+00:00"
+              ],
+              "window_start": "2026-10-29T03:59:00+00:00",
+              "window_end": "2026-10-29T04:00:00+00:00",
+              "state": "CURRENT",
+              "history": {
+                "n": 3,
+                "start": "2026-10-29T03:57:00+00:00",
+                "end": "2026-10-29T03:59:00+00:00",
+                "median": 0.5,
+                "min": 0.5,
+                "max": 0.5,
+                "time_basis": "POINT_AGGREGATE",
+                "state": "KNOWN_CONTEXT_ONLY"
+              },
+              "difference": 0.0,
+              "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+              "missing_context": [
+                "historical_node_membership",
+                "historical_cpu_cores"
+              ],
+              "coverage": {
+                "covered": 1,
+                "total": 1
+              },
+              "high_observation": {
+                "at": "2026-10-29T03:57:00+00:00",
+                "value": 0.5,
+                "value_kind": "POINT_AGGREGATE",
+                "window_start": "2026-10-29T03:56:00+00:00",
+                "window_end": "2026-10-29T03:57:00+00:00"
+              },
+              "low_observation": {
+                "at": "2026-10-29T03:57:00+00:00",
+                "value": 0.5,
+                "value_kind": "POINT_AGGREGATE",
+                "window_start": "2026-10-29T03:56:00+00:00",
+                "window_end": "2026-10-29T03:57:00+00:00"
+              }
+            },
+            {
+              "key": "cluster.memory_available_ratio",
+              "label": "Linux可用内存比例（容量加权）",
+              "unit": "ratio",
+              "current": 0.5,
+              "latest_observed": 0.5,
+              "observed_at": "2026-10-29T04:00:00+00:00",
+              "collected_at": null,
+              "value_kind": "POINT_AGGREGATE",
+              "participating_collected_at": [
+                "2026-10-29T04:00:00+00:00"
+              ],
+              "window_start": "2026-10-29T03:59:00+00:00",
+              "window_end": "2026-10-29T04:00:00+00:00",
+              "state": "CURRENT",
+              "history": {
+                "n": 3,
+                "start": "2026-10-29T03:57:00+00:00",
+                "end": "2026-10-29T03:59:00+00:00",
+                "median": 0.5,
+                "min": 0.5,
+                "max": 0.5,
+                "time_basis": "POINT_AGGREGATE",
+                "state": "KNOWN_CONTEXT_ONLY"
+              },
+              "difference": 0.0,
+              "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+              "missing_context": [
+                "historical_node_membership",
+                "historical_cpu_cores"
+              ],
+              "coverage": {
+                "covered": 1,
+                "total": 1
+              },
+              "high_observation": {
+                "at": "2026-10-29T03:57:00+00:00",
+                "value": 0.5,
+                "value_kind": "POINT_AGGREGATE",
+                "window_start": "2026-10-29T03:56:00+00:00",
+                "window_end": "2026-10-29T03:57:00+00:00"
+              },
+              "low_observation": {
+                "at": "2026-10-29T03:57:00+00:00",
+                "value": 0.5,
+                "value_kind": "POINT_AGGREGATE",
+                "window_start": "2026-10-29T03:56:00+00:00",
+                "window_end": "2026-10-29T03:57:00+00:00"
+              }
+            }
+          ],
+          "window_aligned": true,
+          "note": "当前唯一节点、窗口对齐且新鲜才汇总；历史统计描述当前节点集合的已知条件观测，历史归属/角色未冻结，CPU历史容量未知。IO百分比/请求p95不汇总。"
+        },
+        {
+          "role": "ETCD",
+          "node_ids": [
+            "node-a"
+          ],
+          "node_count": 1,
+          "metrics": [
+            {
+              "key": "cluster.cpu_busy_ratio",
+              "label": "CPU容量加权",
+              "unit": "ratio",
+              "current": 0.4,
+              "latest_observed": 0.4,
+              "observed_at": "2026-10-29T04:00:00+00:00",
+              "collected_at": null,
+              "value_kind": "POINT_AGGREGATE",
+              "participating_collected_at": [
+                "2026-10-29T04:00:00+00:00"
+              ],
+              "window_start": "2026-10-29T03:59:00+00:00",
+              "window_end": "2026-10-29T04:00:00+00:00",
+              "state": "CURRENT",
+              "history": {
+                "n": 0,
+                "median": null,
+                "min": null,
+                "max": null,
+                "start": null,
+                "end": null,
+                "time_basis": "POINT_AGGREGATE",
+                "state": "INSUFFICIENT_HISTORY"
+              },
+              "difference": null,
+              "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+              "missing_context": [
+                "historical_node_membership",
+                "historical_cpu_cores"
+              ],
+              "coverage": {
+                "covered": 1,
+                "total": 1
+              },
+              "high_observation": null,
+              "low_observation": null
+            },
+            {
+              "key": "cluster.memory_used_ratio",
+              "label": "Linux内存已用比例（容量加权）",
+              "unit": "ratio",
+              "current": 0.5,
+              "latest_observed": 0.5,
+              "observed_at": "2026-10-29T04:00:00+00:00",
+              "collected_at": null,
+              "value_kind": "POINT_AGGREGATE",
+              "participating_collected_at": [
+                "2026-10-29T04:00:00+00:00"
+              ],
+              "window_start": "2026-10-29T03:59:00+00:00",
+              "window_end": "2026-10-29T04:00:00+00:00",
+              "state": "CURRENT",
+              "history": {
+                "n": 3,
+                "start": "2026-10-29T03:57:00+00:00",
+                "end": "2026-10-29T03:59:00+00:00",
+                "median": 0.5,
+                "min": 0.5,
+                "max": 0.5,
+                "time_basis": "POINT_AGGREGATE",
+                "state": "KNOWN_CONTEXT_ONLY"
+              },
+              "difference": 0.0,
+              "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+              "missing_context": [
+                "historical_node_membership",
+                "historical_cpu_cores"
+              ],
+              "coverage": {
+                "covered": 1,
+                "total": 1
+              },
+              "high_observation": {
+                "at": "2026-10-29T03:57:00+00:00",
+                "value": 0.5,
+                "value_kind": "POINT_AGGREGATE",
+                "window_start": "2026-10-29T03:56:00+00:00",
+                "window_end": "2026-10-29T03:57:00+00:00"
+              },
+              "low_observation": {
+                "at": "2026-10-29T03:57:00+00:00",
+                "value": 0.5,
+                "value_kind": "POINT_AGGREGATE",
+                "window_start": "2026-10-29T03:56:00+00:00",
+                "window_end": "2026-10-29T03:57:00+00:00"
+              }
+            },
+            {
+              "key": "cluster.memory_available_ratio",
+              "label": "Linux可用内存比例（容量加权）",
+              "unit": "ratio",
+              "current": 0.5,
+              "latest_observed": 0.5,
+              "observed_at": "2026-10-29T04:00:00+00:00",
+              "collected_at": null,
+              "value_kind": "POINT_AGGREGATE",
+              "participating_collected_at": [
+                "2026-10-29T04:00:00+00:00"
+              ],
+              "window_start": "2026-10-29T03:59:00+00:00",
+              "window_end": "2026-10-29T04:00:00+00:00",
+              "state": "CURRENT",
+              "history": {
+                "n": 3,
+                "start": "2026-10-29T03:57:00+00:00",
+                "end": "2026-10-29T03:59:00+00:00",
+                "median": 0.5,
+                "min": 0.5,
+                "max": 0.5,
+                "time_basis": "POINT_AGGREGATE",
+                "state": "KNOWN_CONTEXT_ONLY"
+              },
+              "difference": 0.0,
+              "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+              "missing_context": [
+                "historical_node_membership",
+                "historical_cpu_cores"
+              ],
+              "coverage": {
+                "covered": 1,
+                "total": 1
+              },
+              "high_observation": {
+                "at": "2026-10-29T03:57:00+00:00",
+                "value": 0.5,
+                "value_kind": "POINT_AGGREGATE",
+                "window_start": "2026-10-29T03:56:00+00:00",
+                "window_end": "2026-10-29T03:57:00+00:00"
+              },
+              "low_observation": {
+                "at": "2026-10-29T03:57:00+00:00",
+                "value": 0.5,
+                "value_kind": "POINT_AGGREGATE",
+                "window_start": "2026-10-29T03:56:00+00:00",
+                "window_end": "2026-10-29T03:57:00+00:00"
+              }
+            }
+          ],
+          "window_aligned": true,
+          "note": "当前唯一节点、窗口对齐且新鲜才汇总；历史统计描述当前节点集合的已知条件观测，历史归属/角色未冻结，CPU历史容量未知。IO百分比/请求p95不汇总。"
+        },
+        {
+          "role": "WORKER",
+          "node_ids": [
+            "node-b"
+          ],
+          "node_count": 1,
+          "metrics": [
+            {
+              "key": "cluster.cpu_busy_ratio",
+              "label": "CPU容量加权",
+              "unit": "ratio",
+              "current": 0.6999999999999998,
+              "latest_observed": 0.6999999999999998,
+              "observed_at": "2026-10-29T04:00:00+00:00",
+              "collected_at": null,
+              "value_kind": "POINT_AGGREGATE",
+              "participating_collected_at": [
+                "2026-10-29T04:00:00+00:00"
+              ],
+              "window_start": "2026-10-29T03:59:00+00:00",
+              "window_end": "2026-10-29T04:00:00+00:00",
+              "state": "CURRENT",
+              "history": {
+                "n": 0,
+                "median": null,
+                "min": null,
+                "max": null,
+                "start": null,
+                "end": null,
+                "time_basis": "POINT_AGGREGATE",
+                "state": "INSUFFICIENT_HISTORY"
+              },
+              "difference": null,
+              "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+              "missing_context": [
+                "historical_node_membership",
+                "historical_cpu_cores"
+              ],
+              "coverage": {
+                "covered": 1,
+                "total": 1
+              },
+              "high_observation": null,
+              "low_observation": null
+            },
+            {
+              "key": "cluster.memory_used_ratio",
+              "label": "Linux内存已用比例（容量加权）",
+              "unit": "ratio",
+              "current": 0.4,
+              "latest_observed": 0.4,
+              "observed_at": "2026-10-29T04:00:00+00:00",
+              "collected_at": null,
+              "value_kind": "POINT_AGGREGATE",
+              "participating_collected_at": [
+                "2026-10-29T04:00:00+00:00"
+              ],
+              "window_start": "2026-10-29T03:59:00+00:00",
+              "window_end": "2026-10-29T04:00:00+00:00",
+              "state": "CURRENT",
+              "history": {
+                "n": 3,
+                "start": "2026-10-29T03:57:00+00:00",
+                "end": "2026-10-29T03:59:00+00:00",
+                "median": 0.4,
+                "min": 0.4,
+                "max": 0.4,
+                "time_basis": "POINT_AGGREGATE",
+                "state": "KNOWN_CONTEXT_ONLY"
+              },
+              "difference": 0.0,
+              "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+              "missing_context": [
+                "historical_node_membership",
+                "historical_cpu_cores"
+              ],
+              "coverage": {
+                "covered": 1,
+                "total": 1
+              },
+              "high_observation": {
+                "at": "2026-10-29T03:57:00+00:00",
+                "value": 0.4,
+                "value_kind": "POINT_AGGREGATE",
+                "window_start": "2026-10-29T03:56:00+00:00",
+                "window_end": "2026-10-29T03:57:00+00:00"
+              },
+              "low_observation": {
+                "at": "2026-10-29T03:57:00+00:00",
+                "value": 0.4,
+                "value_kind": "POINT_AGGREGATE",
+                "window_start": "2026-10-29T03:56:00+00:00",
+                "window_end": "2026-10-29T03:57:00+00:00"
+              }
+            },
+            {
+              "key": "cluster.memory_available_ratio",
+              "label": "Linux可用内存比例（容量加权）",
+              "unit": "ratio",
+              "current": 0.6,
+              "latest_observed": 0.6,
+              "observed_at": "2026-10-29T04:00:00+00:00",
+              "collected_at": null,
+              "value_kind": "POINT_AGGREGATE",
+              "participating_collected_at": [
+                "2026-10-29T04:00:00+00:00"
+              ],
+              "window_start": "2026-10-29T03:59:00+00:00",
+              "window_end": "2026-10-29T04:00:00+00:00",
+              "state": "CURRENT",
+              "history": {
+                "n": 3,
+                "start": "2026-10-29T03:57:00+00:00",
+                "end": "2026-10-29T03:59:00+00:00",
+                "median": 0.6,
+                "min": 0.6,
+                "max": 0.6,
+                "time_basis": "POINT_AGGREGATE",
+                "state": "KNOWN_CONTEXT_ONLY"
+              },
+              "difference": 0.0,
+              "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+              "missing_context": [
+                "historical_node_membership",
+                "historical_cpu_cores"
+              ],
+              "coverage": {
+                "covered": 1,
+                "total": 1
+              },
+              "high_observation": {
+                "at": "2026-10-29T03:57:00+00:00",
+                "value": 0.6,
+                "value_kind": "POINT_AGGREGATE",
+                "window_start": "2026-10-29T03:56:00+00:00",
+                "window_end": "2026-10-29T03:57:00+00:00"
+              },
+              "low_observation": {
+                "at": "2026-10-29T03:57:00+00:00",
+                "value": 0.6,
+                "value_kind": "POINT_AGGREGATE",
+                "window_start": "2026-10-29T03:56:00+00:00",
+                "window_end": "2026-10-29T03:57:00+00:00"
+              }
+            }
+          ],
+          "window_aligned": true,
+          "note": "当前唯一节点、窗口对齐且新鲜才汇总；历史统计描述当前节点集合的已知条件观测，历史归属/角色未冻结，CPU历史容量未知。IO百分比/请求p95不汇总。"
+        }
+      ],
+      "total": {
+        "node_ids": [
+          "node-a",
+          "node-b"
+        ],
+        "node_count": 2,
+        "metrics": [
+          {
+            "key": "cluster.cpu_busy_ratio",
+            "label": "CPU容量加权",
+            "unit": "ratio",
+            "current": 0.6249999999999999,
+            "latest_observed": 0.6249999999999999,
+            "observed_at": "2026-10-29T04:00:00+00:00",
+            "collected_at": null,
+            "value_kind": "POINT_AGGREGATE",
+            "participating_collected_at": [
+              "2026-10-29T04:00:00+00:00"
+            ],
+            "window_start": "2026-10-29T03:59:00+00:00",
+            "window_end": "2026-10-29T04:00:00+00:00",
+            "state": "CURRENT",
+            "history": {
+              "n": 0,
+              "median": null,
+              "min": null,
+              "max": null,
+              "start": null,
+              "end": null,
+              "time_basis": "POINT_AGGREGATE",
+              "state": "INSUFFICIENT_HISTORY"
+            },
+            "difference": null,
+            "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+            "missing_context": [
+              "historical_node_membership",
+              "historical_cpu_cores"
+            ],
+            "coverage": {
+              "covered": 2,
+              "total": 2
+            },
+            "high_observation": null,
+            "low_observation": null,
+            "series": [],
+            "series_truncated": false,
+            "series_note": "历史节点成员、角色或容量权重未完整冻结；本批不回推集群曲线。可查看关联节点原始观测。"
+          },
+          {
+            "key": "cluster.memory_used_ratio",
+            "label": "Linux内存已用比例（容量加权）",
+            "unit": "ratio",
+            "current": 0.425,
+            "latest_observed": 0.425,
+            "observed_at": "2026-10-29T04:00:00+00:00",
+            "collected_at": null,
+            "value_kind": "POINT_AGGREGATE",
+            "participating_collected_at": [
+              "2026-10-29T04:00:00+00:00"
+            ],
+            "window_start": "2026-10-29T03:59:00+00:00",
+            "window_end": "2026-10-29T04:00:00+00:00",
+            "state": "CURRENT",
+            "history": {
+              "n": 3,
+              "start": "2026-10-29T03:57:00+00:00",
+              "end": "2026-10-29T03:59:00+00:00",
+              "median": 0.425,
+              "min": 0.425,
+              "max": 0.425,
+              "time_basis": "POINT_AGGREGATE",
+              "state": "KNOWN_CONTEXT_ONLY"
+            },
+            "difference": 0.0,
+            "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+            "missing_context": [
+              "historical_node_membership",
+              "historical_cpu_cores"
+            ],
+            "coverage": {
+              "covered": 2,
+              "total": 2
+            },
+            "high_observation": {
+              "at": "2026-10-29T03:57:00+00:00",
+              "value": 0.425,
+              "value_kind": "POINT_AGGREGATE",
+              "window_start": "2026-10-29T03:56:00+00:00",
+              "window_end": "2026-10-29T03:57:00+00:00"
+            },
+            "low_observation": {
+              "at": "2026-10-29T03:57:00+00:00",
+              "value": 0.425,
+              "value_kind": "POINT_AGGREGATE",
+              "window_start": "2026-10-29T03:56:00+00:00",
+              "window_end": "2026-10-29T03:57:00+00:00"
+            },
+            "series": [],
+            "series_truncated": false,
+            "series_note": "历史节点成员、角色或容量权重未完整冻结；本批不回推集群曲线。可查看关联节点原始观测。"
+          },
+          {
+            "key": "cluster.memory_available_ratio",
+            "label": "Linux可用内存比例（容量加权）",
+            "unit": "ratio",
+            "current": 0.575,
+            "latest_observed": 0.575,
+            "observed_at": "2026-10-29T04:00:00+00:00",
+            "collected_at": null,
+            "value_kind": "POINT_AGGREGATE",
+            "participating_collected_at": [
+              "2026-10-29T04:00:00+00:00"
+            ],
+            "window_start": "2026-10-29T03:59:00+00:00",
+            "window_end": "2026-10-29T04:00:00+00:00",
+            "state": "CURRENT",
+            "history": {
+              "n": 3,
+              "start": "2026-10-29T03:57:00+00:00",
+              "end": "2026-10-29T03:59:00+00:00",
+              "median": 0.575,
+              "min": 0.575,
+              "max": 0.575,
+              "time_basis": "POINT_AGGREGATE",
+              "state": "KNOWN_CONTEXT_ONLY"
+            },
+            "difference": 0.0,
+            "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+            "missing_context": [
+              "historical_node_membership",
+              "historical_cpu_cores"
+            ],
+            "coverage": {
+              "covered": 2,
+              "total": 2
+            },
+            "high_observation": {
+              "at": "2026-10-29T03:57:00+00:00",
+              "value": 0.575,
+              "value_kind": "POINT_AGGREGATE",
+              "window_start": "2026-10-29T03:56:00+00:00",
+              "window_end": "2026-10-29T03:57:00+00:00"
+            },
+            "low_observation": {
+              "at": "2026-10-29T03:57:00+00:00",
+              "value": 0.575,
+              "value_kind": "POINT_AGGREGATE",
+              "window_start": "2026-10-29T03:56:00+00:00",
+              "window_end": "2026-10-29T03:57:00+00:00"
+            },
+            "series": [],
+            "series_truncated": false,
+            "series_note": "历史节点成员、角色或容量权重未完整冻结；本批不回推集群曲线。可查看关联节点原始观测。"
+          }
+        ],
+        "window_aligned": true,
+        "note": "当前唯一节点、窗口对齐且新鲜才汇总；历史统计描述当前节点集合的已知条件观测，历史归属/角色未冻结，CPU历史容量未知。IO百分比/请求p95不汇总。"
+      },
+      "shared_nodes": [
+        "node-a"
+      ],
+      "portrait_id": "cluster",
+      "relationships": [
+        {
+          "kind": "node",
+          "id": "node-a",
+          "name": "node-a"
+        },
+        {
+          "kind": "node",
+          "id": "node-b",
+          "name": "node-b"
+        }
+      ]
+    },
+    {
+      "id": "cluster-b",
+      "name": "受控 control-plane B",
+      "control_plane_deployment": "DEDICATED",
+      "groups": [
+        {
+          "role": "WORKER",
+          "node_ids": [
+            "node-c",
+            "missing-node"
+          ],
+          "node_count": 2,
+          "metrics": [
+            {
+              "key": "cluster.cpu_busy_ratio",
+              "label": "CPU容量加权",
+              "unit": "ratio",
+              "current": null,
+              "latest_observed": null,
+              "observed_at": null,
+              "collected_at": null,
+              "value_kind": "POINT_AGGREGATE",
+              "participating_collected_at": [],
+              "window_start": null,
+              "window_end": null,
+              "state": "UNKNOWN",
+              "history": {
+                "n": 0,
+                "median": null,
+                "min": null,
+                "max": null,
+                "start": null,
+                "end": null,
+                "time_basis": "POINT_AGGREGATE",
+                "state": "INSUFFICIENT_HISTORY"
+              },
+              "difference": null,
+              "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+              "missing_context": [
+                "historical_node_membership",
+                "historical_cpu_cores"
+              ],
+              "coverage": {
+                "covered": 0,
+                "total": 2
+              },
+              "high_observation": null,
+              "low_observation": null
+            },
+            {
+              "key": "cluster.memory_used_ratio",
+              "label": "Linux内存已用比例（容量加权）",
+              "unit": "ratio",
+              "current": null,
+              "latest_observed": null,
+              "observed_at": "2026-10-29T04:00:00+00:00",
+              "collected_at": null,
+              "value_kind": "POINT_AGGREGATE",
+              "participating_collected_at": [
+                "2026-10-29T04:00:00+00:00"
+              ],
+              "window_start": null,
+              "window_end": null,
+              "state": "UNKNOWN",
+              "history": {
+                "n": 0,
+                "median": null,
+                "min": null,
+                "max": null,
+                "start": null,
+                "end": null,
+                "time_basis": "POINT_AGGREGATE",
+                "state": "INSUFFICIENT_HISTORY"
+              },
+              "difference": null,
+              "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+              "missing_context": [
+                "historical_node_membership",
+                "historical_cpu_cores"
+              ],
+              "coverage": {
+                "covered": 1,
+                "total": 2
+              },
+              "high_observation": null,
+              "low_observation": null
+            },
+            {
+              "key": "cluster.memory_available_ratio",
+              "label": "Linux可用内存比例（容量加权）",
+              "unit": "ratio",
+              "current": null,
+              "latest_observed": null,
+              "observed_at": "2026-10-29T04:00:00+00:00",
+              "collected_at": null,
+              "value_kind": "POINT_AGGREGATE",
+              "participating_collected_at": [
+                "2026-10-29T04:00:00+00:00"
+              ],
+              "window_start": null,
+              "window_end": null,
+              "state": "UNKNOWN",
+              "history": {
+                "n": 0,
+                "median": null,
+                "min": null,
+                "max": null,
+                "start": null,
+                "end": null,
+                "time_basis": "POINT_AGGREGATE",
+                "state": "INSUFFICIENT_HISTORY"
+              },
+              "difference": null,
+              "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+              "missing_context": [
+                "historical_node_membership",
+                "historical_cpu_cores"
+              ],
+              "coverage": {
+                "covered": 1,
+                "total": 2
+              },
+              "high_observation": null,
+              "low_observation": null
+            }
+          ],
+          "window_aligned": false,
+          "note": "当前唯一节点、窗口对齐且新鲜才汇总；历史统计描述当前节点集合的已知条件观测，历史归属/角色未冻结，CPU历史容量未知。IO百分比/请求p95不汇总。"
+        }
+      ],
+      "total": {
+        "node_ids": [
+          "node-c",
+          "missing-node"
+        ],
+        "node_count": 2,
+        "metrics": [
+          {
+            "key": "cluster.cpu_busy_ratio",
+            "label": "CPU容量加权",
+            "unit": "ratio",
+            "current": null,
+            "latest_observed": null,
+            "observed_at": null,
+            "collected_at": null,
+            "value_kind": "POINT_AGGREGATE",
+            "participating_collected_at": [],
+            "window_start": null,
+            "window_end": null,
+            "state": "UNKNOWN",
+            "history": {
+              "n": 0,
+              "median": null,
+              "min": null,
+              "max": null,
+              "start": null,
+              "end": null,
+              "time_basis": "POINT_AGGREGATE",
+              "state": "INSUFFICIENT_HISTORY"
+            },
+            "difference": null,
+            "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+            "missing_context": [
+              "historical_node_membership",
+              "historical_cpu_cores"
+            ],
+            "coverage": {
+              "covered": 0,
+              "total": 2
+            },
+            "high_observation": null,
+            "low_observation": null,
+            "series": [],
+            "series_truncated": false,
+            "series_note": "历史节点成员、角色或容量权重未完整冻结；本批不回推集群曲线。可查看关联节点原始观测。"
+          },
+          {
+            "key": "cluster.memory_used_ratio",
+            "label": "Linux内存已用比例（容量加权）",
+            "unit": "ratio",
+            "current": null,
+            "latest_observed": null,
+            "observed_at": "2026-10-29T04:00:00+00:00",
+            "collected_at": null,
+            "value_kind": "POINT_AGGREGATE",
+            "participating_collected_at": [
+              "2026-10-29T04:00:00+00:00"
+            ],
+            "window_start": null,
+            "window_end": null,
+            "state": "UNKNOWN",
+            "history": {
+              "n": 0,
+              "median": null,
+              "min": null,
+              "max": null,
+              "start": null,
+              "end": null,
+              "time_basis": "POINT_AGGREGATE",
+              "state": "INSUFFICIENT_HISTORY"
+            },
+            "difference": null,
+            "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+            "missing_context": [
+              "historical_node_membership",
+              "historical_cpu_cores"
+            ],
+            "coverage": {
+              "covered": 1,
+              "total": 2
+            },
+            "high_observation": null,
+            "low_observation": null,
+            "series": [],
+            "series_truncated": false,
+            "series_note": "历史节点成员、角色或容量权重未完整冻结；本批不回推集群曲线。可查看关联节点原始观测。"
+          },
+          {
+            "key": "cluster.memory_available_ratio",
+            "label": "Linux可用内存比例（容量加权）",
+            "unit": "ratio",
+            "current": null,
+            "latest_observed": null,
+            "observed_at": "2026-10-29T04:00:00+00:00",
+            "collected_at": null,
+            "value_kind": "POINT_AGGREGATE",
+            "participating_collected_at": [
+              "2026-10-29T04:00:00+00:00"
+            ],
+            "window_start": null,
+            "window_end": null,
+            "state": "UNKNOWN",
+            "history": {
+              "n": 0,
+              "median": null,
+              "min": null,
+              "max": null,
+              "start": null,
+              "end": null,
+              "time_basis": "POINT_AGGREGATE",
+              "state": "INSUFFICIENT_HISTORY"
+            },
+            "difference": null,
+            "difference_scope": "DESCRIPTIVE_KNOWN_CONTEXT_ONLY",
+            "missing_context": [
+              "historical_node_membership",
+              "historical_cpu_cores"
+            ],
+            "coverage": {
+              "covered": 1,
+              "total": 2
+            },
+            "high_observation": null,
+            "low_observation": null,
+            "series": [],
+            "series_truncated": false,
+            "series_note": "历史节点成员、角色或容量权重未完整冻结；本批不回推集群曲线。可查看关联节点原始观测。"
+          }
+        ],
+        "window_aligned": false,
+        "note": "当前唯一节点、窗口对齐且新鲜才汇总；历史统计描述当前节点集合的已知条件观测，历史归属/角色未冻结，CPU历史容量未知。IO百分比/请求p95不汇总。"
+      },
+      "shared_nodes": [],
+      "portrait_id": "cluster-b",
+      "relationships": [
+        {
+          "kind": "node",
+          "id": "node-c",
+          "name": "受控超长节点 LongIdentityWithoutBreakLongIdentityWithoutBreakLongIdentityWithoutBreakLongIdentityWithoutBreakLongIdentityWithoutBreakLongIdentityWithoutBreakLongIdentityWithoutBreakLongIdentityWithoutBreakLongIdentityWithoutBreakLongIdentityWithoutBreak"
+        },
+        {
+          "kind": "node",
+          "id": "missing-node",
+          "name": "missing-node"
+        }
+      ]
+    }
+  ],
+  "note": "描述实际观测：历史范围不是置信区间、健康结论或容量预测；高低值只是资源观测时刻。缺项逐指标显示。",
+  "detail_request": {
+    "kind": null,
+    "id": null,
+    "series_limit_per_metric": 1000
+  },
+  "reference_band": {
+    "available": false,
+    "reason": "未保留逐历史点同钟点参考边界与连续性；现有范围仅当前排除自身的14天同已知条件观察统计。"
+  },
+  "truncated": false,
+  "deployment_edit": {
+    "writable": false,
+    "note": "受控只读展示，无生产保存"
+  },
+  "controlled_fixture": "受控展示数据，非真实Run/遥测；固定参考时间，不代表本机Linux/集群/LLM"
+}

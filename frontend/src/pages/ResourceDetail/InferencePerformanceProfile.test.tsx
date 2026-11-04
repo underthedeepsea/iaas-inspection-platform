@@ -33,7 +33,7 @@ it('renders an abnormal LLM runtime profile with deterministic reasons', async (
       traffic: { qps: 8, qpm: 480 }, throughput: { generation_tps: 1000, prompt_tps: 2000 },
       cache: { kv_cache_hit_rate: 0.7 }, requests: { running: 4, waiting: 12 },
     },
-    fixed: { status: 'WARNING' }, dynamic: { status: 'NOT_READY' }, trend: { status: 'WATCH' }, policy_source: { level: 'ENGINE_MODEL' },
+    fixed: { status: 'WARNING', metrics: { 'ttft.p99_ms': { raw_status: 'WARNING', effective_status: 'NORMAL', consecutive_hits: 1, current: 700, warning: 600, critical: 900 } } }, dynamic: { status: 'NOT_READY', load_filter: 'FULL_HISTORY_FALLBACK', metrics: { 'requests.waiting': { status: 'NOT_EVALUABLE', baseline_median: 0, current: 12, quality_reason: 'ZERO_BASELINE', contributes_to_status: false } } }, trend: { status: 'WATCH', metrics: { 'ttft.p95_ms': { status: 'WATCH', first_half_median: 500, second_half_median: 600, change_ratio: 0.2 } } }, resolved_policy: { persistence: { consecutive_hits: 2 } }, policy_source: { level: 'ENGINE_MODEL' },
     quality: { state: 'READY', pending_confirmation: true },
     reasons: [{ code: 'TTFT_P95_FIXED_HIGH', metric: 'ttft.p95_ms', status: 'WARNING', current: 600, threshold: 500 }],
   }
@@ -43,6 +43,10 @@ it('renders an abnormal LLM runtime profile with deterministic reasons', async (
   expect(await screen.findByText('TTFT_P95_FIXED_HIGH')).toBeInTheDocument()
   expect(screen.getByText('历史基线建立中')).toBeInTheDocument()
   expect(screen.getByText('全部当前指标')).toBeInTheDocument()
+  expect(screen.getByText('已 1/2 点，待后续有效观测确认。')).toBeInTheDocument()
+  expect(screen.getByText('零基线，比例变化不可评估；仅展示原始差值。')).toBeInTheDocument()
+  expect(screen.getByText('FULL_HISTORY_FALLBACK')).toBeInTheDocument()
+  expect(screen.getByText('first_half_median')).toBeInTheDocument()
   expect(screen.getByRole('region', { name: '推理性能画像' }).querySelector('.section-heading .status-badge')?.textContent).toBe('WARNING')
   expect(screen.getByText('部分原始指标待确认；已确认异常仍有效。')).toBeInTheDocument()
 })

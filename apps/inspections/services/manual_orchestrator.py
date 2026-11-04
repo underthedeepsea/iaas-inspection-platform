@@ -305,7 +305,18 @@ def _finish_run(run):
     total = item_runs.count()
     succeeded = item_runs.filter(status=InspectionItemRun.Status.SUCCEEDED).count()
     failed = item_runs.filter(status=InspectionItemRun.Status.FAILED).count()
-    status = InspectionRun.Status.PARTIAL if failed else InspectionRun.Status.SUCCEEDED
+    status = (InspectionRun.Status.FAILED if run.status == InspectionRun.Status.FAILED
+              else InspectionRun.Status.PARTIAL if failed else InspectionRun.Status.SUCCEEDED)
+    from apps.inspections.services.mapping_coverage import mapping_input_quality
+    quality = mapping_input_quality(run)
+    if quality is not None:
+        config = dict(run.config_snapshot or {})
+        config['mapping_quality'] = quality
+        run.config_snapshot = config
+        if run.status == InspectionRun.Status.FAILED:
+            status = InspectionRun.Status.FAILED
+        elif quality['status'] != 'COMPLETE' or not total:
+            status = InspectionRun.Status.PARTIAL
     run.status = status
     run.total_items = total
     run.success_items = succeeded
@@ -317,6 +328,7 @@ def _finish_run(run):
             "total_items",
             "success_items",
             "failed_items",
+            "config_snapshot",
             "finished_at",
         ]
     )
