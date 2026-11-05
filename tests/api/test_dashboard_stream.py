@@ -3,16 +3,23 @@ import json
 from unittest.mock import Mock
 
 import pytest
+from django.db import DatabaseError, connection, transaction
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 from apps.core.models import Environment
 from apps.inspections.models import CheckResult, InspectionRun
 from apps.risks.models import Risk
+from apps.audits.models import AuditEvent
+from apps.investigations.models import ConversationMessage
 from apps.investigations.services.fact_projection import interpretation_choices
 from services.model_gateway.base import FinalAction, ModelGateway, ModelResponse, ModelStreamProgress
 from tests.api.test_guided_inspection_api import guided
 from tests.domain.test_launch_execution import launch_context
 
+
+# These assertions observe an actual outer commit, not pytest-django's rollback wrapper.
+pytestmark = pytest.mark.django_db(transaction=True)
 
 def post(client, run, **extra):
     body = {'environment_id': str(run.environment_id), 'inspection_run_id': str(run.pk), 'question': '详细解读本次风险'}
@@ -69,6 +76,15 @@ def test_stream_facts_and_progress_precede_safe_result_and_keep_code(guided, mon
     client, run = guided
     gateway = gateway_for(guided, monkeypatch)
     checks, risks = list(CheckResult.objects.values()), list(Risk.objects.values())
+    messages_before = ConversationMessage.objects.count()
+    from apps.investigations.services import dashboard_stream
+    original_finish = dashboard_stream.finish_dashboard_explanation
+    committed_messages = []
+    def observed_finish(*args, **kwargs):
+        result = original_finish(*args, **kwargs)
+        transaction.on_commit(lambda: committed_messages.append(result['saved']['message_id']))
+        return result
+    monkeypatch.setattr(dashboard_stream, 'finish_dashboard_explanation', observed_finish)
     response = post(client, run)
     assert response.status_code == 200 and response.streaming
     assert response['X-Accel-Buffering'] == 'no'
@@ -79,7 +95,14 @@ def test_stream_facts_and_progress_precede_safe_result_and_keep_code(guided, mon
     assert decode(next(events)) == ('status', {'stage': 'generating'})
     assert decode(next(events)) == ('progress', {'fragments': 1, 'content_bytes': 20})
     assert gateway.started and not gateway.closed
-    remaining = [decode(frame) for frame in events]
+    remaining = []
+    for frame in events:
+        event = decode(frame)
+        if event[0] == 'result':
+            assert committed_messages == [event[1]['saved']['message_id']]
+            assert not connection.in_atomic_block and connection.get_autocommit()
+            assert ConversationMessage.objects.filter(pk=event[1]['saved']['message_id']).exists()
+        remaining.append(event)
     assert [event[0] for event in remaining] == ['status', 'result', 'done']
     result = remaining[1][1]
     assert result['ai_status'] == 'ACCEPTED'
@@ -90,7 +113,34 @@ def test_stream_facts_and_progress_precede_safe_result_and_keep_code(guided, mon
     # Same unchanged input and grounded result through the ordinary JSON path.
     json_response = client.post('/api/v1/dashboard/ask', json.dumps({'environment_id': str(run.environment_id), 'inspection_run_id': str(run.pk), 'question': '详细解读本次风险'}), content_type='application/json')
     assert json_response.status_code == 200
-    assert json_response.json() == result
+    json_result = json_response.json()
+    assert {key: value for key, value in json_result.items() if key != 'saved'} == {key: value for key, value in result.items() if key != 'saved'}
+    assert json_result['saved']['message_id'] != result['saved']['message_id']
+    assert json_result['saved']['audit_id'] != result['saved']['audit_id']
+    assert ConversationMessage.objects.count() == messages_before + 2
+    for delivered in (result, json_result):
+        saved = delivered['saved']
+        message = ConversationMessage.objects.select_related('conversation').get(pk=saved['message_id'])
+        data = message.structured_content
+        assert saved['environment_id'] == data['environment_id'] == str(run.environment_id)
+        assert saved['inspection_run_id'] == data['inspection_run_id'] == str(run.pk)
+        assert str(message.conversation.environment_id) == str(run.environment_id)
+        assert str(message.conversation.context_id) == str(run.pk)
+        assert saved['conversation_id'] == str(message.conversation_id)
+        assert saved['created_at'] == message.created_at.isoformat()
+        assert saved['generated_at'] == data['generated_at']
+        assert run.finished_at <= parse_datetime(saved['generated_at']) <= timezone.now()
+        assert run.finished_at <= message.created_at <= timezone.now()
+        assert data['answer'] == {key: value for key, value in delivered.items() if key != 'saved'}
+        assert message.content == delivered['answer']
+        assert message.model_provider == delivered['source']['provider']
+        assert message.model_name == delivered['source']['model']
+        audit = AuditEvent.objects.get(pk=saved['audit_id'])
+        assert str(audit.environment_id) == str(run.environment_id)
+        assert audit.object_type == 'InspectionRun' and audit.object_id == str(run.pk)
+        assert audit.event_type == 'prompt.used' and data['audit_id'] == saved['audit_id']
+        assert run.finished_at <= audit.created_at <= timezone.now()
+    assert list(CheckResult.objects.values()) == checks and list(Risk.objects.values()) == risks
 
 
 @pytest.mark.parametrize('mode', ['failure', 'unsafe', 'unknown_id', 'invalid', 'eof'])
@@ -155,7 +205,41 @@ def test_closing_wsgi_response_closes_active_provider(guided, monkeypatch):
     gateway = gateway_for(guided, monkeypatch)
     response = post(client, run)
     events = iter(response.streaming_content)
-    next(events); next(events); next(events)
+    seen = [decode(next(events)) for _ in range(3)]
+    assert [name for name, _ in seen] == ['facts', 'status', 'progress']
     assert gateway.started and not gateway.closed
     response.close()
     assert gateway.closed
+    assert not any(name == 'result' for name, _ in seen)
+    assert not ConversationMessage.objects.filter(conversation__context_id=run.pk).exists()
+    assert not connection.in_atomic_block
+
+
+def test_commit_failure_never_releases_saved_success(guided, monkeypatch):
+    client, run = guided
+    gateway = gateway_for(guided, monkeypatch)
+    before = ConversationMessage.objects.count()
+    response = post(client, run)
+    events = iter(response.streaming_content)
+    seen = [decode(next(events)) for _ in range(3)]
+    assert [name for name, _ in seen] == ['facts', 'status', 'progress']
+    with monkeypatch.context() as commit_patch:
+        commit_patch.setattr(connection, 'commit', Mock(side_effect=DatabaseError('controlled commit failure')))
+        with pytest.raises(DatabaseError):
+            for frame in events:
+                seen.append(decode(frame))
+    assert gateway.closed
+    assert not any(name == 'result' or (name == 'done' and data.get('outcome') == 'success') for name, data in seen)
+    assert ConversationMessage.objects.count() == before
+    assert not connection.in_atomic_block
+
+
+def test_stream_rejects_nested_transaction_as_commit_boundary(guided, monkeypatch):
+    client, run = guided
+    gateway = gateway_for(guided, monkeypatch)
+    with transaction.atomic():
+        response = post(client, run)
+        with pytest.raises(RuntimeError, match='outermost transaction'):
+            list(response.streaming_content)
+    assert not gateway.started
+    assert not ConversationMessage.objects.filter(conversation__context_id=run.pk).exists()

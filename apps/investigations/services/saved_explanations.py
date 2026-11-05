@@ -143,8 +143,12 @@ def latest_answer(run):
 
 
 @contextmanager
-def explanation_write_transaction():
-    with transaction.atomic():
+def explanation_write_transaction(*, durable=False):
+    # Streaming success must follow a real commit, including under test wrappers.
+    # durable atomic alone permits TestCase nesting and manual autocommit=False.
+    if durable and (connection.in_atomic_block or not connection.get_autocommit()):
+        raise RuntimeError('dashboard stream requires an outermost transaction')
+    with transaction.atomic(durable=durable):
         if connection.vendor == 'postgresql':
             with connection.cursor() as cursor:
                 cursor.execute('SET TRANSACTION READ WRITE')

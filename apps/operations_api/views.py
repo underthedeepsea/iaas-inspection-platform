@@ -989,8 +989,19 @@ def dashboard_ask_stream(request):
     run, question = _dashboard_ask_input(request)
     from apps.investigations.services.saved_explanations import explanation_write_transaction
     def authorized_stream():
-        with explanation_write_transaction():
-            yield from stream_dashboard_explanation(run, question)
+        terminal = []
+        with explanation_write_transaction(durable=True):
+            source = stream_dashboard_explanation(run, question)
+            try:
+                for frame in source:
+                    if terminal or frame.startswith(b'event: result\n'):
+                        terminal.append(frame)
+                    else:
+                        yield frame
+            finally:
+                source.close()
+        # Only successful outermost commit makes the saved receipt deliverable.
+        yield from terminal
     response = StreamingHttpResponse(authorized_stream(), content_type='text/event-stream; charset=utf-8')
     response['Cache-Control'] = 'no-cache, no-transform'
     response['X-Accel-Buffering'] = 'no'
