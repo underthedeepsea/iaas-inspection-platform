@@ -34,7 +34,12 @@ def test_code_plugins_are_anonymous_and_read_only(client, guided):
     rows = response.json()['items']
     assert len(rows) == 3
     assert {r['engine'] for r in rows} == {'PYTHON_RULE'}
-    assert all(r['deterministic'] and r['version'] == '1.0.0' for r in rows)
+    expected_versions = {
+        'hardware.host_health': '2.0.0',
+        'hardware.gpu_health': '1.0.0',
+        'llm.performance_profile': '1.0.0',
+    }
+    assert all(r['deterministic'] and r['version'] == expected_versions[r['rule_code']] for r in rows)
     assert client.post('/api/v1/code-plugins').status_code == 405
 
 

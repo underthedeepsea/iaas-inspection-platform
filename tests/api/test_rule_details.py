@@ -14,6 +14,11 @@ from apps.inspections.rules.inference_performance import _map_status
 
 
 def test_rule_details_have_complete_metric_contracts_without_database_access(client, django_db_blocker):
+    expected_versions = {
+        'hardware.host_health': '2.0.0',
+        'hardware.gpu_health': '1.0.0',
+        'llm.performance_profile': '1.0.0',
+    }
     expected = {
         'llm.performance_profile': {f'{group}.{field}' for group, fields in METRIC_FIELDS.items() for field in fields},
         'hardware.gpu_health': {f'gpu.{field}' for field in FIELDS['gpu']},
@@ -34,7 +39,7 @@ def test_rule_details_have_complete_metric_contracts_without_database_access(cli
             assert all(all(metric[key] for key in ('name', 'unit', 'range', 'purpose', 'input_path'))
                        for metric in row['supported_metrics'])
             assert row['parameters'] == {} and row['deterministic'] is True
-            assert row['plugin_version'] == '1.0.0'
+            assert row['plugin_version'] == expected_versions[code]
             assert '外部采集系统' in row['input_contract']
             assert '不直接采集' in row['input_contract']
             assert all(section['title'] and section['items'] for section in row['judgment_rules'])
