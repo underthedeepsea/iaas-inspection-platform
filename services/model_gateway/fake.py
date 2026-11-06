@@ -41,14 +41,21 @@ class FakeProvider(ModelGateway):
         envelope = _request_envelope(request)
         context = envelope.get("context") if isinstance(envelope.get("context"), Mapping) else {}
         evidence = envelope.get("evidence") if isinstance(envelope.get("evidence"), list) else []
-        if request.metadata.get('purpose') == 'inspection_explanation':
-            checks = envelope.get('check_results', [])
-            text = '；'.join(f"{row['check']}：{row['status']}，观测 {json.dumps(row['observed'],ensure_ascii=False)}，期望 {json.dumps(row['expected'],ensure_ascii=False)}" for row in checks if row['status'] in {'PASS','FAIL'})
-            return ModelResponse(action=FinalAction(summary='模拟 AI 解释：'+text+'。候选原因需补充证据确认。',confidence=.5),model=self.model,provider=self.provider_name)
-        if request.metadata.get('purpose') == 'dashboard_explanation':
-            checks = envelope.get('check_results', [])
-            text = '；'.join(f"{row['inspection_item_code']} [{row['id']}]：{row['status']}，{row['summary']}" for row in checks)
-            return ModelResponse(action=FinalAction(summary='模拟 AI 解释：' + (text or '本轮证据不足，无法判断资源健康') + '。结论来自 CODE 插件；候选原因需补充证据确认。', confidence=.5), model=self.model, provider=self.provider_name)
+        if request.metadata.get('purpose') in {'inspection_explanation', 'dashboard_explanation'}:
+            prefix = '每条检查允许选项：'
+            choices = next(
+                json.loads(line[len(prefix):])
+                for message in reversed(request.messages)
+                if isinstance(message, Mapping) and message.get('role') == 'system'
+                and isinstance(message.get('content'), str)
+                for line in reversed(message['content'].splitlines())
+                if line.startswith(prefix)
+            )
+            selections = {check_id: [keys[0]] for check_id, keys in choices.items()}
+            return ModelResponse(
+                action=FinalAction(summary=json.dumps(selections, ensure_ascii=False, separators=(',', ':')), confidence=.5),
+                model=self.model, provider=self.provider_name,
+            )
         claim = context.get("missing_claim")
 
         if claim and not evidence:
