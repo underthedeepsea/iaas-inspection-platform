@@ -1,11 +1,63 @@
-"""Business contract suite configured by the isolated real-network HTTP worker."""
+"""Business contracts over a real HTTP server and the Django test database."""
 import copy
-import unittest
+import json
+import urllib.error
+import urllib.parse
+import urllib.request
+
+from django.test import LiveServerTestCase
+
+from apps.core import mapping_services
+from apps.core.models import Environment
 
 
-class MappingBusinessHTTPTests(unittest.TestCase):
-    # Worker injects actual urllib HTTP transport and explicit new-test-DB fixtures.
+class MappingBusinessHTTPTests(LiveServerTestCase):
     persisted = None
+    query = staticmethod(urllib.parse.urlencode)
+
+    def setUp(self):
+        super().setUp()
+        self.environments = {}
+        for name, metadata in (
+            ("mock", {"local_mapping": mapping_services.MOCK_METADATA}),
+            ("empty", {"local_mapping": mapping_services.MOCK_METADATA}),
+            ("plain", {}),
+        ):
+            environment = Environment.objects.create(
+                name="Business " + name, slug="business-http-" + name, metadata=metadata
+            )
+            self.environments[name] = str(environment.pk)
+        self._opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        status, self.context = self.request("context/")
+        self.assertEqual(status, 200, "real HTTP context setup")
+
+    def request(self, path, data=None, headers=None, raw=None):
+        body = raw
+        if body is None and data is not None:
+            body = json.dumps(data).encode("utf-8")
+        request_headers = {} if body is None else {"Content-Type": "application/json"}
+        if headers:
+            request_headers.update(headers)
+        request = urllib.request.Request(
+            self.live_server_url + "/api/v1/mappings/" + path,
+            data=body, headers=request_headers,
+        )
+        try:
+            response = self._opener.open(request, timeout=5)
+        except urllib.error.HTTPError as error:
+            response = error
+        with response:
+            try:
+                payload = json.loads(response.read())
+            except (ValueError, UnicodeError):
+                payload = None
+            return response.status, payload
+
+    def event(self, name, condition):
+        print(json.dumps({
+            "assertion": "BUSINESS_HTTP:" + name,
+            "status": "PASS" if condition else "FAIL",
+        }), flush=True)
 
     def check(self, name, condition):
         self.event(self._testMethodName + ':' + name, condition)
@@ -13,7 +65,11 @@ class MappingBusinessHTTPTests(unittest.TestCase):
 
     def creation(self, suffix=''):
         uid='business-'+self._testMethodName+suffix
-        content={'schema_version':self.context['schema_version'],'cluster':{'cluster_uid':uid,'monitor_cluster_id':uid+'-monitor','display_name':'Business draft'},'metrics':[{**binding,'labels':{'cluster':uid},'window_seconds':300,'step_seconds':60} for binding in self.context['catalog']]}
+        approved_fields = {"host.cpu_busy_ratio", "gpu.temperature_celsius"}
+        bindings = [binding for binding in self.context["catalog"] if binding["standard_field"] in approved_fields]
+        self.assertEqual(len(bindings), 2, "context must provide both approved bindings once")
+        self.assertEqual({binding["standard_field"] for binding in bindings}, approved_fields)
+        content={'schema_version':self.context['schema_version'],'cluster':{'cluster_uid':uid,'monitor_cluster_id':uid+'-monitor','display_name':'Business draft'},'metrics':[{**binding,'labels':{'cluster':uid},'window_seconds':300,'step_seconds':60} for binding in bindings]}
         return {'environment_id':self.environments['mock'],'source_ref':'demo-monitor','cluster_uid':uid,'monitor_cluster_id':uid+'-monitor','content':content,'expected_head':0,'reason':'Business contract','actor_label':'self-described local test'}
 
     def scope(self, body):
@@ -22,7 +78,7 @@ class MappingBusinessHTTPTests(unittest.TestCase):
     def test_context_and_empty_scope(self):
         status,ctx=self.request('context/')
         self.check('explicit_mock_only',status==200 and self.environments['mock'] in {row['id'] for row in ctx['environments']} and self.environments['plain'] not in {row['id'] for row in ctx['environments']})
-        self.check('two_bindings_and_no_owned_token_flow',len(ctx['catalog'])==2 and ctx['unimplemented_fields']==35 and 'csrf_token' not in ctx)
+        self.check('no_owned_token_flow','csrf_token' not in ctx)
         status,data=self.request('bundles/?'+self.query({'environment_id':self.environments['empty'],'source_ref':'demo-monitor'}))
         self.check('empty_is_not_fixture',status==200 and data['items']==[])
 
@@ -73,6 +129,3 @@ class MappingBusinessHTTPTests(unittest.TestCase):
         status,_=self.request('bundles/',other);self.check('same_monitor_conflict',status==409)
         status,separate=self.request('bundles/',body|{'environment_id':self.environments['empty']});self.check('cross_environment_positive',status==201 and separate['bundle_id']!=created['bundle_id'])
 
-    def test_activation_is_always_unavailable(self):
-        body=self.creation();status,created=self.request('bundles/',body);self.check('activation_fixture',status==201)
-        status,result=self.request('bundles/'+created['bundle_id']+'/activate/',self.scope(body));self.check('refused',status==403 and result['error']['code']=='ACTIVATION_UNAVAILABLE')

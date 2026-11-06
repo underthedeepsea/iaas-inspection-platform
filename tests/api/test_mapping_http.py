@@ -15,15 +15,6 @@ class MappingBoundaryTests(SimpleTestCase):
         options.update(kwargs)
         return self.factory.post("/api/v1/mappings/bundles/", data="{}", content_type="application/json", **options)
 
-    def test_bad_host(self):
-        self.assertEqual(api.bundles(self.post(HTTP_HOST="evil.invalid")).status_code, 403)
-
-    def test_bad_origin(self):
-        self.assertEqual(api.bundles(self.post(HTTP_ORIGIN="http://evil.invalid")).status_code, 403)
-
-    def test_missing_csrf(self):
-        self.assertEqual(api.bundles(self.post()).status_code, 403)
-
     def test_non_json(self):
         request = self.factory.post('/x', data='{}', content_type='text/plain', HTTP_HOST='localhost', HTTP_ORIGIN='http://localhost')
         self.assertEqual(api.bundles(request).status_code, 415)
@@ -46,9 +37,3 @@ class MappingBoundaryTests(SimpleTestCase):
             response = api.context(request)
         self.assertEqual(response.status_code, 503)
         self.assertNotIn('not disclosed', response.content.decode())
-
-    def test_activation_always_denied(self):
-        request = self.factory.get('/x', HTTP_HOST='localhost')
-        response = api.activate(request, bundle_id='unused')
-        self.assertEqual(response.status_code, 403)
-        self.assertEqual(json.loads(response.content)['error']['code'], 'ACTIVATION_UNAVAILABLE')

@@ -150,7 +150,15 @@ def test_ai_receives_scoped_facts_and_cannot_mutate_inspection(launch_context):
         if failed:
             gateway.invoke.side_effect = RuntimeError('provider unavailable')
         else:
-            gateway.invoke.return_value = ModelResponse(action=FinalAction(summary='llm.performance_profile 超阈值；不能确认根因', confidence=.5), model='test', provider='fake')
+            import json
+
+            def respond(request):
+                prefix = '每条检查允许选项：'
+                choices = json.loads(next(line[len(prefix):] for line in request.messages[0]['content'].splitlines() if line.startswith(prefix)))
+                summary = json.dumps({check_id: [keys[0]] for check_id, keys in choices.items()}, ensure_ascii=False)
+                return ModelResponse(action=FinalAction(summary=summary, confidence=.5), model='test', provider='fake')
+
+            gateway.invoke.side_effect = respond
         inv = Investigation.objects.create(trigger_type='HUMAN', entry_reason='USER_QUESTION', model_name='test', model_provider='fake')
         result = explain(inv, context, gateway=gateway)
         assert result.status == ('FAILED' if failed else 'RESOLVED')
