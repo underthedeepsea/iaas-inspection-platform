@@ -6,7 +6,7 @@ async function inspect(page: Page, code: 'CONTROL_PLANE' | 'LLM_RUNTIME') {
   const authRequests: string[] = []
   page.on('request', request => { if (request.url().includes('/api/v1/auth/')) authRequests.push(request.url()) })
   await page.goto('/')
-  await expect(page.getByRole('heading',{name:'租户区智能巡检'})).toBeVisible()
+  await expect(page.getByRole('heading',{name:'总览',level:1,exact:true})).toBeVisible()
   expect(authRequests).toEqual([])
   const response = await page.request.get('/api/v1/environments')
   const env = (await response.json()).items.find((row: {slug:string}) => row.slug === 'e2e')

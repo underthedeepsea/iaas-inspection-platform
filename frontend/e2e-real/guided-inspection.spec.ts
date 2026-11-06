@@ -6,7 +6,7 @@ test('multi-resource inspection survives reload and ties CODE and AI to the same
   const authRequests: string[] = []
   page.on('request', request => { if (request.url().includes('/api/v1/auth/')) authRequests.push(request.url()) })
   await page.goto('/')
-  await expect(page.getByRole('heading',{name:'租户区智能巡检'})).toBeVisible()
+  await expect(page.getByRole('heading',{name:'总览',level:1,exact:true})).toBeVisible()
   expect(authRequests).toEqual([])
   const env = (await (await page.request.get('/api/v1/environments')).json()).items.find((row:{slug:string}) => row.slug === 'e2e')
   expect(env).toBeTruthy()

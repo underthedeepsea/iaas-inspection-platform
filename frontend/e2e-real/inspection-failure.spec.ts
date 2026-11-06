@@ -4,7 +4,7 @@ test('AI transport unavailable leaves persisted inspection results visible', asy
   const authRequests: string[] = []
   page.on('request', request => { if (request.url().includes('/api/v1/auth/')) authRequests.push(request.url()) })
   await page.goto('/')
-  await expect(page.getByRole('heading',{name:'租户区智能巡检'})).toBeVisible()
+  await expect(page.getByRole('heading',{name:'总览',level:1,exact:true})).toBeVisible()
   expect(authRequests).toEqual([])
   const env = (await (await page.request.get('/api/v1/environments')).json()).items.find((r:{slug:string}) => r.slug === 'e2e')
   const created = await page.request.post('/api/v1/inspection-runs/trigger',{data:{environment_id:env.id,scope:{resource_types:['LLM_RUNTIME']},trigger_options:{ai_mode:'DISABLED'}}})
