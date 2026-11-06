@@ -1,7 +1,7 @@
 """Optional detail serialization only. No new statistics, evaluations or writes."""
 from datetime import timedelta
 from .performance_profile import (HISTORY_DAYS, context_key, timestamp, window_time, node_context,
-    point, point_time, number, make_llm, describe, belongs)
+    point, point_time, number, make_llm, describe, belongs, service_cluster_ids)
 SERIES_LIMIT = 1000
 LLM_SPECS = [('ttft','p95_ms','TTFT窗口p95','ms'),('tpot','p95_ms','TPOT窗口p95','ms/token'),('e2e','p95_ms','E2E窗口p95','ms'),('traffic','qps','QPS','requests/s'),('throughput','generation_tps','生成吞吐','tokens/s'),('throughput','prompt_tps','输入吞吐','tokens/s'),('requests','waiting','等待队列','requests'),('requests','running','运行请求','requests')]
 
@@ -58,10 +58,18 @@ def enrich_portraits(result, assets, hardware, inference, *, now, detail_kind=No
         if detail_kind=='llm' and detail_id==entity['portrait_id']:
             for metric in entity['metrics']:attach_series(metric,[],now)
         llms.append(entity)
+    if result['resource_type']=='K8S_CLUSTER':
+        hosts={(str(a['environment_id']),str(a['id'])):a for a in assets if a['asset_type']=='HOST'}
+        clusters=[a for a in assets if a['asset_type']=='CLUSTER']
+        for entity in llms:
+            service=by_asset.get(entity.get('asset_id'))
+            if service:
+                entity.update(asset_name=service.get('name',''),scope_cluster_ids=service_cluster_ids(service,hosts,clusters))
     result['llm']=llms
     for node in result['nodes']:
-        node['portrait_id']=node['id'];node['current_asset_configuration']={k:by_asset.get(node['id'],{}).get(k) for k in ('labels','topology','external_key')}
-        if detail_kind=='node' and detail_id==node['id']:
+        node['portrait_id']=context_key(['K8S_CLUSTER',node['scope_cluster_id'],node['id']]) if node.get('scope_cluster_id') and len(result['clusters'])>1 else node['id']
+        node['current_asset_configuration']={k:by_asset.get(node['id'],{}).get(k) for k in ('labels','topology','external_key')}
+        if detail_kind=='node' and detail_id==node['portrait_id']:
             rows=sorted([r for r in hardware if str(r['asset_id'])==node['id']],key=lambda r:(r['end'],str(r['id'])))
             matched=[r for r in rows if node_context(r)==node_context(rows[-1])] if rows else []
             for metric in node['metrics']:
@@ -76,15 +84,15 @@ def enrich_portraits(result, assets, hardware, inference, *, now, detail_kind=No
         for entity in entities:
             entity['relationships']=[]
             if kind=='cluster':
-                related=[('node',n) for n in result['nodes'] if n['id'] in entity['total']['node_ids']]
-                related += [('llm',l) for l in llms if l.get('asset_id') in by_asset and belongs(by_asset[l['asset_id']],by_asset[entity['id']])]
+                related=[('node',n) for n in result['nodes'] if n['id'] in entity['total']['node_ids'] and (not n.get('scope_cluster_id') or n['scope_cluster_id']==entity['id'])]
+                related += [('llm',l) for l in llms if l.get('asset_id') in by_asset and (entity['id'] in l['scope_cluster_ids'] if 'scope_cluster_ids' in l else belongs(by_asset[l['asset_id']],by_asset[entity['id']]))]
             elif kind=='node':
-                related=[('cluster',c) for c in result['clusters'] if entity['id'] in c['total']['node_ids']]
+                related=[('cluster',c) for c in result['clusters'] if entity['id'] in c['total']['node_ids'] and (not entity.get('scope_cluster_id') or entity['scope_cluster_id']==c['id'])]
                 related += [('llm',l) for l in llms if str(by_asset.get(l.get('asset_id'),{}).get('parent_id') or '') in entity.get('asset_ids',[entity['id']])]
             else:
                 asset=by_asset.get(entity.get('asset_id'),{})
                 related=[('node',n) for n in result['nodes'] if str(asset.get('parent_id') or '') in n.get('asset_ids',[n['id']])]
-                related += [('cluster',c) for c in result['clusters'] if entity.get('asset_id') in by_asset and belongs(asset,by_asset[c['id']])]
+                related += [('cluster',c) for c in result['clusters'] if entity.get('asset_id') in by_asset and (c['id'] in entity['scope_cluster_ids'] if 'scope_cluster_ids' in entity else belongs(asset,by_asset[c['id']]))]
             entity['relationships']=[{'kind':k,'id':e['portrait_id'],'name':e['name']} for k,e in related]
     result['detail_request']={'kind':detail_kind,'id':detail_id,'series_limit_per_metric':SERIES_LIMIT}
     result['reference_band']={'available':False,'reason':'未保留逐历史点同钟点参考边界与连续性；现有范围仅当前排除自身的14天同已知条件观察统计。'}

@@ -10,7 +10,7 @@ import { AIAnalysisPanel } from '../../features/ai-analysis/AIAnalysisPanel'
 import { InspectionHistoryTable } from '../../features/inspection-history/InspectionHistoryTable'
 import { InspectionTriggerButton } from '../../features/inspection-trigger/InspectionTriggerButton'
 import { HealthTrendChart } from '../../features/resource-health/HealthTrendChart'
-import { resourceSlugToCode } from '../../features/resource-health/resourceRoutes'
+import { isResourceInspectable, resourceSlugToCode } from '../../features/resource-health/resourceRoutes'
 import { useUiStore } from '../../stores/uiStore'
 import { InferencePerformanceProfile } from './InferencePerformanceProfile'
 
@@ -57,7 +57,7 @@ export function ResourceDetailPage({ environmentId: providedEnvironmentId }: { e
       <div className="back-row"><Link className="text-link" to="/resources">← 返回资源巡检</Link><span className="muted">{code}</span></div>
       <div className="page-heading">
         <div><span className="eyebrow">RESOURCE DETAIL</span><h2 id="resource-detail-title">{resourceName}</h2><p className="lede">{resource?.description ?? '查看资源健康、巡检历史、风险和 AI 研判。'}</p></div>
-        <div className="heading-actions"><span className="freshness">{hasRealLlmRun && latest?.run_date ? `最近正式巡检：${latest.run_date}` : '等待正式巡检'}</span>{resource ? <InspectionTriggerButton environmentId={environmentId} resourceTypes={[resource]} /> : null}</div>
+        <div className="heading-actions"><span className="freshness">{hasRealLlmRun && latest?.run_date ? `最近正式巡检：${latest.run_date}` : '等待正式巡检'}</span>{resource && code !== 'KVM_CLUSTER' ? isResourceInspectable(resource) ? <InspectionTriggerButton environmentId={environmentId} resourceTypes={[resource]} /> : <span>暂无可用巡检插件，可查看资源画像。</span> : null}</div>
       </div>
       <Tabs
         activeKey={activeTab}
@@ -96,7 +96,7 @@ function OverviewPanel({ code, environmentId, overview }: { code: string; enviro
   return (
     <>
       <CheckResultsTable results={overview.check_results} />
-      {['HOST', 'LLM_RUNTIME', 'CONTROL_PLANE', 'CLUSTER'].includes(code) ? <PerformanceProfile environmentId={environmentId} resourceCode={code} /> : null}
+      {['HOST', 'LLM_RUNTIME', 'CONTROL_PLANE', 'CLUSTER', 'K8S_CLUSTER'].includes(code) ? <PerformanceProfile environmentId={environmentId} resourceCode={code} /> : null}
       {['GPU_POOL', 'HOST'].includes(code) ? <HardwareHealthProfile environmentId={environmentId} resourceCode={code} /> : null}
       {code === 'LLM_RUNTIME' ? <InferencePerformanceProfile environmentId={environmentId} latestRunAt={latest?.finished_at} /> : null}
       {code === 'LLM_RUNTIME' && overview.latest && !isRealLlmRun ? <p role="status">最近记录来自已退场演示规则，仅可作历史查看；当前尚无正式插件巡检结论。</p> : null}

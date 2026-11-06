@@ -90,4 +90,55 @@ describe('InspectionDrawer', () => {
 
     expect(screen.getByText('请至少选择一种巡检资源')).toBeInTheDocument()
   })
+
+  it('keeps an unconnected K8S entry visible but cannot submit it, and enables it once ready', () => {
+    const cluster = { ...resources[0], code: 'K8S_CLUSTER', name: 'Kubernetes 集群', release_state: 'PLANNED', inspection_item_count: 0 }
+    const { rerender } = render(<InspectionDrawer environmentId="env-1" open onClose={vi.fn()} resourceTypes={[cluster]} />, {wrapper:MemoryRouter})
+    expect(screen.getByRole('button', { name: /Kubernetes 集群/ })).toBeDisabled()
+    expect(screen.getByText('暂无可用巡检插件')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '开始巡检' })).toBeDisabled()
+    rerender(<InspectionDrawer environmentId="env-1" open onClose={vi.fn()} resourceTypes={[{ ...cluster, release_state: 'READY', inspection_item_count: 1 }]} />)
+    fireEvent.click(screen.getByRole('button', { name: /Kubernetes 集群/ }))
+    expect(screen.getByRole('button', { name: /Kubernetes 集群/ })).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByText('范围预览：24 个资源对象 / 1 个巡检项')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '开始巡检' })).toBeEnabled()
+    rerender(<InspectionDrawer environmentId="env-1" open onClose={vi.fn()} resourceTypes={[cluster]} />)
+    expect(screen.getByRole('button', { name: '开始巡检' })).toBeDisabled()
+    expect(screen.getByText('范围预览：0 个资源对象 / 0 个巡检项')).toBeInTheDocument()
+  })
+
+  it('clears an invalid K8S choice before it becomes ready again and submits only the newly selected host', async () => {
+    const ready: ResourceType = { ...resources[0], code: 'K8S_CLUSTER', name: 'Kubernetes 集群', release_state: 'READY', asset_count: 1, inspection_item_count: 1 }
+    const planned = { ...ready, release_state: 'PLANNED', inspection_item_count: 0 }
+    const host: ResourceType = { ...resources[0], code: 'HOST', name: '宿主机', asset_count: 1, inspection_item_count: 1 }
+    const post = vi.spyOn(apiClient, 'post').mockReturnValue(new Promise(() => {}) as never)
+    const { rerender } = render(<InspectionDrawer environmentId="env-1" open onClose={vi.fn()} resourceTypes={[ready, host]} />, {wrapper:MemoryRouter})
+    expect(screen.getByRole('button', { name: /Kubernetes 集群/ })).toHaveTextContent('已接入正式插件')
+    expect(screen.getByRole('button', { name: /Kubernetes 集群/ })).not.toHaveTextContent('未接入正式插件')
+    fireEvent.click(screen.getByRole('button', { name: /Kubernetes 集群/ }))
+    rerender(<InspectionDrawer environmentId="env-1" open onClose={vi.fn()} resourceTypes={[planned, host]} />)
+    fireEvent.click(screen.getByRole('button', { name: /宿主机/ }))
+    expect(screen.getByText('范围预览：1 个资源对象 / 1 个巡检项')).toBeInTheDocument()
+    rerender(<InspectionDrawer environmentId="env-1" open onClose={vi.fn()} resourceTypes={[ready, host]} />)
+    expect(screen.getByRole('button', { name: /Kubernetes 集群/ })).toHaveAttribute('aria-checked', 'false')
+    expect(screen.getByRole('button', { name: /宿主机/ })).toHaveAttribute('aria-checked', 'true')
+    fireEvent.click(screen.getByRole('button', { name: '开始巡检' }))
+    await waitFor(() => expect(post).toHaveBeenCalledWith('/inspection-runs/trigger', { environment_id: 'env-1', scope: { resource_types: ['HOST'] }, trigger_options: { ai_mode: 'DEFERRED' } }))
+  })
+
+  it('retains a valid selection while resources are loading but clears a confirmed removal', () => {
+    const ready: ResourceType = { ...resources[0], code: 'K8S_CLUSTER', name: 'Kubernetes 集群', release_state: 'READY', inspection_item_count: 1 }
+    const host: ResourceType = { ...resources[0], code: 'HOST', name: '宿主机' }
+    const { rerender } = render(<InspectionDrawer environmentId="env-1" open onClose={vi.fn()} resourceTypes={[]} resourceTypesLoaded={false} />, {wrapper:MemoryRouter})
+    expect(screen.getByText('正在加载资源类型')).toBeInTheDocument()
+    rerender(<InspectionDrawer environmentId="env-1" open onClose={vi.fn()} resourceTypes={[ready, host]} />)
+    fireEvent.click(screen.getByRole('button', { name: /Kubernetes 集群/ }))
+    rerender(<InspectionDrawer environmentId="env-1" open onClose={vi.fn()} resourceTypes={[]} resourceTypesLoaded={false} />)
+    expect(screen.getByRole('button', { name: '开始巡检' })).toBeDisabled()
+    rerender(<InspectionDrawer environmentId="env-1" open onClose={vi.fn()} resourceTypes={[ready, host]} />)
+    expect(screen.getByRole('button', { name: /Kubernetes 集群/ })).toHaveAttribute('aria-checked', 'true')
+    rerender(<InspectionDrawer environmentId="env-1" open onClose={vi.fn()} resourceTypes={[host]} />)
+    rerender(<InspectionDrawer environmentId="env-1" open onClose={vi.fn()} resourceTypes={[ready, host]} />)
+    expect(screen.getByRole('button', { name: /Kubernetes 集群/ })).toHaveAttribute('aria-checked', 'false')
+  })
 })

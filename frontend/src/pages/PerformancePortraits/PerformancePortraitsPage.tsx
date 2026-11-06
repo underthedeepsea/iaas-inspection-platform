@@ -12,7 +12,9 @@ import './portraits.css'
 export function PerformancePortraitsPage() {
   const environmentId=useUiStore(s=>s.environmentId)
   const {kind,id}=useParams()
-  const query=useQuery({queryKey:['portraits',environmentId,kind,id],queryFn:()=>getPortraits(environmentId!,kind&&id?{kind,id}:undefined),enabled:!!environmentId})
+  const [params]=useSearchParams()
+  const scopedClusterId=params.get('resource_type')==='K8S_CLUSTER'?params.get('cluster_id')??undefined:undefined
+  const query=useQuery({queryKey:['portraits',environmentId,kind,id,scopedClusterId],queryFn:()=>getPortraits(environmentId!,kind&&id?{kind,id}:undefined,scopedClusterId),enabled:!!environmentId})
   if(!environmentId)return <section className="portraits-page"><h2>性能画像</h2><p>请先选择一个环境。</p></section>
   if(query.isLoading)return <section className="portraits-page" role="status"><h2>性能画像</h2><div className="portrait-loading">正在读取资源与真实观测…</div></section>
   if(query.isError||!query.data)return <section className="portraits-page" role="alert"><h2>性能画像暂不可用</h2><p>{getApiError(query.error)?.message??'未能读取所选环境，请稍后重试。'}</p><button onClick={()=>void query.refetch()}>重新读取</button></section>
@@ -57,9 +59,9 @@ function ResourceRow({row,query,generatedAt}:{row:Portrait;query:string;generate
 function PortraitDetail({row,data,query,environmentId,refresh}:{row:Portrait;data:PerformanceProfileData;query:string;environmentId:string;refresh:()=>Promise<void>}) {
   const cluster=row.kind==='cluster'?row.entity as ProfileCluster:null
   return <>
-    <section className="portrait-overview"><div><h3>身份与上下文</h3><Attributes values={{对象类型:kindNames[row.kind],对象标识:row.identity,画像标识:row.id,...(row.kind==='node'?nodeAttributes(row):{})}}/>{'context' in row.entity?<Attributes values={row.entity.context}/>:null}</div><div><h3>数据覆盖</h3><p>{row.metrics.filter(m=>m.current!=null).length}/{row.metrics.length} 项当前观测可用</p><p>{stages[stage(row)]} · 不作为健康判定</p><p>真实历史与缺项逐指标独立呈现，某项缺测不遮住其他项。</p>{row.kind==='node'||cluster?<p>控制面使用整台宿主机CPU、Linux内存与逐盘IO；不归因到组件进程。基础画像不依赖LLM绑定或组件QPS。</p>:<p>p95是原窗口统计；各窗口的p95不合成全局请求p95。</p>}</div></section>
+    <section className="portrait-overview"><div><h3>身份与上下文</h3><Attributes values={{对象类型:kindNames[row.kind],对象标识:row.identity,画像标识:row.id,...(row.kind==='node'?nodeAttributes(row):{}),...(cluster?{资产类型:cluster.asset_type,平台:cluster.platform,角色:cluster.roles?.join(' / ')}:{})}}/>{'context' in row.entity?<Attributes values={row.entity.context}/>:null}</div><div><h3>数据覆盖</h3><p>{row.metrics.filter(m=>m.current!=null).length}/{row.metrics.length} 项当前观测可用</p><p>{stages[stage(row)]} · 不作为健康判定</p><p>真实历史与缺项逐指标独立呈现，某项缺测不遮住其他项。</p>{row.kind==='node'||cluster?<p>控制面使用整台宿主机CPU、Linux内存与逐盘IO；不归因到组件进程。基础画像不依赖LLM绑定或组件QPS。</p>:<p>p95是原窗口统计；各窗口的p95不合成全局请求p95。</p>}</div></section>
     {'current_asset_configuration' in row.entity?<details className="portrait-configuration"><summary>当前资产配置（不是历史配置证明）</summary><Attributes values={row.entity.current_asset_configuration??{}}/></details>:null}
-    {cluster?<><ControlPlaneRisk key={environmentId+cluster.id} cluster={cluster} nodes={data.nodes}/><Deployment cluster={cluster} data={data} environmentId={environmentId} refresh={refresh}/><div className="portrait-relationship-note"><h3>控制面关系与唯一节点</h3><p>总计 {cluster.total.node_count} 个唯一节点；多角色共享 {cluster.shared_nodes.length} 个；三类控制面主机互斥；未知与其他角色独立保留。</p><p>{cluster.total.note}</p>{cluster.groups.map(g=><p key={g.role}>{controlGroupNames[g.role]??g.role} · {g.node_count} 个节点 · {g.node_ids.join(' / ')}</p>)}</div></>:null}
+    {cluster?<><ControlPlaneRisk key={environmentId+cluster.id} cluster={cluster} nodes={data.nodes.filter(n=>!n.scope_cluster_id||n.scope_cluster_id===cluster.id)}/><Deployment cluster={cluster} data={data} environmentId={environmentId} refresh={refresh}/><div className="portrait-relationship-note"><h3>控制面关系与唯一节点</h3><p>总计 {cluster.total.node_count} 个唯一节点；多角色共享 {cluster.shared_nodes.length} 个；三类控制面主机互斥；未知与其他角色独立保留。</p><p>{cluster.total.note}</p>{cluster.groups.map(g=><p key={g.role}>{controlGroupNames[g.role]??g.role} · {g.node_count} 个节点 · {g.node_ids.join(' / ')}</p>)}</div></>:null}
     <div className="portrait-section-title"><h3>逐指标观测</h3><span>真实值与真实时间 · 描述差异，不重判健康</span></div>
     {row.kind==='node'&&!row.metrics.some(m=>m.key.startsWith('disk:'))?<p className="portrait-notice">未收到逐盘IO观测；仅影响磁盘指标，不阻塞CPU及内存。不会补造磁盘对象或数值。</p>:null}
     <div className="portrait-metric-grid">{row.metrics.map(metric=><MetricPortrait key={row.id+metric.key} metric={metric}/>)}</div>

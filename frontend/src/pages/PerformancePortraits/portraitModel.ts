@@ -3,7 +3,7 @@ export type Portrait = { kind: PortraitKind; id: string; name: string; metrics: 
 export const kindNames = {cluster:'集群',node:'节点',llm:'LLM服务'}
 export function portraits(data: PerformanceProfileData): Portrait[] {
   return [
-    ...data.clusters.map(entity => ({kind:'cluster' as const,id:entity.portrait_id ?? entity.id,name:entity.name,metrics:entity.total.metrics,relationships:entity.relationships ?? [],identity:entity.id,roles:entity.groups.map(g=>g.role),entity})),
+    ...data.clusters.map(entity => ({kind:'cluster' as const,id:entity.portrait_id ?? entity.id,name:entity.name,metrics:entity.total.metrics,relationships:entity.relationships ?? [],identity:entity.id,roles:entity.roles ?? [],entity})),
     ...data.nodes.map(entity => ({kind:'node' as const,id:entity.portrait_id ?? entity.id,name:entity.name,metrics:entity.metrics,relationships:entity.relationships ?? [],identity:entity.stable_identity,roles:entity.roles,entity})),
     ...data.llm.map(entity => ({kind:'llm' as const,id:entity.portrait_id ?? entity.id,name:entity.name,metrics:entity.metrics,relationships:entity.relationships ?? [],identity:entity.asset_id ?? entity.id,roles:[],entity})),
   ]
@@ -42,4 +42,4 @@ export function missingReason(metric:ProfileMetric) {
   if(metric.latest_observed==null)return '未收到本项有效观测；检查来源和对应指标'
   return '仅保留历史观测：采集已过期、时间无效或来源语义未核实；核对时间及来源后补齐有效输入'
 }
-export function nodeAttributes(row:Portrait) {const n=row.entity as ProfileNode;return {稳定身份:n.stable_identity,CPU核数:n.cpu_cores,角色:n.roles?.join(' / '),内存语义:n.memory_semantics}}
+export function nodeAttributes(row:Portrait) {const n=row.entity as ProfileNode;return {资产类型:n.asset_type,稳定身份:n.stable_identity,CPU核数:n.cpu_cores,角色:n.roles?.join(' / '),内存语义:n.memory_semantics}}

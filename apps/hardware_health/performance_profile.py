@@ -116,10 +116,19 @@ def belongs(asset, cluster):
     return any(str(v) in references for v in candidates if v is not None)
 
 
+def service_cluster_ids(service, host_by_key, clusters):
+    """Use recorded direct or parent-host membership in the same environment."""
+    environment_id = str(service['environment_id'])
+    parent = host_by_key.get((environment_id, str(service.get('parent_id') or '')))
+    return [str(cluster['id']) for cluster in clusters
+            if str(cluster['environment_id']) == environment_id
+            and (belongs(service, cluster) or (parent is not None and belongs(parent, cluster)))]
+
+
 def make_node(asset, rows, now):
     rows = sorted(rows, key=lambda r:(r['end'], str(r['id'])))
     latest = rows[-1] if rows else None
-    base = {'id': str(asset['id']), 'name': asset.get('name', ''), 'roles': roles(asset),
+    base = {'id': str(asset['id']), 'name': asset.get('name', ''), 'asset_type': asset['asset_type'], 'roles': roles(asset),
             'asset_ids': [str(asset['id'])], 'metrics': [], 'shared_load': len(roles(asset)) > 1,
             'missing_context': ['historical_roles', 'historical_cluster_membership', 'historical_cpu_cores'],
             'capacity_source': 'current Asset labels/topology; not historical configuration evidence'}
@@ -235,29 +244,47 @@ def make_llm(rows, now, assets=()):
             'note':'仅匹配冻结的引擎/模型/来源；未记录版本、量化及并行配置。窗口p95的历史中位数/观察范围不是总体请求p95。'}
 
 
-def build_profile(assets, hardware_rows, inference_rows, *, now, resource_type='HOST', portrait_mode=False, detail_kind=None, detail_id=None):
+def build_profile(assets, hardware_rows, inference_rows, *, now, resource_type='HOST', portrait_mode=False, detail_kind=None, detail_id=None, cluster_ids=None):
     """Accept plain records for offline validation; never mutate source observations."""
+    if cluster_ids is not None:
+        # Reuse the resource selector's cluster IDs and existing membership rules.
+        # An unbound asset or snapshot is not evidence that it belongs to a cluster.
+        cluster_ids={str(value) for value in cluster_ids}
+        selected=[a for a in assets if a['asset_type']=='CLUSTER' and str(a['id']) in cluster_ids]
+        hosts=[a for a in assets if a['asset_type']=='HOST' and any(str(a['environment_id']) == str(c['environment_id']) and belongs(a,c) for c in selected)]
+        host_by_key={(str(a['environment_id']),str(a['id'])):a for a in hosts}
+        host_ids={str(a['id']) for a in hosts}
+        services=[a for a in assets if a['asset_type']=='LLM_INSTANCE' and service_cluster_ids(a,host_by_key,selected)]
+        allowed={(str(a['environment_id']),str(a['id'])) for a in selected+hosts+services}
+        assets=[a for a in assets if (str(a['environment_id']),str(a['id'])) in allowed]
+        hardware_rows=[r for r in hardware_rows if str(r['asset_id']) in host_ids]
+        service_ids={str(a['id']) for a in services}
+        inference_rows=[r for r in inference_rows if str(r.get('asset_id')) in service_ids]
     host_assets = [a for a in assets if a['asset_type']=='HOST']
     cluster_assets = [a for a in assets if a['asset_type']=='CLUSTER']
     by_asset=defaultdict(list)
     for row in hardware_rows:
         by_asset[str(row['asset_id'])].append(row)
-    # Stable identity is scoped to environment. Duplicate assets preserve union roles.
+    # K8S membership is scoped before identity deduplication; the general
+    # portrait retains its original environment-wide identity behavior.
     unique={}
     for asset in host_assets:
-        node=make_node(asset,by_asset[str(asset['id'])],now)
-        identity=(node['_latest'] or {}).get('payload',{}).get('host_id') or asset.get('labels',{}).get('host_id') or asset.get('external_key')
-        node['stable_identity'] = str(identity) if identity else 'UNKNOWN:'+str(asset['id'])
-        key=(str(asset['environment_id']),node['stable_identity'])
-        if key in unique:
-            other=unique[key]
-            chosen=max([node,other],key=lambda n:n['_latest']['end'] if n['_latest'] else now-timedelta(days=100000))
-            merged_roles=sorted(set(node['roles']+other['roles']))
-            chosen['roles']=merged_roles;chosen['shared_load']=len(merged_roles)>1
-            chosen['asset_ids']=list(dict.fromkeys(node['asset_ids']+other['asset_ids']))
-            if node['cpu_cores'] != other['cpu_cores']: chosen['cpu_cores']=None
-            unique[key]=chosen
-        else: unique[key]=node
+        scopes=[str(c['id']) for c in cluster_assets if str(asset['environment_id']) == str(c['environment_id']) and belongs(asset,c)] if cluster_ids is not None else [None]
+        for scope in scopes:
+            node=make_node(asset,by_asset[str(asset['id'])],now)
+            identity=(node['_latest'] or {}).get('payload',{}).get('host_id') or asset.get('labels',{}).get('host_id') or asset.get('external_key')
+            node['stable_identity'] = str(identity) if identity else 'UNKNOWN:'+str(asset['id'])
+            if scope is not None:node['scope_cluster_id']=scope
+            key=(scope,str(asset['environment_id']),node['stable_identity'])
+            if key in unique:
+                other=unique[key]
+                chosen=max([node,other],key=lambda n:n['_latest']['end'] if n['_latest'] else now-timedelta(days=100000))
+                merged_roles=sorted(set(node['roles']+other['roles']))
+                chosen['roles']=merged_roles;chosen['shared_load']=len(merged_roles)>1
+                chosen['asset_ids']=list(dict.fromkeys(node['asset_ids']+other['asset_ids']))
+                if node['cpu_cores'] != other['cpu_cores']: chosen['cpu_cores']=None
+                unique[key]=chosen
+            else: unique[key]=node
     from .control_plane_risk import group_id, project_risk, summarize, GROUPS
     nodes=list(unique.values())
     for node in nodes:
@@ -265,16 +292,26 @@ def build_profile(assets, hardware_rows, inference_rows, *, now, resource_type='
         node['risk'] = project_risk(node, now)
     clusters=[]
     for cluster in cluster_assets:
-        members=[n for n in nodes if any(str(a['id']) in n['asset_ids'] and str(a['environment_id']) == str(cluster['environment_id']) and belongs(a,cluster) for a in host_assets)]
+        members=[n for n in nodes if n['scope_cluster_id']==str(cluster['id'])] if cluster_ids is not None else [n for n in nodes if any(str(a['id']) in n['asset_ids'] and str(a['environment_id']) == str(cluster['environment_id']) and belongs(a,cluster) for a in host_assets)]
         deployment=cluster.get('labels',{}).get('control_plane_deployment','UNKNOWN')
         if deployment not in {'MIXED','DEDICATED'}:deployment='UNKNOWN'
         groups=[{'role':role, **aggregate([n for n in members if n['control_plane_group'] == role], now), 'risk':summarize([n for n in members if n['control_plane_group'] == role])} for role in (*GROUPS, 'UNKNOWN', 'OTHER')]
         classified=[n for n in members if n['control_plane_group'] in GROUPS]
-        clusters.append({'id':str(cluster['id']),'name':cluster.get('name',''),'control_plane_deployment':deployment,'groups':groups,'classified':{**aggregate(classified,now),'risk':summarize(classified)},'total':aggregate(members,now),'shared_nodes':[n['id'] for n in members if n['shared_load']]})
+        clusters.append({'id':str(cluster['id']),'name':cluster.get('name',''),'asset_type':cluster['asset_type'],'platform':(cluster.get('labels') or {}).get('platform'),'roles':roles(cluster),'control_plane_deployment':deployment,'groups':groups,'classified':{**aggregate(classified,now),'risk':summarize(classified)},'total':aggregate(members,now),'shared_nodes':[n['id'] for n in members if n['shared_load']]})
     llm_groups=defaultdict(list)
-    for row in inference_rows:llm_groups[(row['engine_id'],row['engine_type'],row['model_name'])].append(row)
+    for row in inference_rows:
+        key=(row['engine_id'],row['engine_type'],row['model_name'])
+        if cluster_ids is not None:key=(str(row['asset_id']),row['source'],*key)
+        llm_groups[key].append(row)
+    llm=[]
+    for key,rows in llm_groups.items():
+        entity=make_llm(rows,now,assets)
+        if cluster_ids is not None:
+            service=next(a for a in services if str(a['id'])==str(rows[0]['asset_id']))
+            entity.update(id=context_key(list(key)),asset_id=str(service['id']),asset_name=service.get('name',''),scope_cluster_ids=service_cluster_ids(service,host_by_key,selected))
+        llm.append(entity)
     for node in nodes:node.pop('_rows');node.pop('_latest')
-    result = {'resource_type':resource_type,'generated_at':now.isoformat(),'history_days':HISTORY_DAYS,'llm':[make_llm(r,now,assets) for r in llm_groups.values()],
+    result = {'resource_type':resource_type,'generated_at':now.isoformat(),'history_days':HISTORY_DAYS,'llm':llm,
             'nodes':nodes,'clusters':clusters,'note':'描述实际观测：历史范围不是置信区间、健康结论或容量预测；高低值只是资源观测时刻。缺项逐指标显示。'}
 
     if portrait_mode:

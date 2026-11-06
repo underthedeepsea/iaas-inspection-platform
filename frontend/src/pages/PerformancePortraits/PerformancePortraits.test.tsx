@@ -50,6 +50,12 @@ it('detail shows weighted unique totals, readonly deployment and related node li
  expect(screen.getByText(/总计 2 个唯一节点/)).toBeInTheDocument()
  expect(screen.getByRole('link',{name:'节点 · node-a →'})).toHaveAttribute('href','/performance-profiles/node/node-a?environment=env')
 })
+it('keeps a Kubernetes cluster scope when loading its existing portrait',async()=>{
+ view('/performance-profiles/cluster/cluster?environment=env&resource_type=K8S_CLUSTER&cluster_id=cluster')
+ await screen.findByRole('heading',{name:'身份与上下文'})
+ expect(apiClient.get).toHaveBeenLastCalledWith('/hardware-health/performance-profiles',{params:{environment_id:'env',resource_type:'K8S_CLUSTER',view:'portraits',cluster_id:'cluster',kind:'cluster',id:'cluster'}})
+ expect(screen.getByRole('link',{name:'节点 · node-a →'})).toHaveAttribute('href','/performance-profiles/node/node-a?environment=env&resource_type=K8S_CLUSTER&cluster_id=cluster')
+})
 it('chart/card use exact values, point times, units; missing does not make a line; keyboard and touch select real history',()=>{
  const metric=data.nodes[0].metrics[0]
  render(<MetricPortrait metric={metric}/>)

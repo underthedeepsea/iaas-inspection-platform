@@ -4,6 +4,7 @@ import type { Risk } from './risks'
 
 export interface ResourceType {
   code: string
+  release_state?: string
   name: string
   description: string
   icon: string

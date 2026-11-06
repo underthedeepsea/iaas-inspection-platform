@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
+import { MemoryRouter } from 'react-router-dom'
 import { apiClient } from '../../api/http'
 import { ControlPlaneRisk, PerformanceProfile, ProfileMetrics } from './PerformanceProfile'
 
@@ -66,4 +67,128 @@ it('keeps group selection stable on repeated clicks and normal members accessibl
   fireEvent.click(screen.getByRole('checkbox',{name:'查看正常成员'}))
   expect(screen.getByRole('cell',{name:/api host/})).toBeInTheDocument()
   expect(screen.queryByRole('cell',{name:/mixed host/})).not.toBeInTheDocument()
+})
+
+it('shows only the selected cluster membership even when projected nodes share an asset id', async () => {
+  const nodes = [{id:'shared',scope_cluster_id:'a',name:'worker-a',asset_type:'HOST',roles:['WORKER'],metrics:[],shared_load:false}, {id:'shared',scope_cluster_id:'b',name:'api-b',asset_type:'HOST',roles:['API_SERVER'],metrics:[],shared_load:false}]
+  const clusters = [{id:'a',name:'Cluster A',asset_type:'CLUSTER',platform:'kubernetes',roles:['UNKNOWN'],control_plane_deployment:'UNKNOWN',total:{...group,node_ids:['shared']},groups:[],shared_nodes:[]}, {id:'b',name:'Cluster B',asset_type:'CLUSTER',platform:'kubernetes',roles:['UNKNOWN'],control_plane_deployment:'UNKNOWN',total:{...group,node_ids:['shared']},groups:[],shared_nodes:[]}]
+  vi.spyOn(apiClient,'get').mockResolvedValue({data:{nodes,clusters,llm:[],deployment_edit:{writable:false}}} as never)
+  render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><MemoryRouter><PerformanceProfile environmentId="env" resourceCode="K8S_CLUSTER" /></MemoryRouter></QueryClientProvider>)
+  expect(await screen.findByText('worker-a · 类型：HOST · 角色：WORKER')).toBeInTheDocument()
+  expect(screen.queryByText('api-b · 类型：HOST · 角色：API_SERVER')).not.toBeInTheDocument()
+  fireEvent.change(screen.getByRole('combobox',{name:'现有集群'}),{target:{value:'b'}})
+  expect(screen.getByText('api-b · 类型：HOST · 角色：API_SERVER')).toBeInTheDocument()
+  expect(screen.queryByText('worker-a · 类型：HOST · 角色：WORKER')).not.toBeInTheDocument()
+})
+
+it('shows only the selected cluster service and its real asset identity for equal engine names', async () => {
+  const clusters = [{id:'cluster-a',name:'Cluster A',control_plane_deployment:'UNKNOWN',total:{...group,node_ids:[]},groups:[],shared_nodes:[]}, {id:'cluster-b',name:'Cluster B',control_plane_deployment:'UNKNOWN',total:{...group,node_ids:[]},groups:[],shared_nodes:[]}, {id:'cluster-c',name:'Cluster C',control_plane_deployment:'UNKNOWN',total:{...group,node_ids:[]},groups:[],shared_nodes:[]}]
+  const service = (id:string, cluster:string, value:number) => ({id:`portrait-${id}`,asset_id:id,asset_name:id,scope_cluster_ids:[cluster],name:'engine/encoded · vllm · org/model',context:{source:'same'},missing_context:[],freshness:'CURRENT_WINDOW_STATISTIC',metrics:[{...metric,key:'ttft.p95_ms',label:'TTFT窗口p95',unit:'ms',current:value,latest_observed:value}]})
+  vi.spyOn(apiClient,'get').mockResolvedValue({data:{nodes:[],clusters,llm:[service('service-a','cluster-a',10),service('service-b','cluster-b',90)],deployment_edit:{writable:false}}} as never)
+  render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><MemoryRouter><PerformanceProfile environmentId="env" resourceCode="K8S_CLUSTER" /></MemoryRouter></QueryClientProvider>)
+  await screen.findByRole('combobox',{name:'现有集群'})
+  fireEvent.click(screen.getByRole('button',{name:'LLM服务'}))
+  let card=screen.getByRole('article')
+  expect(within(card).getByText('资产：service-a · 标识：service-a · 所属集群：Cluster A（当前资产关系）')).toBeInTheDocument()
+  expect(within(card).getByText('10 ms')).toBeInTheDocument()
+  expect(screen.queryByText('90 ms')).not.toBeInTheDocument()
+  fireEvent.change(screen.getByRole('combobox',{name:'现有集群'}),{target:{value:'cluster-b'}})
+  card=screen.getByRole('article')
+  expect(within(card).getByText('资产：service-b · 标识：service-b · 所属集群：Cluster B（当前资产关系）')).toBeInTheDocument()
+  expect(within(card).getByText('90 ms')).toBeInTheDocument()
+  expect(screen.queryByText('10 ms')).not.toBeInTheDocument()
+  fireEvent.change(screen.getByRole('combobox',{name:'现有集群'}),{target:{value:'cluster-c'}})
+  expect(screen.queryByRole('article')).not.toBeInTheDocument()
+  expect(screen.getByText('当前集群没有可确认归属的 LLM 服务快照。')).toBeInTheDocument()
+})
+
+it('keeps the unscoped LLM runtime layer available without cluster membership metadata', async () => {
+  const service={id:'llm',name:'engine',context:{source:'same'},missing_context:[],freshness:'FRESH',metrics:[]}
+  vi.spyOn(apiClient,'get').mockResolvedValue({data:{nodes:[],clusters:[],llm:[service],deployment_edit:{writable:false}}} as never)
+  render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><MemoryRouter><PerformanceProfile environmentId="env" resourceCode="LLM_RUNTIME" /></MemoryRouter></QueryClientProvider>)
+  expect(await screen.findByRole('article')).toHaveTextContent('engine')
+})
+
+const editableGroup = { node_ids: [], node_count: 0, metrics: [], window_aligned: false, note: '' }
+const editableClusters = [
+  { id: 'cluster-a', name: 'Cluster A', control_plane_deployment: 'UNKNOWN', total: editableGroup, groups: [], shared_nodes: [] },
+  { id: 'cluster-b', name: 'Cluster B', control_plane_deployment: 'DEDICATED', total: editableGroup, groups: [], shared_nodes: [] },
+]
+const editableData = { clusters: editableClusters, nodes: [], llm: [], deployment_edit: { writable: true } }
+
+function editableProfile(client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
+  return render(<QueryClientProvider client={client}><MemoryRouter><PerformanceProfile environmentId="env" resourceCode="K8S_CLUSTER" /></MemoryRouter></QueryClientProvider>)
+}
+
+it('does not carry an unsaved deployment through the LLM cluster selector', async () => {
+  vi.spyOn(apiClient, 'get').mockResolvedValue({ data: editableData } as never)
+  const patch = vi.spyOn(apiClient, 'patch').mockResolvedValue({ data: {} } as never)
+  editableProfile()
+  fireEvent.change(await screen.findByRole('combobox', { name: '控制面部署方式' }), { target: { value: 'MIXED' } })
+  fireEvent.click(screen.getByRole('button', { name: 'LLM服务' }))
+  fireEvent.change(screen.getByRole('combobox', { name: '现有集群' }), { target: { value: 'cluster-b' } })
+  fireEvent.click(screen.getByRole('button', { name: '集群' }))
+  expect(screen.getByRole('combobox', { name: '现有集群' })).toHaveValue('cluster-b')
+  expect(screen.getByRole('combobox', { name: '控制面部署方式' })).toHaveValue('DEDICATED')
+  expect(screen.getByRole('button', { name: '保存' })).toBeDisabled()
+  fireEvent.click(screen.getByRole('button', { name: '保存' }))
+  expect(patch).not.toHaveBeenCalled()
+  fireEvent.change(screen.getByRole('combobox', { name: '控制面部署方式' }), { target: { value: 'MIXED' } })
+  fireEvent.click(screen.getByRole('button', { name: '保存' }))
+  await waitFor(() => expect(patch).toHaveBeenCalledWith('/hardware-health/clusters/cluster-b/deployment', { control_plane_deployment: 'MIXED' }, { params: { environment_id: 'env' } }))
+})
+
+it('retains same-cluster edits across layers but clears them on the cluster selector', async () => {
+  vi.spyOn(apiClient, 'get').mockResolvedValue({ data: editableData } as never)
+  const patch = vi.spyOn(apiClient, 'patch').mockResolvedValue({ data: {} } as never)
+  editableProfile()
+  fireEvent.change(await screen.findByRole('combobox', { name: '控制面部署方式' }), { target: { value: 'MIXED' } })
+  fireEvent.click(screen.getByRole('button', { name: 'LLM服务' }))
+  fireEvent.click(screen.getByRole('button', { name: '集群' }))
+  expect(screen.getByRole('combobox', { name: '控制面部署方式' })).toHaveValue('MIXED')
+  expect(screen.getByRole('button', { name: '保存' })).toBeEnabled()
+  fireEvent.click(screen.getByRole('button', { name: '保存' }))
+  await waitFor(() => expect(patch).toHaveBeenCalledWith('/hardware-health/clusters/cluster-a/deployment', { control_plane_deployment: 'MIXED' }, { params: { environment_id: 'env' } }))
+  expect(await screen.findByText('部署方式已保存')).toBeInTheDocument()
+  fireEvent.change(screen.getByRole('combobox', { name: '现有集群' }), { target: { value: 'cluster-b' } })
+  expect(screen.getByRole('combobox', { name: '控制面部署方式' })).toHaveValue('DEDICATED')
+  expect(screen.getByRole('button', { name: '保存' })).toBeDisabled()
+  expect(screen.queryByText('部署方式已保存')).not.toBeInTheDocument()
+  fireEvent.change(screen.getByRole('combobox', { name: '现有集群' }), { target: { value: 'cluster-a' } })
+  expect(screen.getByRole('combobox', { name: '控制面部署方式' })).toHaveValue('UNKNOWN')
+  expect(screen.getByRole('button', { name: '保存' })).toBeDisabled()
+})
+
+it.each(['success', 'failure'] as const)('does not show a pending cluster A save %s on cluster B', async (outcome) => {
+  vi.spyOn(apiClient, 'get').mockResolvedValue({ data: editableData } as never)
+  let finish!: (value: unknown) => void
+  let fail!: (reason: unknown) => void
+  const pending = new Promise((resolve, reject) => { finish = resolve; fail = reject })
+  const patch = vi.spyOn(apiClient, 'patch').mockReturnValueOnce(pending as never)
+  editableProfile()
+  fireEvent.change(await screen.findByRole('combobox', { name: '控制面部署方式' }), { target: { value: 'MIXED' } })
+  fireEvent.click(screen.getByRole('button', { name: '保存' }))
+  expect(patch).toHaveBeenCalledWith('/hardware-health/clusters/cluster-a/deployment', { control_plane_deployment: 'MIXED' }, { params: { environment_id: 'env' } })
+  fireEvent.click(screen.getByRole('button', { name: 'LLM服务' }))
+  fireEvent.change(screen.getByRole('combobox', { name: '现有集群' }), { target: { value: 'cluster-b' } })
+  fireEvent.click(screen.getByRole('button', { name: '集群' }))
+  expect(screen.getByRole('combobox', { name: '控制面部署方式' })).toHaveValue('DEDICATED')
+  expect(screen.getByRole('button', { name: '保存' })).toBeDisabled()
+  await act(async () => { if (outcome === 'success') finish({ data: {} }); else fail({ response: { data: { error: { message: 'A 保存失败' } } } }) })
+  await waitFor(() => expect(screen.getByRole('combobox', { name: '控制面部署方式' })).toBeEnabled())
+  expect(screen.queryByText('部署方式已保存')).not.toBeInTheDocument()
+  expect(screen.queryByText('A 保存失败')).not.toBeInTheDocument()
+  expect(screen.getByRole('combobox', { name: '控制面部署方式' })).toHaveValue('DEDICATED')
+  expect(screen.getByRole('button', { name: '保存' })).toBeDisabled()
+})
+
+it('does not apply a draft to the fallback cluster after a data refresh removes the original', async () => {
+  vi.spyOn(apiClient, 'get').mockResolvedValue({ data: editableData } as never)
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  editableProfile(client)
+  fireEvent.change(await screen.findByRole('combobox', { name: '控制面部署方式' }), { target: { value: 'MIXED' } })
+  act(() => client.setQueryData(['performance-profile', 'env', 'K8S_CLUSTER'], { ...editableData, clusters: [editableClusters[1]] }))
+  await waitFor(() => expect(screen.getByRole('combobox', { name: '现有集群' })).toHaveValue('cluster-b'))
+  expect(screen.getByRole('combobox', { name: '控制面部署方式' })).toHaveValue('DEDICATED')
+  expect(screen.getByRole('button', { name: '保存' })).toBeDisabled()
 })
