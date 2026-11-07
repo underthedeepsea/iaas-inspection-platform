@@ -83,11 +83,49 @@ test('multi-resource inspection survives reload and ties CODE and AI to the same
   await expect(overview.getByRole('link',{name:'查看本轮报告 →',exact:true})).toHaveAttribute('href',`/inspection-runs/${run.id}?environment=${env.id}`)
   await overview.getByRole('button',{name:'智能解读本轮',exact:true}).click()
   const explanation = page.getByRole('complementary',{name:'本轮智能解读',exact:true})
+  // Read a clone of this same fetch before the client cancels its reader at done.
+  // The application still receives the original Response without waiting for capture.
+  await page.evaluate(() => {
+    const observed = window as Window & { __guidedInspectionStreamText?: Promise<string> }
+    const originalFetch = window.fetch
+    observed.__guidedInspectionStreamText = new Promise<string>((resolve, reject) => {
+      window.fetch = async (...args) => {
+        const response = await originalFetch(...args)
+        if (!response.url.endsWith('/dashboard/ask/stream')) return response
+        window.fetch = originalFetch
+        const reader = response.clone().body!.getReader()
+        void (async () => {
+          const decoder = new TextDecoder()
+          let text = ''
+          try {
+            while (true) {
+              const chunk = await reader.read()
+              if (chunk.done) { text += decoder.decode(); break }
+              text += decoder.decode(chunk.value, {stream:true})
+              const completeFrames = text.split(/\r?\n\r?\n/).slice(0, -1)
+              if (completeFrames.some(frame => frame.split(/\r?\n/).includes('event: done'))) break
+            }
+            resolve(text)
+          } catch (error) { reject(error) }
+          finally {
+            await reader.cancel().catch(() => {})
+            reader.releaseLock()
+          }
+        })()
+        return response
+      }
+    })
+  })
   const asked = page.waitForResponse(response => response.url().endsWith('/dashboard/ask/stream') && response.request().method() === 'POST')
   await explanation.getByRole('button',{name:'详细解读本次风险 ↗',exact:true}).click()
   const streamed = await asked
   expect(streamed.ok()).toBeTruthy()
-  const frames = (await streamed.text()).split(/\r?\n\r?\n/).filter(frame => frame.includes('data:')).map(frame => ({
+  const streamText = await page.evaluate(async () => {
+    const observed = window as Window & { __guidedInspectionStreamText?: Promise<string> }
+    try { return await observed.__guidedInspectionStreamText! }
+    finally { delete observed.__guidedInspectionStreamText }
+  })
+  const frames = streamText.split(/\r?\n\r?\n/).filter(frame => frame.includes('data:')).map(frame => ({
     event: frame.split(/\r?\n/).find(line => line.startsWith('event:'))?.slice(6).trim(),
     data: JSON.parse(frame.split(/\r?\n/).filter(line => line.startsWith('data:')).map(line => line.slice(5).trimStart()).join('\n')),
   }))
