@@ -12,7 +12,17 @@ const resources = {
       inspection_item_count: 1, health_score: 92, risk_count: 1, p1_count: 0, p2_count: 1,
       last_inspection_at: null,
     },
-  ], page: 1, page_size: 2, total: 2,
+    {
+      code: 'K8S_CLUSTER', name: 'Kubernetes 集群', description: '', icon: '', release_state: 'PLANNED', asset_count: 1,
+      inspection_item_count: 0, health_score: null, risk_count: 0, p1_count: 0, p2_count: 0,
+      last_inspection_at: null,
+    },
+    {
+      code: 'KVM_CLUSTER', name: 'KVM 集群', description: '', icon: '', release_state: 'PLANNED', asset_count: 1,
+      inspection_item_count: 0, health_score: null, risk_count: 0, p1_count: 0, p2_count: 0,
+      last_inspection_at: null,
+    },
+  ], page: 1, page_size: 4, total: 4,
 }
 
 test('completes the immediate inspection workflow', async ({ page }) => {
@@ -60,7 +70,10 @@ test('completes the immediate inspection workflow', async ({ page }) => {
   await page.getByLabel('巡检环境').click()
   await page.locator('.ant-select-dropdown .ant-select-item-option').filter({ hasText: '测试环境' }).click()
   await page.getByRole('button', { name: /立即巡检/ }).click()
-  await expect(page.getByRole('button', { name: /控制面/ })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /控制面/ })).toHaveAttribute('aria-checked', 'false')
+  await expect(page.getByRole('button', { name: /Kubernetes 集群/ })).toBeDisabled()
+  await expect(page.getByRole('button', { name: /Kubernetes 集群/ })).toContainText('暂无可用巡检插件')
+  await expect(page.getByRole('button', { name: /KVM 集群/ })).toHaveCount(0)
   await page.getByRole('button', { name: /大模型运行时/ }).click()
   await expect(page.getByText('范围预览：24 个资源对象 / 1 个巡检项')).toBeVisible()
   await page.getByRole('button', { name: '开始巡检' }).click()

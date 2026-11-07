@@ -225,6 +225,8 @@ def test_resource_investigation_creates_run_scoped_final_explanation(monkeypatch
     conversation = Conversation.objects.get(investigation=investigation)
 
     assert response.json()['conclusion'] == '证据不足，无法解释确定性结论'
+    assert investigation.result['fact_report']['check_count'] == 0
+    assert investigation.result['fact_report']['inspection_run_id'] == str(run.pk)
 
 
 @pytest.mark.django_db(transaction=True)

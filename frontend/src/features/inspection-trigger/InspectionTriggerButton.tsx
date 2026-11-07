@@ -8,10 +8,12 @@ export function InspectionTriggerButton({
   environmentId,
   environmentName,
   resourceTypes,
+  resourceTypesLoaded = true,
 }: {
   environmentId: string
   environmentName?: string
   resourceTypes: ResourceType[]
+  resourceTypesLoaded?: boolean
 }) {
   const selectedEnvironmentName = useUiStore(state => state.environmentName)
   const active = useInspectionSessionStore(state => state.active)
@@ -27,6 +29,7 @@ export function InspectionTriggerButton({
         onClose={() => setOpen(false)}
         open={open}
         resourceTypes={resourceTypes}
+        resourceTypesLoaded={resourceTypesLoaded}
       />
     </>
   )

@@ -68,6 +68,42 @@ def scope_to_snapshot(scope: ResolvedInspectionScope):
     }
 
 
+def _mapping_asset_ids(snapshot, selected_codes, frozen_ids):
+    """Use only the validated exact-batch resource partition for mapping runs."""
+    if snapshot.get("mapping_inputs") is None:
+        return None
+    run_input = snapshot.get("input") or {}
+    binding = run_input.get("mapping_binding") or {}
+    mapping = snapshot["mapping_inputs"]
+    if run_input.get("source_type") not in {"HARDWARE_SNAPSHOT", "INFERENCE_SNAPSHOT", "EXTERNAL_SNAPSHOTS"} or any(
+        binding.get(key) != mapping.get(key)
+        for key in ("batch_id", "revision_id", "content_hash", "environment_id")
+    ) or not binding:
+        raise ValueError("Mapping item scope requires its frozen batch binding")
+    if run_input.get("source_type") == "EXTERNAL_SNAPSHOTS":
+        frozen = {}
+        for part in (run_input.get("sources") or {}).values():
+            rows = part.get("snapshots") or {}
+            if set(frozen) & set(rows): raise ValueError("Duplicate mapping frozen asset")
+            frozen.update(rows)
+    else:
+        frozen = run_input.get("snapshots") or {}
+    resource_ids = (snapshot.get("resolved_scope") or {}).get("resource_asset_ids") or {}
+    expected = set(frozen_ids)
+    if set(frozen) != expected or set(binding.get("asset_ids") or []) != expected:
+        raise ValueError("Mapping item scope has inconsistent frozen assets")
+    kind_resource = {"HOST": "HOST", "GPU": "GPU_POOL", "INFERENCE": "LLM_RUNTIME"}
+    flattened = set()
+    for code, ids in resource_ids.items():
+        for asset_id in ids:
+            if asset_id not in frozen or kind_resource.get(frozen[asset_id].get("payload", {}).get("kind", "INFERENCE" if "engine_id" in frozen[asset_id] else None)) != code:
+                raise ValueError("Mapping item scope has inconsistent resource kinds")
+            flattened.add(asset_id)
+    if flattened != expected:
+        raise ValueError("Mapping item scope has an incomplete resource partition")
+    return {asset_id for code in selected_codes for asset_id in resource_ids.get(code, [])}
+
+
 def resolve_item_asset_scope(inspection_run, inspection_item):
     """Resolve the frozen assets applicable to one bound inspection item."""
 
@@ -97,11 +133,15 @@ def resolve_item_asset_scope(inspection_run, inspection_item):
         )
 
     frozen_ids = [str(value) for value in resolved.get("asset_ids") or []]
-    matching_ids = asset_ids_for_selectors(
-        inspection_run.environment_id,
-        selectors,
-        frozen_ids=frozen_ids,
+    matching_ids = _mapping_asset_ids(
+        inspection_run.config_snapshot or {}, item_resource_types, frozen_ids
     )
+    if matching_ids is None:
+        matching_ids = asset_ids_for_selectors(
+            inspection_run.environment_id,
+            selectors,
+            frozen_ids=frozen_ids,
+        )
     assets = list(
         Asset.objects.filter(
             environment_id=inspection_run.environment_id,

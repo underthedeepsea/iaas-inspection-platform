@@ -60,25 +60,26 @@ def test_prompt_write_requires_token_and_checks_revision(client):
     assert initial.json()["readonly_guard"] == READONLY_GUARD
     assert "test-secret" not in json.dumps(initial.json())
 
-    payload = {"body": "新的中文解读。", "expected_revision": 1}
+    initial_revision = initial.json()["revision"]
+    payload = {"body": "新的中文解读。", "expected_revision": initial_revision}
     assert client.patch(URL, data=json.dumps(payload), content_type="application/json").status_code == 403
     assert client.patch(URL, data=json.dumps(payload), content_type="application/json", HTTP_X_PROMPT_ADMIN_TOKEN="wrong").status_code == 403
     saved = client.patch(URL, data=json.dumps(payload), content_type="application/json", HTTP_X_PROMPT_ADMIN_TOKEN="test-secret")
     assert saved.status_code == 200
-    assert saved.json()["revision"] == 2
+    assert saved.json()["revision"] == initial_revision + 1
     assert saved.json()["body"] == payload["body"]
     conflict = client.patch(URL, data=json.dumps(payload), content_type="application/json", HTTP_X_PROMPT_ADMIN_TOKEN="test-secret")
     assert conflict.status_code == 409
     assert conflict.json()["error"]["code"] == "PROMPT_REVISION_CONFLICT"
-    assert ExplanationPrompt.objects.get(key=KEY).revision == 2
+    assert ExplanationPrompt.objects.get(key=KEY).revision == initial_revision + 1
     audit = AuditEvent.objects.get(event_type="prompt.updated")
-    assert audit.payload["before_revision"] == 1
+    assert audit.payload["before_revision"] == initial_revision
     assert audit.payload["after_body"] == payload["body"]
     assert "test-secret" not in json.dumps(audit.payload)
 
-    reset = client.post(f"{URL}/reset", data=json.dumps({"expected_revision": 2}), content_type="application/json", HTTP_X_PROMPT_ADMIN_TOKEN="test-secret")
+    reset = client.post(f"{URL}/reset", data=json.dumps({"expected_revision": initial_revision + 1}), content_type="application/json", HTTP_X_PROMPT_ADMIN_TOKEN="test-secret")
     assert reset.status_code == 200
-    assert reset.json()["revision"] == 3
+    assert reset.json()["revision"] == initial_revision + 2
     assert reset.json()["body"] == DEFAULT_BODY
     assert AuditEvent.objects.filter(event_type="prompt.reset").count() == 1
 
@@ -111,6 +112,7 @@ def test_updated_prompt_is_used_by_both_explanations_and_frozen_in_evidence():
 
     investigation = Investigation.objects.create(trigger_type="HUMAN", entry_reason="USER_QUESTION", model_provider="fake", model_name="test")
     context = {"inspection_run_id": str(run.pk), "check_results": [{"id": "check-1", "status": "FAIL", "summary": "异常"}]}
+    gateway.invoke.return_value = ModelResponse(action=FinalAction(json.dumps({"check-1": ["metric_review"]}), .5), model="test", provider="fake")
     resource = explain(investigation, context, gateway=gateway)
     request = gateway.invoke.call_args.args[0]
     assert prompt.body in request.messages[0]["content"]
@@ -173,3 +175,87 @@ def test_compact_resource_context_keeps_full_status_counts_and_nested_plugin_rea
         {"code": "TTFT_P95_FIXED_HIGH", "metric": "ttft.p95_ms", "current": 320, "threshold": 250, "status": "WARNING"},
         {"code": "QUEUE_DYNAMIC_HIGH", "metric": "requests.waiting", "current": 5, "boundary": 3, "baseline_median": 1, "status": "WARNING"},
     ]
+
+
+@pytest.mark.parametrize('revision,body,eligible', [(1, 'LEGACY', True), (2, 'LEGACY', False), (1, '用户已编辑', False)])
+def test_default_prompt_upgrade_preserves_edited_and_reset_revisions(revision, body, eligible):
+    from apps.investigations.services.prompts import LEGACY_DEFAULT_BODY, render_explanation_system_prompt, OUTPUT_PROTOCOL
+    original = LEGACY_DEFAULT_BODY if body == 'LEGACY' else body
+    ExplanationPrompt.objects.update_or_create(key=KEY, defaults={'name':'巡检解读','revision':revision,'body':original})
+    loaded = load_explanation_prompt()
+    assert loaded.body == (DEFAULT_BODY if eligible else original)
+    assert loaded.revision == (revision + 1 if eligible else revision)
+    assert load_explanation_prompt().revision == loaded.revision
+    rendered = render_explanation_system_prompt(loaded)
+    assert READONLY_GUARD in rendered and OUTPUT_PROTOCOL in rendered
+
+
+def test_recorded_bad_response_is_grounded_at_both_application_sinks(monkeypatch):
+    from tests.domain.test_explanation_facts import grounded_fixture, RECORDED_BAD_ANSWER
+    context = grounded_fixture()
+    env = Environment.objects.create(name='grounded-env', slug='grounded-env')
+    run = InspectionRun.objects.create(environment=env, run_date=date.today(), trigger_type='MANUAL')
+    context['inspection_run_id'] = str(run.pk); context['fact_report']['inspection_run_id'] = str(run.pk)
+    context.update(run={'id': str(run.pk), 'run_date': '2026-10-09', 'status': 'SUCCEEDED'}, resource_summaries=[], risks=[])
+    # Dashboard's input shape is a scoped run_result; exact evidence fixture is frozen.
+    for row in context['check_results']:
+        row.update(observed_value={}, expected_value={}, source={'type': 'CODE'}, risk_references=[])
+    monkeypatch.setattr('apps.investigations.services.dashboard_explanation.inspection_run_result', lambda run: context)
+    gateway = Mock(spec=['invoke'])
+    gateway.invoke.return_value = ModelResponse(action=FinalAction(RECORDED_BAD_ANSWER, 1), model='recorded-qwen', provider='recorded')
+    dashboard = explain_dashboard(run, '详细解读本次风险', gateway=gateway)
+    assert dashboard['ai_status'] == 'INVALID_PROTOCOL' and dashboard['confidence'] is None
+    assert len(dashboard['grounded_report']['checks']) == 9
+    assert '-9162596.9 bytes/s' in dashboard['answer'] and '-91.6MB/s' not in dashboard['answer']
+    investigation = Investigation.objects.create(trigger_type='HUMAN', entry_reason='USER_QUESTION')
+    resource = explain(investigation, context, gateway=gateway)
+    assert resource.status == 'UNRESOLVED' and resource.confidence is None
+    assert resource.result['ai_status'] == 'INVALID_PROTOCOL' and len(resource.result['grounded_report']['checks']) == 9
+    assert resource.conclusion == dashboard['answer']
+    assert resource.result['priority_actions'] == []
+    assert all('省略' not in gap for gap in resource.result['evidence_gaps'])
+    assert resource.result['input_limits']
+
+
+def test_grounded_prompt_has_one_executable_complete_protocol_and_preserves_business_body():
+    from tests.domain.test_explanation_facts import grounded_fixture
+    from apps.investigations.services.fact_projection import interpretation_choices, _decode_interpretations
+    from apps.investigations.services.prompts import render_explanation_system_prompt, prompt_metadata, OUTPUT_PROTOCOL
+    from services.model_gateway.base import parse_action
+
+    body = '用户关注：优先检查容量影响；保留自定义要求。'
+    record, _ = ExplanationPrompt.objects.update_or_create(key=KEY, defaults={'name': '自定义', 'body': body, 'revision': 7})
+    metadata = prompt_metadata(record)
+    context = grounded_fixture()
+    compact = build_compact_explanation_context(context)
+    choices = interpretation_choices(context['fact_report'], compact)
+    rendered = render_explanation_system_prompt(record, choices=choices)
+    assert rendered.startswith(READONLY_GUARD + '\n' + body + '\n')
+    assert OUTPUT_PROTOCOL not in rendered and '"summary":"中文解释"' not in rendered
+    examples = [line.split('：', 1)[1] for line in rendered.splitlines() if line.startswith('完整合法格式示例')]
+    assert len(examples) == 1
+    action = parse_action(examples[0])
+    validate_explanation_answer(action.summary, compact)
+    selected = _decode_interpretations(action.summary, choices)
+    assert selected is not None and set(selected) == set(choices)
+    assert len(selected) == compact['selected_count'] == 8
+    assert any(row['status'] == 'UNKNOWN' and row['id'] in selected for row in compact['check_results'])
+    assert all(keys == [choices[check_id][0]] for check_id, keys in selected.items())
+    record.refresh_from_db()
+    assert record.body == body and record.revision == 7 and prompt_metadata(record) == metadata
+    assert render_explanation_system_prompt(record) == '\n'.join([READONLY_GUARD, body, OUTPUT_PROTOCOL])
+
+
+def test_captured_check_id_list_is_not_accepted_as_catalog_choices():
+    from tests.domain.test_explanation_facts import grounded_fixture
+    from apps.investigations.services.fact_projection import compose_grounded_explanation
+    from services.model_gateway.base import parse_action
+
+    context = grounded_fixture()
+    compact = build_compact_explanation_context(context)
+    summary = json.dumps({'check_id': [row['id'] for row in compact['check_results'] if row['status'] == 'FAIL']})
+    action = parse_action({'action': 'FINAL', 'answer': {'summary': summary, 'confidence': 1.0}})
+    grounded = compose_grounded_explanation(context['fact_report'], compact, action.summary)
+    assert grounded['ai_status'] == 'INVALID_PROTOCOL' and grounded['accepted_count'] == 0
+    assert all(row['ai'] is None for row in grounded['checks'])
+    assert len(grounded['checks']) == 9

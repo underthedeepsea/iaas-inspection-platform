@@ -1,0 +1,157 @@
+{
+  "synthetic": true,
+  "description": "Wholly fabricated public v1 compatibility data; no telemetry, real run, real identifiers or private payload.",
+  "run_id": "synthetic-run-a",
+  "check_results": [
+    {
+      "id": "synthetic-check-a",
+      "inspection_item_code": "hardware.host_health",
+      "inspection_item_name": "合成宿主机健康巡检",
+      "asset_id": "synthetic-host-a",
+      "asset_name": "synthetic-host-a",
+      "status": "UNKNOWN",
+      "summary": "合成记录：硬件数据不足或异常待确认",
+      "source": "CODE",
+      "checked_at": "2001-02-03T04:06:45+00:00",
+      "evidence": {
+        "source_type": "HARDWARE_SNAPSHOT",
+        "snapshot_id": "synthetic-snapshot-a",
+        "window_start": "2001-02-03T04:05:00+00:00",
+        "window_end": "2001-02-03T04:06:00+00:00",
+        "evaluation": {
+          "plugin": {
+            "id": "gpu-host-health",
+            "version": "1.0.0"
+          },
+          "input": {
+            "snapshot_id": "synthetic-snapshot-a"
+          },
+          "status": "UNKNOWN",
+          "quality": {
+            "state": "INCOMPLETE",
+            "pending_confirmation": false
+          },
+          "coverage": {
+            "host": "READY",
+            "disk": "MISSING",
+            "filesystem": "MISSING"
+          },
+          "diagnostics": {
+            "host/cpu_busy_ratio": {
+              "status": "NOT_READY",
+              "sample_count": 0,
+              "reason": "INSUFFICIENT_COMPARABLE_HISTORY"
+            },
+            "host/decline": {
+              "status": "NOT_READY",
+              "sample_count": 1
+            },
+            "host/memory_available_bytes": {
+              "status": "NORMAL",
+              "current": 1073741824
+            },
+            "host/memory_total_bytes": {
+              "status": "NORMAL",
+              "current": 4294967296
+            }
+          },
+          "issues": []
+        },
+        "components": {
+          "host": {}
+        },
+        "hardware_reverification": null
+      },
+      "risk_references": []
+    }
+  ],
+  "frozen_input": {
+    "source_type": "HARDWARE_SNAPSHOT",
+    "as_of": "2001-02-03T04:06:30+00:00",
+    "snapshots": {
+      "synthetic-host-a": {
+        "snapshot_id": "synthetic-snapshot-a",
+        "asset_id": "synthetic-host-a",
+        "environment_id": "synthetic-env-a",
+        "window_start": "2001-02-03T04:05:00+00:00",
+        "window_end": "2001-02-03T04:06:00+00:00",
+        "created_at": "2001-02-03T04:06:00+00:00",
+        "frozen_at": "2001-02-03T04:06:30+00:00",
+        "evaluation": {
+          "plugin": {
+            "id": "gpu-host-health",
+            "version": "1.0.0"
+          },
+          "input": {
+            "snapshot_id": "synthetic-snapshot-a"
+          },
+          "status": "UNKNOWN",
+          "quality": {
+            "state": "INCOMPLETE",
+            "pending_confirmation": false
+          },
+          "coverage": {
+            "host": "READY",
+            "disk": "MISSING",
+            "filesystem": "MISSING"
+          },
+          "diagnostics": {
+            "host/cpu_busy_ratio": {
+              "status": "NOT_READY",
+              "sample_count": 0,
+              "reason": "INSUFFICIENT_COMPARABLE_HISTORY"
+            },
+            "host/decline": {
+              "status": "NOT_READY",
+              "sample_count": 1
+            },
+            "host/memory_available_bytes": {
+              "status": "NORMAL",
+              "current": 1073741824
+            },
+            "host/memory_total_bytes": {
+              "status": "NORMAL",
+              "current": 4294967296
+            }
+          },
+          "issues": []
+        },
+        "payload": {
+          "kind": "HOST",
+          "source": "synthetic-macos-observation-only",
+          "sample_id": "synthetic-sample-a",
+          "environment_id": "synthetic-env-a",
+          "host_id": "synthetic-host-a",
+          "config_id": "synthetic-config-a",
+          "identity": {},
+          "bindings": {
+            "complete": false,
+            "engines": []
+          },
+          "metrics": {
+            "host": {
+              "identity": {},
+              "values": {
+                "cpu_busy_ratio": {
+                  "value": 0.3125,
+                  "quality": "VALID",
+                  "collected_at": "2001-02-03T12:05:45+08:00"
+                },
+                "memory_available_bytes": {
+                  "value": 1073741824,
+                  "quality": "VALID",
+                  "collected_at": "2001-02-03T12:05:45+08:00"
+                },
+                "memory_total_bytes": {
+                  "value": 4294967296,
+                  "quality": "VALID",
+                  "collected_at": "2001-02-03T12:05:45+08:00"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -8,9 +8,11 @@ import { useUiStore } from '../../stores/uiStore'
 const primaryNavigation = [
   ['总览', '/'],
   ['资源巡检', '/resources'],
+  ['性能画像', '/performance-profiles'],
   ['风险中心', '/risks'],
   ['规则库', '/rules'],
   ['提示词', '/prompts'],
+  ['映射管理 · 合成', '/mappings'],
   ['产品说明', '/about'],
 ] as const
 
@@ -23,7 +25,9 @@ const pageTitles: Array<[string, string]> = [
   ['/ai-runtime', 'AI 运行情况'],
   ['/about', '产品说明'],
   ['/prompts', '提示词'],
+  ['/mappings', '映射管理 · 合成'],
   ['/resources', '资源巡检'],
+  ['/performance-profiles', '性能画像'],
 ]
 
 function titleForPath(pathname: string) {

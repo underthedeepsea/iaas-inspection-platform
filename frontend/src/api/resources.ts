@@ -1,8 +1,10 @@
+import type { InspectionFactReport } from './inspectionFacts'
 import { apiClient } from './http'
 import type { Risk } from './risks'
 
 export interface ResourceType {
   code: string
+  release_state?: string
   name: string
   description: string
   icon: string
@@ -47,6 +49,7 @@ export interface ResourceSummary {
 }
 
 export interface ResourceOverview {
+  fact_report?: InspectionFactReport
   check_results?: CheckResult[]
   resource_type: ResourceType
   latest: ResourceSummary | null
@@ -69,6 +72,7 @@ export interface ResourceHistoryParams {
 }
 
 export interface ResourceRunDetail {
+  fact_report?: InspectionFactReport
   check_results?: CheckResult[]
   resource_type: string
   run: {

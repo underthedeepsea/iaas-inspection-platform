@@ -194,6 +194,7 @@ def test_ollama_local_explanation_accepts_fenced_json_and_disables_thinking(monk
     assert result.provider == "ollama"
     assert result.model == "qwen3.5:9b-mlx"
     assert client.post.call_args.kwargs["json"]["think"] is False
+    assert client.post.call_args.kwargs["json"]["options"] == {"num_predict": 1536}
     assert client.post.call_args.kwargs["timeout"] == 120.0
 
     response.json.return_value = {"message": {"content": '```json\n{"action":"WRITE_DATABASE"}\n```'}}
@@ -485,3 +486,149 @@ def test_model_response_has_no_raw_and_metadata_is_a_strict_safe_allowlist():
             "should be dropped",
         )
     )
+
+
+def test_ollama_explanation_budget_does_not_change_other_purposes(monkeypatch):
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
+    monkeypatch.setenv("OLLAMA_MODEL", "configured-model")
+    response = Mock()
+    response.json.return_value = {"message": {"content": json.dumps(_final_payload())}}
+    client = Mock(); client.post.return_value = response
+    from services.model_gateway.base import ModelRequest
+    from services.model_gateway.ollama import OllamaProvider
+    OllamaProvider(http_client=client).invoke(ModelRequest(messages=[], metadata={"purpose": "conversation"}))
+    payload = client.post.call_args.kwargs["json"]
+    assert payload['model'] == 'configured-model'
+    assert 'think' not in payload and 'options' not in payload
+
+
+class _Chunks(httpx.SyncByteStream):
+    def __init__(self, chunks):
+        self.chunks = chunks
+        self.closed = False
+
+    def __iter__(self):
+        yield from self.chunks
+
+    def close(self):
+        self.closed = True
+
+
+def _stream_provider(monkeypatch, chunks):
+    from services.model_gateway.ollama import OllamaProvider
+    monkeypatch.setenv('OLLAMA_BASE_URL', 'http://ollama.internal:11434')
+    monkeypatch.setenv('OLLAMA_MODEL', 'configured-model')
+    monkeypatch.setenv('LLM_TIMEOUT_SECONDS', '120')
+    stream = _Chunks(chunks)
+    requests = []
+    def handle(request):
+        requests.append(json.loads(request.content))
+        return httpx.Response(200, stream=stream)
+    client = httpx.Client(transport=httpx.MockTransport(handle))
+    return OllamaProvider(http_client=client), stream, requests, client
+
+
+def _ndjson(text, done=False):
+    return (json.dumps({'message': {'content': text}, 'done': done,
+                        'eval_count': 3 if done else 0}) + '\n').encode()
+
+
+def test_ollama_actual_ndjson_progress_precedes_validated_final(monkeypatch):
+    from services.model_gateway.base import ModelRequest, ModelResponse, ModelStreamProgress
+    content = json.dumps(_final_payload())
+    first = _ndjson(content[:25])
+    provider, stream, requests, client = _stream_provider(monkeypatch, [first[:7], first[7:], _ndjson(content[25:], True)])
+    events = provider.stream_events(ModelRequest(messages=[], metadata={'purpose': 'dashboard_explanation'}))
+    progress = next(events)
+    assert isinstance(progress, ModelStreamProgress)
+    assert progress.fragments == 1
+    assert not stream.closed  # real progress before transport finishes
+    assert not hasattr(progress, 'content')
+    rest = list(events)
+    assert isinstance(rest[-1], ModelResponse)
+    assert rest[-1].action.summary == 'queue is healthy'
+    assert rest[-1].usage['completion_tokens'] == 3
+    assert requests[0]['stream'] is True
+    assert requests[0]['think'] is False
+    assert requests[0]['options'] == {'num_predict': 1536}
+    assert stream.closed
+    client.close()
+
+
+@pytest.mark.parametrize('chunks', [
+    [_ndjson(json.dumps(_final_payload()))],  # EOF lacks done
+    [b'not json\n'],
+    [_ndjson('not FINAL JSON', True)],
+    [_ndjson(json.dumps(_final_payload()), True), _ndjson('', True)],
+    [_ndjson('x' * (64 * 1024 + 1), True)],
+    [b'x' * (256 * 1024 + 1)],
+])
+def test_ollama_stream_negative_has_no_result_and_closes(monkeypatch, chunks):
+    from services.model_gateway.base import ModelRequest, ModelResponse, StructuredOutputInvalidError
+    provider, stream, _requests, client = _stream_provider(monkeypatch, chunks)
+    received = []
+    with pytest.raises(StructuredOutputInvalidError):
+        for event in provider.stream_events(ModelRequest(messages=[])):
+            received.append(event)
+    assert not any(isinstance(event, ModelResponse) for event in received)
+    assert stream.closed
+    client.close()
+
+
+def test_ollama_stream_generator_close_releases_active_response(monkeypatch):
+    from services.model_gateway.base import ModelRequest
+    content = json.dumps(_final_payload())
+    provider, stream, _requests, client = _stream_provider(monkeypatch, [_ndjson(content[:20]), _ndjson(content[20:], True)])
+    events = provider.stream_events(ModelRequest(messages=[]))
+    next(events)
+    assert not stream.closed
+    events.close()
+    assert stream.closed
+    client.close()
+
+
+def test_ollama_stream_deadline_and_network_failure_close_without_result(monkeypatch):
+    from services.model_gateway.base import ModelRequest, LLMUnavailableError
+    provider, stream, _requests, client = _stream_provider(monkeypatch, [_ndjson(json.dumps(_final_payload()), True)])
+    ticks = iter([0, 121])
+    monkeypatch.setattr('services.model_gateway.ollama.time.monotonic', lambda: next(ticks))
+    with pytest.raises(LLMUnavailableError):
+        list(provider.stream_events(ModelRequest(messages=[])))
+    assert stream.closed
+    client.close()
+
+
+def test_nonstream_gateway_stream_events_keeps_invoke_compatibility():
+    from services.model_gateway.base import ModelGateway, ModelRequest, ModelResponse, FinalAction
+    class Provider(ModelGateway):
+        def invoke(self, request):
+            return ModelResponse(FinalAction('complete', .5), 'test', 'test')
+    assert list(Provider().stream_events(ModelRequest(messages=[])))[0].action.summary == 'complete'
+
+
+def test_ollama_stream_read_failure_releases_response(monkeypatch):
+    from services.model_gateway.base import ModelRequest, ModelResponse, LLMUnavailableError
+    provider, stream, _requests, client = _stream_provider(monkeypatch, [])
+    def failing():
+        yield _ndjson('{"action":')
+        raise httpx.ReadError('secret-url-detail')
+    stream.chunks = failing()
+    events = provider.stream_events(ModelRequest(messages=[]))
+    first = next(events)
+    assert first.fragments == 1 and not stream.closed
+    with pytest.raises(LLMUnavailableError) as caught:
+        list(events)
+    assert 'secret' not in str(caught.value)
+    assert stream.closed
+    client.close()
+
+
+def test_ollama_stream_accepts_split_utf8_and_terminal_without_newline(monkeypatch):
+    from services.model_gateway.base import ModelRequest, ModelResponse
+    content = json.dumps({'action':'FINAL','answer':{'summary':'中文结果','confidence':.7}}, ensure_ascii=False)
+    wire = (json.dumps({'message':{'content':content},'done':True},ensure_ascii=False)).encode()
+    provider, stream, _requests, client = _stream_provider(monkeypatch, [wire[:wire.index('中'.encode())+1],wire[wire.index('中'.encode())+1:]])
+    events = list(provider.stream_events(ModelRequest(messages=[])))
+    assert isinstance(events[-1], ModelResponse)
+    assert events[-1].action.summary == '中文结果' and stream.closed
+    client.close()

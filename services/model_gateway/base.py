@@ -226,6 +226,14 @@ class ModelResponse:
         return str(self.safe_metadata.get("token_source", "unknown"))
 
 
+@dataclass(frozen=True)
+class ModelStreamProgress:
+    """Transport progress only; never exposes unvalidated model text."""
+
+    fragments: int
+    content_bytes: int
+
+
 class ModelGateway(ABC):
     """Provider-neutral model interface consumed by later graph tasks."""
 
@@ -236,6 +244,14 @@ class ModelGateway(ABC):
     def stream(self, request: ModelRequest):
         """Yield one complete response for providers without streaming yet."""
 
+        yield self.invoke(request)
+
+    def stream_events(self, request: ModelRequest):
+        """Yield safe progress and one final structured response.
+
+        Providers without incremental transport retain their invoke behavior.
+        The existing stream interface remains unchanged for its callers.
+        """
         yield self.invoke(request)
 
 

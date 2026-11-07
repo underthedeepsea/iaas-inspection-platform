@@ -3,6 +3,8 @@
 import json
 import re
 
+from .fact_projection import project_check
+
 
 MAX_CHECKS = 8
 MAX_BYTES = 8000
@@ -37,6 +39,7 @@ def validate_explanation_answer(answer, context):
     known = {str(context.get("inspection_run_id") or "")}
     for row in context.get("check_results") or []:
         known.update((str(row.get("id") or ""), str(row.get("asset_id") or "")))
+        known.update(str(risk.get("id") or "") for risk in row.get("risks") or [])
     for cited in _CITATION.findall(answer):
         if cited not in known:
             raise ValueError("explanation cited an unknown identifier")
@@ -73,14 +76,32 @@ def _check(row):
             facts["trend"] = {key: trend[key] for key in ("status",) if key in trend}
     else:
         reasons, facts = [], {}
+    # Observation end and checked_at retain time without repeated per-reason window metadata.
+    facts.pop('window_start', None)
+    if isinstance(facts.get('quality'), dict) and facts['quality'].get('pending_confirmation') is False:
+        facts['quality'] = {key: value for key, value in facts['quality'].items() if key != 'pending_confirmation'}
+    if isinstance(facts.get('dynamic'), dict) and not facts['dynamic'].get('quality_reasons'):
+        facts['dynamic'].pop('quality_reasons', None)
+    projected = project_check(row)
+    if row.get('status') in {'UNKNOWN', 'ERROR', 'NOT_APPLICABLE'}:
+        facts.pop('trend', None)
+        facts.pop('dynamic', None)
+    measurements = sorted(projected["measurements"], key=lambda item: (0 if item.get("status") == "CRITICAL" or item.get("severity") == "P1" else 1))
+    compact_reasons = [_facts(reason) for reason in reasons[:2] if isinstance(reason, dict)] if not projected["evidence_gaps"] or row.get("status") == "FAIL" else []
+    compact_reasons = [{key: value for key, value in reason.items() if key not in {'window_start', 'window_end'}} for reason in compact_reasons]
+    # Avoid repeating metric/value facts in both legacy reasons and presentation measurements.
+    represented = {(reason.get('code'), reason.get('metric')) for reason in compact_reasons if reason.get('metric')}
+    measurements = [item for item in measurements if (item.get('code'), item.get('metric')) not in represented]
     return {
+        "asset_name": _text(projected["asset_name"], 120), "checked_at": projected["checked_at"],
+        "measurements": measurements[:4], "omitted_measurement_count": max(0, len(measurements) - 4),
+        "evidence_gaps": projected["evidence_gaps"], "risks": [{key: risk[key] for key in ("id", "status", "severity") if key in risk} for risk in projected["risks"]],
         "id": row.get("id"), "check": row.get("check") or row.get("inspection_item_code"),
         "asset_id": row.get("asset_id"), "status": row.get("status"),
         "summary": _text(row.get("summary"), 300),
-        "observed": row.get("observed", row.get("observed_value")),
-        "expected": row.get("expected", row.get("expected_value")),
         "facts": facts,
-        "reasons": [_facts(reason) for reason in reasons[:2] if isinstance(reason, dict)],
+        "reasons": compact_reasons,
+        "omitted_reason_count": max(0, len(reasons) - 2),
     }
 
 
@@ -107,18 +128,43 @@ def build_compact_explanation_context(context, *, question=""):
         "check_results": [_check(row) for row in rows[:MAX_CHECKS]],
         "previous_run": context.get("previous_run"),
         "comparison_note": "缺少前次巡检摘要，无法比较；历史运行次数未知。" if context.get("previous_run") is None else "仅按提供的前次摘要比较",
+        "selected_count": min(len(rows), MAX_CHECKS),
         "omitted_count": max(0, total - min(len(rows), MAX_CHECKS)),
         "truncated": total > MAX_CHECKS or len(question) > 300,
     }
     if result["previous_run"] is not None:
         prior = result["previous_run"]
         result["previous_run"] = {key: prior.get(key) for key in ("run", "summary") if key in prior} if isinstance(prior, dict) else None
+    def clean(value):
+        if isinstance(value, str):
+            return _text(value, 300)
+        if isinstance(value, list):
+            return [clean(item) for item in value]
+        if isinstance(value, dict):
+            return {key: clean(item) for key, item in value.items()}
+        return value
+    result = clean(result)
     def size():
         return len(json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+    # Trim secondary measurements before evicting another resource.
+    def minimum_measurements(row):
+        reasons = row['reasons']
+        critical_extra = any(item.get('status') == 'CRITICAL' or item.get('severity') == 'P1' for item in row['measurements'])
+        critical_reason = any(reason.get('status') == 'CRITICAL' for reason in reasons)
+        return 1 if not any(reason.get('metric') for reason in reasons) or (critical_extra and not critical_reason) else 0
+    while size() > MAX_BYTES:
+        candidates = [row for row in result['check_results'] if len(row['measurements']) > minimum_measurements(row)]
+        if not candidates:
+            break
+        selected = max(candidates, key=lambda row: len(row['measurements']))
+        selected['measurements'].pop()
+        selected['omitted_measurement_count'] += 1
+        result['truncated'] = True
     while size() > MAX_BYTES and result["check_results"]:
         result["check_results"].pop()
         result["omitted_count"] += 1
         result["truncated"] = True
     if size() > MAX_BYTES:
         result["previous_run"] = None
+    result["selected_count"] = len(result["check_results"])
     return result

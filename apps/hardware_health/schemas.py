@@ -24,7 +24,7 @@ def _text(value, field, maximum):
 def parse_request(payload):
     required = {'source', 'environment_id', 'sample_id', 'window_start', 'window_end', 'host_id', 'config_id', 'kind', 'identity', 'metrics', 'bindings'}
     raw = _object(payload, 'request')
-    if not required <= raw.keys() or set(raw) - required - {'hardware_reverification'}:
+    if not required <= raw.keys() or set(raw) - required - {'hardware_reverification', 'host_semantics'}:
         _error('request has missing or unsupported fields', 'request')
     for key, limit in [('source',64), ('environment_id',128), ('sample_id',192), ('host_id',192), ('config_id',192)]:
         _text(raw[key], key, limit)
@@ -33,6 +33,12 @@ def parse_request(payload):
     start, end = (_timestamp(raw[k], k) for k in ('window_start','window_end'))
     if start >= end or end > timezone.now() or (end-start).total_seconds() > 3600:
         _error('window must be past, positive and no longer than one hour', 'window_end')
+    if 'host_semantics' in raw:
+        from .host_policy import HOST_SEMANTICS, POLICY
+        if raw['kind']!='HOST' or raw['host_semantics']!=HOST_SEMANTICS:
+            _error('host_semantics must attest Linux MemAvailable/MemTotal in bytes', 'host_semantics')
+        if (timezone.now()-end).total_seconds()>POLICY['freshness_seconds']:
+            _error('Linux HOST observation must be no older than 180 seconds', 'window_end')
     identity = _object(raw['identity'], 'identity', exact={'gpu_uuid','model'} if raw['kind']=='GPU' else set())
     for key, value in identity.items():
         _text(value, 'identity.'+key, 192)

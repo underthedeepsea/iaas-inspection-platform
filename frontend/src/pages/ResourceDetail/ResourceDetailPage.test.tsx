@@ -44,8 +44,12 @@ it('uses the document visual hierarchy for a resource overview', async () => {
         p2_count: 1,
         last_inspection_at: '2026-08-25T10:00:00Z',
       },
+      check_results: [{ id: 'check-fail', inspection_item_code: 'llm.performance_profile', inspection_item_name: '性能', asset_id: 'a', asset_name: 'Service', status: 'FAIL', summary: '已确认超限', source: { plugin_id: 'inference-performance' }, observed_value: {}, expected_value: {}, evidence: {}, checked_at: 'now' }],
       latest: {
-        health_score: 92,
+        health_score: null,
+        status: 'SUCCEEDED',
+        finished_at: '2026-08-25T10:00:00Z',
+        summary: { conclusive_rate: 0, data_state: 'UNKNOWN' },
         coverage_rate: 1,
         risk_count: 1,
         p1_count: 0,
@@ -69,6 +73,10 @@ it('uses the document visual hierarchy for a resource overview', async () => {
 
   expect(await screen.findByRole('heading', { name: '大模型运行时' })).toBeInTheDocument()
   expect(screen.getByText('巡检覆盖率')).toBeInTheDocument()
+  expect(screen.getByText('可判覆盖率')).toBeInTheDocument()
+  expect(screen.getByText('执行已结束；当前可判覆盖未满足评分条件')).toBeInTheDocument()
+  expect(screen.getByText(/执行已结束（SUCCEEDED）；已判异常 1/)).toBeInTheDocument()
+  expect(screen.getByText('已确认超限')).toBeInTheDocument()
   expect(screen.getAllByText('当前风险').length).toBeGreaterThan(1)
   expect(screen.getByText('健康趋势')).toBeInTheDocument()
   expect(screen.getByRole('tab', { name: '概览' })).toHaveAttribute('aria-selected', 'true')
@@ -145,4 +153,36 @@ it('keeps a zero-asset summary in the NO_DATA state', async () => {
   expect(await screen.findByText('健康度')).toBeInTheDocument()
   expect(screen.getAllByText('—').length).toBeGreaterThan(0)
   expect(screen.queryByText('100%')).not.toBeInTheDocument()
+})
+
+it('loads the existing Kubernetes cluster profile with real member types and roles', async () => {
+  const group = { node_ids: ['node-1'], node_count: 1, metrics: [], window_aligned: true, note: '' }
+  const get = vi.spyOn(apiClient, 'get').mockImplementation(async (url) => {
+    if (String(url).includes('performance-profiles')) return { data: {
+      clusters: [{ id: 'cluster-1', name: '生产集群', asset_type: 'CLUSTER', platform: 'kubernetes', roles: ['PRIMARY'], control_plane_deployment: 'UNKNOWN', total: group, groups: [], shared_nodes: [] }],
+      nodes: [{ id: 'node-1', scope_cluster_id: 'cluster-1', name: 'worker-1', asset_type: 'HOST', roles: ['WORKER'], metrics: [], shared_load: false }],
+      llm: [], deployment_edit: { writable: false },
+    } } as never
+    return { data: { resource_type: { code: 'K8S_CLUSTER', name: 'Kubernetes 集群', description: '', asset_count: 1, inspection_item_count: 0 }, latest: null, health_trend: [] } } as never
+  })
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(<QueryClientProvider client={queryClient}><MemoryRouter initialEntries={['/resources/k8s-cluster']}><Routes><Route element={<ResourceDetailPage environmentId="env-1" />} path="/resources/:resourceType" /></Routes></MemoryRouter></QueryClientProvider>)
+  expect(await screen.findByText(/资源类型：CLUSTER · 平台：kubernetes · 集群角色：PRIMARY/)).toBeInTheDocument()
+  expect(screen.getByText('worker-1 · 类型：HOST · 角色：WORKER')).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: '查看集群完整画像 →' })).toHaveAttribute('href', '/performance-profiles/cluster/cluster-1?environment=env-1&resource_type=K8S_CLUSTER&cluster_id=cluster-1')
+  expect(screen.getByText('暂无可用巡检插件，可查看资源画像。')).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: '立即巡检' })).not.toBeInTheDocument()
+  expect(get).toHaveBeenCalledWith('/hardware-health/performance-profiles', { params: { environment_id: 'env-1', resource_type: 'K8S_CLUSTER' } })
+})
+
+it('keeps KVM history reachable without offering a new inspection from its detail', async () => {
+  vi.spyOn(apiClient, 'get').mockImplementation(async (url) => ({ data: String(url).includes('inspection-history')
+    ? { items: [], page: 1, page_size: 20, total: 0 }
+    : { resource_type: { code: 'KVM_CLUSTER', name: 'KVM 集群', description: '' }, latest: null, health_trend: [] },
+  } as never))
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(<QueryClientProvider client={queryClient}><MemoryRouter initialEntries={['/resources/kvm-cluster?tab=history']}><Routes><Route element={<ResourceDetailPage environmentId="env-1" />} path="/resources/:resourceType" /></Routes></MemoryRouter></QueryClientProvider>)
+  expect(await screen.findByRole('heading', { name: 'KVM 集群' })).toBeInTheDocument()
+  expect(await screen.findByText('暂无巡检历史')).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: '立即巡检' })).not.toBeInTheDocument()
 })

@@ -272,9 +272,36 @@ def test_internal_hardware_batch_stage_replay_and_scope_conflict(client,env,monk
 
 
 def test_prior_diagnostic_or_component_absence_cannot_reverify_host(env):
+    from unittest.mock import patch
+    from apps.hardware_health.host_policy import HOST_SEMANTICS
+    from apps.inference_performance.schemas import parse_snapshot_request
+    from apps.inference_performance.services.ingest import ingest_snapshot
     from apps.risks.services.lifecycle import mark_handled
-    call_command('seed_launch');end=timezone.now()-timedelta(minutes=3)
-    first,_=ingest(payload(kind='HOST',end=end))
+    from tests.inference_performance.helpers import payload as inference_payload
+
+    call_command('seed_launch')
+
+    def ingest_bound_host(sample_end, sample_id, *, host_only=False):
+        inference,_=ingest_snapshot(parse_snapshot_request(inference_payload(
+            str(env.pk),sample_id='inference-'+sample_id,end=sample_end)))
+        raw=payload(kind='HOST',end=sample_end,sample=sample_id)
+        raw['host_semantics']=deepcopy(HOST_SEMANTICS)
+        raw['bindings']={'complete':True,'engines':[{'engine_id':inference.engine_id,
+            'engine_type':inference.engine_type,'model_name':inference.model_name}]}
+        if host_only:
+            raw['metrics']={'host':raw['metrics']['host']}
+        return ingest(raw)
+
+    original_clock=timezone.now
+    last_history_end=original_clock()-timedelta(seconds=240)
+    with patch('django.utils.timezone.now') as synthetic_clock:
+        for index in range(40):
+            history_end=last_history_end-timedelta(minutes=39-index)
+            synthetic_clock.return_value=history_end
+            ingest_bound_host(history_end,f'host-history-{index:02d}',host_only=True)
+
+    end=timezone.now()-timedelta(seconds=150)
+    first,_=ingest_bound_host(end,'sample-1')
     # Freeze an observed advanced diagnostic, then exercise the formal risk path.
     first.evaluation['status']='WARNING'
     first.evaluation['issues']=[{'key':'disk:root/read_latency_avg_ms','code':'CONDITIONAL_DRIFT','severity':'P2'}]
@@ -284,7 +311,7 @@ def test_prior_diagnostic_or_component_absence_cannot_reverify_host(env):
     handled=RiskStatusHistory.objects.filter(risk=risk,to_status='PENDING_REVERIFY').latest('created_at')
     RiskStatusHistory.objects.filter(pk=handled.pk).update(created_at=end+timedelta(seconds=1));handled.refresh_from_db()
     RiskObservation.objects.filter(risk=risk).update(created_at=end)
-    later,_=ingest(payload(kind='HOST',sample='healthy',end=end+timedelta(minutes=2)))
+    later,_=ingest_bound_host(end+timedelta(minutes=2),'healthy')
     second=create_manual_inspection_run(environment=env,resource_type_codes=['HOST']);start_manual_inspection_run(second.pk)
     check=CheckResult.objects.get(inspection_run=second,asset=first.asset)
     assert check.status=='PASS' # basic data valid, but historical advanced diagnosis not ready

@@ -6,10 +6,11 @@ from apps.inference_performance.api import _boundary, _endpoint
 from apps.inference_performance.services.ingest import resolve_environment
 from .models import HardwareSnapshot
 from .services import ingest
+from .host_policy import freshness_seconds
 
 
 def serialize(row):
-    fresh=0<=(timezone.now()-row.window_end).total_seconds()<=300
+    fresh=0<=(timezone.now()-row.window_end).total_seconds()<=freshness_seconds(row.evaluation)
     return {'snapshot_id':str(row.pk),'asset_id':str(row.asset_id),'asset_name':row.asset.name,
             'window_start':row.window_start.isoformat(),'window_end':row.window_end.isoformat(),
             'status':row.evaluation['status'] if fresh else 'UNKNOWN','freshness':'FRESH' if fresh else 'STALE',

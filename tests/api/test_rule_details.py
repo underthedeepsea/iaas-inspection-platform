@@ -14,6 +14,11 @@ from apps.inspections.rules.inference_performance import _map_status
 
 
 def test_rule_details_have_complete_metric_contracts_without_database_access(client, django_db_blocker):
+    expected_versions = {
+        'hardware.host_health': '2.0.0',
+        'hardware.gpu_health': '1.0.0',
+        'llm.performance_profile': '1.0.0',
+    }
     expected = {
         'llm.performance_profile': {f'{group}.{field}' for group, fields in METRIC_FIELDS.items() for field in fields},
         'hardware.gpu_health': {f'gpu.{field}' for field in FIELDS['gpu']},
@@ -34,7 +39,7 @@ def test_rule_details_have_complete_metric_contracts_without_database_access(cli
             assert all(all(metric[key] for key in ('name', 'unit', 'range', 'purpose', 'input_path'))
                        for metric in row['supported_metrics'])
             assert row['parameters'] == {} and row['deterministic'] is True
-            assert row['plugin_version'] == '1.0.0'
+            assert row['plugin_version'] == expected_versions[code]
             assert '外部采集系统' in row['input_contract']
             assert '不直接采集' in row['input_contract']
             assert all(section['title'] and section['items'] for section in row['judgment_rules'])
@@ -102,7 +107,7 @@ def test_hardware_details_disclose_actual_confirmation_and_health_limits(client)
         row = client.get(f'/api/v1/rules/{code}').json()
         assert row['policy_profiles'] == []
         text = json.dumps(row['judgment_rules'], ensure_ascii=False)
-        for boundary in ('至少 8 点', '最近 3 点至少 2 点', 'CUSUM', 'NOT_READY', 'NORMAL', '不会自动将 overall 改为 UNKNOWN', '当前实现固定 300 秒'):
+        for boundary in ('至少 8 点', '最近 3 点至少 2 点', 'CUSUM', 'NOT_READY', 'NORMAL', '不会自动将 overall 改为 UNKNOWN', f"当前实现固定 {300 if code.endswith('gpu_health') else 180} 秒"):
             assert boundary in text
         for metric, effect in MIN_EFFECT.items():
             if any(metric in FIELDS[family] for family in families):
@@ -112,8 +117,12 @@ def test_hardware_details_disclose_actual_confirmation_and_health_limits(client)
                 assert boundary in text
         else:
             assert 'GPU 输出吞吐 floor' not in text and 'r 为温度' not in text
-            for boundary in ('至少 6 点', '0.25–4', '首值×0.03', '10%', '不单凭空间低于 10%'):
+            for boundary in ('80%', '90%', '20%', '10%', '85%', '75%', '15%', '25%', '30 个', '最多 12 点', '11 点 / 600 秒', '31 点 / 1800 秒'):
                 assert boundary in text
+            for boundary in ('主机内存与文件系统均要求60秒连续点', '11 点 / 600 秒', '31 点 / 1800 秒', '0.25–4', '首值×0.03', '10%', '不单凭空间低于 10%', 'HOST CPU漂移或静态诊断为 PENDING / NOT_READY'):
+                assert boundary in text
+            assert '至少 6 点' not in text and '最多12点' not in text
+            assert sum(section['title'] == 'HOST v2 内存/文件系统持续下降与保留空间' for section in row['judgment_rules']) == 1
 
 
 def test_pending_llm_metric_does_not_hide_another_confirmed_failure(client):

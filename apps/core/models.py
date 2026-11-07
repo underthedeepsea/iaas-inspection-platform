@@ -54,3 +54,8 @@ class Environment(EditableModel):
 
     class Meta:
         db_table = "environments"
+
+
+# Register the additive draft-storage models in the existing core app.
+from .mapping_models import MappingBundle, MappingRevision  # noqa: E402,F401
+from .mapping_loop_models import MappingValidation, MappingActivation, MappingCollection, MappingEnableEvent  # noqa: E402,F401

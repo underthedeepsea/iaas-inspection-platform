@@ -164,6 +164,24 @@ def test_resource_history_supports_date_filters_pagination_and_newest_first():
 
 
 @pytest.mark.django_db
+def test_kvm_history_and_asset_remain_readable():
+    environment = make_environment()
+    resource_type = ResourceType.objects.get(code="KVM_CLUSTER")
+    asset = Asset.objects.create(environment=environment, external_key="legacy-kvm", name="旧 KVM 集群", asset_type="CLUSTER", labels={"platform": "kvm"})
+    run = make_run(environment, resource_type, date(2026, 8, 25))
+    client = Client()
+    params = {"environment_id": str(environment.id)}
+    history = client.get("/api/v1/resource-types/KVM_CLUSTER/inspection-history", params)
+    detail = client.get(f"/api/v1/resource-types/KVM_CLUSTER/inspection-history/{run.id}", params)
+    assert history.status_code == 200
+    assert [row["inspection_run_id"] for row in history.json()["items"]] == [str(run.id)]
+    assert detail.status_code == 200
+    assert detail.json()["risk_count"] == 4
+    assert Asset.objects.get(pk=asset.pk).labels == {"platform": "kvm"}
+    assert ResourceType.objects.get(pk=resource_type.pk).enabled
+
+
+@pytest.mark.django_db
 def test_resource_run_detail_exposes_counts_major_risks_and_timing():
     environment = make_environment()
     resource_type = ResourceType.objects.create(code="RESOURCE_API_DETAIL", name="详情")

@@ -1,0 +1,98 @@
+{
+  "synthetic": true,
+  "fact_report": {
+    "source": "CODE",
+    "inspection_run_id": "synthetic-run-a",
+    "check_count": 1,
+    "status_counts": {
+      "FAIL": 0,
+      "ERROR": 0,
+      "UNKNOWN": 1,
+      "PASS": 0,
+      "NOT_APPLICABLE": 0
+    },
+    "checks": [
+      {
+        "id": "synthetic-check-a",
+        "check": "hardware.host_health",
+        "check_name": "合成宿主机健康巡检",
+        "asset_id": "synthetic-host-a",
+        "asset_name": "synthetic-host-a",
+        "status": "UNKNOWN",
+        "summary": "合成记录：硬件数据不足或异常待确认",
+        "source": "CODE",
+        "checked_at": "2001-02-03T04:06:45+00:00",
+        "window_start": "2001-02-03T04:05:00+00:00",
+        "window_end": "2001-02-03T04:06:00+00:00",
+        "snapshot_id": "synthetic-snapshot-a",
+        "quality": {
+          "state": "INCOMPLETE",
+          "pending_confirmation": false
+        },
+        "evidence_gaps": [
+          "INCOMPLETE"
+        ],
+        "measurements": [
+          {
+            "metric": "host/cpu_busy_ratio",
+            "current": 0.3125,
+            "unit": "ratio",
+            "layer": "OBSERVATION",
+            "value_semantics": "OBSERVATION",
+            "contributes_to_status": false,
+            "quality": "VALID",
+            "collected_at": "2001-02-03T12:05:45+08:00",
+            "source": "synthetic-macos-observation-only",
+            "sample_id": "synthetic-sample-a",
+            "asset_id": "synthetic-host-a",
+            "snapshot_id": "synthetic-snapshot-a",
+            "window_start": "2001-02-03T04:05:00+00:00",
+            "window_end": "2001-02-03T04:06:00+00:00",
+            "frozen_at": "2001-02-03T04:06:30+00:00",
+            "input_as_of": "2001-02-03T04:06:30+00:00"
+          },
+          {
+            "metric": "host/memory_available_bytes",
+            "current": 1073741824,
+            "unit": "bytes",
+            "layer": "OBSERVATION",
+            "value_semantics": "OBSERVATION",
+            "contributes_to_status": false,
+            "quality": "VALID",
+            "collected_at": "2001-02-03T12:05:45+08:00",
+            "source": "synthetic-macos-observation-only",
+            "sample_id": "synthetic-sample-a",
+            "asset_id": "synthetic-host-a",
+            "snapshot_id": "synthetic-snapshot-a",
+            "window_start": "2001-02-03T04:05:00+00:00",
+            "window_end": "2001-02-03T04:06:00+00:00",
+            "frozen_at": "2001-02-03T04:06:30+00:00",
+            "input_as_of": "2001-02-03T04:06:30+00:00",
+            "measurement_semantics": "synthetic obsolete platform estimate"
+          },
+          {
+            "metric": "host/memory_total_bytes",
+            "current": 4294967296,
+            "unit": "bytes",
+            "layer": "OBSERVATION",
+            "value_semantics": "OBSERVATION",
+            "contributes_to_status": false,
+            "quality": "VALID",
+            "collected_at": "2001-02-03T12:05:45+08:00",
+            "source": "synthetic-macos-observation-only",
+            "sample_id": "synthetic-sample-a",
+            "asset_id": "synthetic-host-a",
+            "snapshot_id": "synthetic-snapshot-a",
+            "window_start": "2001-02-03T04:05:00+00:00",
+            "window_end": "2001-02-03T04:06:00+00:00",
+            "frozen_at": "2001-02-03T04:06:30+00:00",
+            "input_as_of": "2001-02-03T04:06:30+00:00"
+          }
+        ],
+        "risks": []
+      }
+    ],
+    "omitted_count": 0,
+    "risk_state_note": "风险状态与等级为当前处置状态；检查事实为本次巡检的历史记录。"
+  }
+}

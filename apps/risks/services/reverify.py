@@ -190,6 +190,11 @@ def _valid_hardware_pass(risk, check, pending_history):
             if evidence.get('components', {}).get(component) != identity or evaluation.get('coverage', {}).get(component) != 'READY':
                 return False
         for issue in (old.get('evaluation') or {}).get('issues', []):
+            if issue.get('rule_version') == '2.0.0' and issue.get('rule_id'):
+                from apps.hardware_health.host_policy import static_event_recovered
+                if not static_event_recovered(evaluation, issue, pending_history.created_at):
+                    return False
+                continue
             if evaluation.get('diagnostics', {}).get(issue['key'], {}).get('status') != 'NORMAL':
                 return False
             if issue.get('event_id'):
